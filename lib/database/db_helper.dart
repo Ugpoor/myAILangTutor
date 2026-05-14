@@ -16,7 +16,7 @@ class DatabaseHelper {
 
   Future<Database> _initDatabase() async {
     return await openDatabase(
-      'myailangtutor.db',
+      'myAILangTutor.db',
       version: 2,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,

@@ -1,4 +1,4 @@
-# myailanguagetutor
+# myAILangTutor
 
 A new Flutter project.
 

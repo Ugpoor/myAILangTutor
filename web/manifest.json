@@ -1,6 +1,6 @@
 {
-    "name": "myailanguagetutor",
-    "short_name": "myailanguagetutor",
+    "name": "myAILangTutor",
+    "short_name": "myAILangTutor",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

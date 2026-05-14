@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'home_page.dart';
 import 'chat_page.dart';
+import 'inbox_page.dart';
 import '../components/chat_bubble_list.dart';
 import '../services/llm_service.dart';
 
@@ -17,6 +18,7 @@ class _MainScreenState extends State<MainScreen> {
   String _lang = 'cn';
   bool _isLoading = false;
   String _lastAiMessage = '你好，我是你的语文学习助手！';
+  String? _currentPage;
 
   final List<ChatMessage> _chatMessages = [];
 
@@ -51,6 +53,7 @@ class _MainScreenState extends State<MainScreen> {
   void _toggleChatMode() {
     setState(() {
       _isChatMode = !_isChatMode;
+      _currentPage = null;
     });
   }
 
@@ -88,6 +91,18 @@ class _MainScreenState extends State<MainScreen> {
     });
   }
 
+  void _navigateToPage(String pageName) {
+    setState(() {
+      _currentPage = pageName;
+    });
+  }
+
+  void _goBack() {
+    setState(() {
+      _currentPage = null;
+    });
+  }
+
   Future<void> _sendMessage(ChatMessage message) async {
     setState(() {
       _chatMessages.add(message);
@@ -122,6 +137,16 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_currentPage != null) {
+      if (_currentPage == 'inbox') {
+        return InboxPage(
+          lang: _lang,
+          lastAiMessage: _lastAiMessage,
+          onHomeTap: _goBack,
+        );
+      }
+    }
+
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
       switchInCurve: Curves.easeOut,
@@ -168,9 +193,17 @@ class _MainScreenState extends State<MainScreen> {
                 });
               },
               onMenuItemTap: (index) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(_lang == 'cn' ? '点击了菜单 $index' : 'Clicked menu $index')),
-                );
+                final menuLabels = _lang == 'cn'
+                    ? ['收件箱', '错误本', '知识点', '习题集', '作品集', '技能库']
+                    : ['Inbox', 'Errors', 'Knowledge', 'Exercises', 'Portfolio', 'Skills'];
+                
+                if (index == 0) {
+                  _navigateToPage('inbox');
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('${_lang == 'cn' ? '点击了' : 'Clicked'} ${menuLabels[index]}')),
+                  );
+                }
               },
               lastAiMessage: _lastAiMessage,
               onAiMessageChanged: _updateLastAiMessage,

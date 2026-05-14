@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class LlmService {
   static final LlmService _instance = LlmService._internal();
@@ -12,9 +13,10 @@ class LlmService {
   String? _modelName;
 
   Future<void> init() async {
-    _apiKey = '40188f40-f9a6-479d-adfd-fc06021ad16e';
-    _baseUrl = 'https://ark.cn-beijing.volces.com/api/v3';
-    _modelName = 'doubao-seed-2-0-lite-260215';
+    await dotenv.load();
+    _apiKey = dotenv.env['API_KEY'];
+    _baseUrl = dotenv.env['BASE_URL'];
+    _modelName = dotenv.env['MODEL_NAME'] ?? 'doubao-seed-2-0-lite-260215';
   }
 
   Future<Map<String, dynamic>> generateResponse(String prompt) async {
