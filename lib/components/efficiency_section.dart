@@ -81,31 +81,16 @@ class _EfficiencySectionState extends State<EfficiencySection> {
                       final unitEff =
                           (record['unit_efficiency'] as num?)?.toDouble() ??
                           0.0;
-                      final recordTime = record['record_time'] as String? ?? '';
                       children.add(
                         Text(
-                          '$title — ${unitEff.toStringAsFixed(1)}',
+                          '$title — ${unitEff.toStringAsFixed(1)}秒',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 14,
                           ),
                         ),
                       );
-                      children.add(const SizedBox(height: 4));
-                      if (recordTime.isNotEmpty) {
-                        children.add(
-                          Text(
-                            recordTime.length > 16
-                                ? recordTime.substring(0, 16)
-                                : recordTime,
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12,
-                            ),
-                          ),
-                        );
-                        children.add(const SizedBox(height: 4));
-                      }
+                      children.add(const SizedBox(height: 6));
                     }
                     print(
                       '>>> EfficiencySection: rendering ${children.length} efficiency items',

@@ -288,7 +288,7 @@ class _EfficiencyRecordPageState extends State<EfficiencyRecordPage> {
                                                   const SizedBox(height: 4),
                                                   Text(
                                                     '${widget.lang == "cn" ? "单位效率" : "Unit Eff"}: ${unitEff.toStringAsFixed(1)}',
-                                                    style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFFC2185B)),
                                                   ),
                                                   const SizedBox(height: 2),
                                                   Text(

@@ -56,18 +56,6 @@ class _SchedulePageState extends State<SchedulePage> {
   }
 
   void _onTabSelected(String tab) {
-    // 检查是否是日、周、月标签
-    final isDayView = tab == '日' || tab == 'Day';
-    final isWeekView = tab == '周' || tab == 'Week';
-    final isMonthView = tab == '月' || tab == 'Month';
-    
-    if (isDayView || isWeekView || isMonthView) {
-      setState(() {
-        _selectedTab = tab;
-      });
-      return;
-    }
-
     final addLabel = widget.lang == 'cn' ? '新增' : 'Add';
     final deleteLabel = widget.lang == 'cn' ? '删除' : 'Delete';
 
@@ -83,6 +71,10 @@ class _SchedulePageState extends State<SchedulePage> {
       );
     } else if (tab == deleteLabel) {
       _deleteSelected();
+    } else {
+      setState(() {
+        _selectedTab = tab;
+      });
     }
   }
 
@@ -140,62 +132,404 @@ class _SchedulePageState extends State<SchedulePage> {
     }
   }
 
-  List<Map<String, dynamic>> _filterSchedules() {
+  List<Map<String, dynamic>> _filterSchedulesByDate(String date) {
+    return _schedules.where((s) {
+      final scheduleDate = s['date'] as String?;
+      return scheduleDate == date;
+    }).toList();
+  }
+
+  Widget _buildDayView() {
     final now = DateTime.now();
     final today = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final daySchedules = _filterSchedulesByDate(today);
+
+    return _isLoading
+        ? const Padding(
+            padding: EdgeInsets.all(40),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        : daySchedules.isEmpty
+            ? Padding(
+                padding: const EdgeInsets.all(40),
+                child: Center(
+                  child: Text(
+                    widget.lang == 'cn' ? '今日暂无日程' : 'No schedules for today',
+                    style: TextStyle(color: Colors.grey[500], fontSize: 16),
+                  ),
+                ),
+              )
+            : ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(12),
+                itemCount: daySchedules.length,
+                itemBuilder: (context, index) {
+                  final schedule = daySchedules[index];
+                  final id = schedule['id'] as int;
+                  final isSelected = _selectedIds.contains(id);
+                  final scheduleId = schedule['schedule_id'] as String? ?? 'C${index + 1}';
+                  final title = schedule['title'] as String? ?? '';
+                  final startTime = schedule['start_time'] as String? ?? '';
+                  final endTime = schedule['end_time'] as String? ?? '';
+                  final completed = schedule['completed'] as int? ?? 0;
+
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Checkbox(
+                              value: isSelected,
+                              activeColor: const Color(0xFFC2185B),
+                              onChanged: (v) {
+                                setState(() {
+                                  if (v == true) {
+                                    _selectedIds.add(id);
+                                  } else {
+                                    _selectedIds.remove(id);
+                                  }
+                                });
+                              },
+                            ),
+                          ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                      '$scheduleId. ',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Text(
+                                        title,
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                          decoration: completed == 1
+                                              ? TextDecoration.lineThrough
+                                              : null,
+                                          color: completed == 1
+                                              ? Colors.grey
+                                              : null,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.access_time, color: Color(0xFF1565C0), size: 16),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '$startTime-$endTime',
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        color: Color(0xFF1565C0),
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+  }
+
+  Widget _buildWeekView() {
+    final now = DateTime.now();
     final weekStart = now.subtract(Duration(days: now.weekday - 1));
-    final weekEnd = weekStart.add(const Duration(days: 6));
+    
+    return _isLoading
+        ? const Padding(
+            padding: EdgeInsets.all(40),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        : Column(
+            children: List.generate(7, (index) {
+              final date = weekStart.add(Duration(days: index));
+              final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+              final daySchedules = _filterSchedulesByDate(dateStr);
+              final isToday = dateStr == '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+              final dayNames = widget.lang == 'cn' 
+                  ? ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+                  : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: isToday ? Colors.pink[50] : Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: isToday ? Border.all(color: const Color(0xFFE91E63)) : null,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withOpacity(0.1),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: isToday ? const Color(0xFFE91E63) : Colors.grey[200],
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '${date.month}/${date.day}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: isToday ? Colors.white : Colors.grey[700],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          dayNames[index],
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    if (daySchedules.isEmpty)
+                      Text(
+                        widget.lang == 'cn' ? '无日程' : 'No schedule',
+                        style: TextStyle(color: Colors.grey[400], fontSize: 13),
+                      )
+                    else
+                      Column(
+                        children: daySchedules.map((schedule) {
+                          final id = schedule['id'] as int;
+                          final isSelected = _selectedIds.contains(id);
+                          final title = schedule['title'] as String? ?? '';
+                          final startTime = schedule['start_time'] as String? ?? '';
+                          final completed = schedule['completed'] as int? ?? 0;
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: Row(
+                              children: [
+                                Checkbox(
+                                  value: isSelected,
+                                  activeColor: const Color(0xFFC2185B),
+                                  onChanged: (v) {
+                                    setState(() {
+                                      if (v == true) {
+                                        _selectedIds.add(id);
+                                      } else {
+                                        _selectedIds.remove(id);
+                                      }
+                                    });
+                                  },
+                                ),
+                                Expanded(
+                                  child: Row(
+                                    children: [
+                                      Text(
+                                        startTime.substring(0, 5),
+                                        style: const TextStyle(fontSize: 12, color: Color(0xFF1565C0)),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          title,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            decoration: completed == 1 ? TextDecoration.lineThrough : null,
+                                            color: completed == 1 ? Colors.grey : null,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                  ],
+                ),
+              );
+            }),
+          );
+  }
+
+  Widget _buildMonthView() {
+    final now = DateTime.now();
     final monthStart = DateTime(now.year, now.month, 1);
     final monthEnd = DateTime(now.year, now.month + 1, 0);
+    final firstDayOffset = monthStart.weekday - 1;
+    final totalDays = monthEnd.day + firstDayOffset;
+    final weeks = (totalDays / 7).ceil();
 
-    switch (_selectedTab) {
-      case 'Day':
-      case '日':
-        return _schedules.where((s) {
-          final date = s['date'] as String?;
-          return date == today;
-        }).toList();
-      case 'Week':
-      case '周':
-        return _schedules.where((s) {
-          final date = s['date'] as String?;
-          if (date == null) return false;
-          try {
-            final d = DateTime.parse(date);
-            return d.isAfter(weekStart.subtract(const Duration(days: 1))) && 
-                   d.isBefore(weekEnd.add(const Duration(days: 1)));
-          } catch (e) {
-            return false;
-          }
-        }).toList();
-      case 'Month':
-      case '月':
-        return _schedules.where((s) {
-          final date = s['date'] as String?;
-          if (date == null) return false;
-          try {
-            final d = DateTime.parse(date);
-            return d.isAfter(monthStart.subtract(const Duration(days: 1))) && 
-                   d.isBefore(monthEnd.add(const Duration(days: 1)));
-          } catch (e) {
-            return false;
-          }
-        }).toList();
-      default:
-        return _schedules;
-    }
+    final dayNames = widget.lang == 'cn' 
+        ? ['日', '一', '二', '三', '四', '五', '六']
+        : ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+    return _isLoading
+        ? const Padding(
+            padding: EdgeInsets.all(40),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        : Column(
+            children: [
+              Row(
+                children: dayNames.map((name) {
+                  return Expanded(
+                    child: Center(
+                      child: Text(
+                        name,
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[600]),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 8),
+              ...List.generate(weeks, (weekIndex) {
+                return Row(
+                  children: List.generate(7, (dayIndex) {
+                    final dayOffset = weekIndex * 7 + dayIndex;
+                    final calendarDay = dayOffset - firstDayOffset + 1;
+                    final isCurrentMonth = calendarDay >= 1 && calendarDay <= monthEnd.day;
+                    final isToday = isCurrentMonth && 
+                        calendarDay == now.day &&
+                        monthStart.month == now.month &&
+                        monthStart.year == now.year;
+                    
+                    String? dateStr;
+                    List<Map<String, dynamic>> daySchedules = [];
+                    if (isCurrentMonth) {
+                      dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${calendarDay.toString().padLeft(2, '0')}';
+                      daySchedules = _filterSchedulesByDate(dateStr);
+                    }
+
+                    return Expanded(
+                      child: Container(
+                        height: 56,
+                        margin: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          color: isToday ? const Color(0xFFE91E63) : isCurrentMonth ? Colors.white : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          border: daySchedules.isNotEmpty && isCurrentMonth 
+                              ? Border.all(color: const Color(0xFFE91E63), width: 2) 
+                              : null,
+                        ),
+                        child: isCurrentMonth
+                            ? Stack(
+                                children: [
+                                  Align(
+                                    alignment: Alignment.topCenter,
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(top: 4),
+                                      child: Text(
+                                        '$calendarDay',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+                                          color: isToday ? Colors.white : Colors.black87,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  if (daySchedules.isNotEmpty)
+                                    Align(
+                                      alignment: Alignment.bottomCenter,
+                                      child: Padding(
+                                        padding: const EdgeInsets.only(bottom: 4),
+                                        child: Container(
+                                          width: 20,
+                                          height: 20,
+                                          decoration: BoxDecoration(
+                                            color: isToday ? Colors.white.withOpacity(0.9) : const Color(0xFFFFCDD2),
+                                            borderRadius: BorderRadius.circular(3),
+                                          ),
+                                          child: Center(
+                                            child: Text(
+                                              '${daySchedules.length}',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
+                                                color: isToday ? const Color(0xFFE91E63) : const Color(0xFFC2185B),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              )
+                            : null,
+                      ),
+                    );
+                  }),
+                );
+              }),
+              const SizedBox(height: 16),
+              Text(
+                widget.lang == 'cn' ? '点击有日程的日期查看详情' : 'Tap dates with schedules to view details',
+                style: TextStyle(color: Colors.grey[500], fontSize: 13),
+              ),
+            ],
+          );
   }
 
   @override
   Widget build(BuildContext context) {
     final tabs = [
-      _selectedTab,
       widget.lang == 'cn' ? '日' : 'Day',
       widget.lang == 'cn' ? '周' : 'Week',
       widget.lang == 'cn' ? '月' : 'Month',
       widget.lang == 'cn' ? '新增' : 'Add',
       widget.lang == 'cn' ? '删除' : 'Delete',
     ];
+
+    Widget viewContent;
+    switch (_selectedTab) {
+      case 'Day':
+      case '日':
+        viewContent = _buildDayView();
+        break;
+      case 'Week':
+      case '周':
+        viewContent = _buildWeekView();
+        break;
+      case 'Month':
+      case '月':
+        viewContent = _buildMonthView();
+        break;
+      default:
+        viewContent = _buildDayView();
+    }
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -239,132 +573,7 @@ class _SchedulePageState extends State<SchedulePage> {
                           ),
                         ],
                       ),
-                      child: _isLoading
-                          ? const Padding(
-                              padding: EdgeInsets.all(40),
-                              child: Center(child: CircularProgressIndicator()),
-                            )
-                          : _filterSchedules().isEmpty
-                              ? Padding(
-                                  padding: const EdgeInsets.all(40),
-                                  child: Center(
-                                    child: Text(
-                                      widget.lang == 'cn' ? '暂无日程，点击\"新增\"添加' : 'No schedules yet. Tap \"Add\" to create.',
-                                      style: TextStyle(color: Colors.grey[500], fontSize: 16),
-                                    ),
-                                  ),
-                                )
-                              : ListView.builder(
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  padding: const EdgeInsets.all(12),
-                                  itemCount: _filterSchedules().length,
-                                  itemBuilder: (context, index) {
-                                    final schedule = _filterSchedules()[index];
-                                    final id = schedule['id'] as int;
-                                    final isSelected = _selectedIds.contains(id);
-                                    final scheduleId = schedule['schedule_id'] as String? ?? 'C${index + 1}';
-                                    final title = schedule['title'] as String? ?? '';
-                                    final startTime = schedule['start_time'] as String? ?? '';
-                                    final endTime = schedule['end_time'] as String? ?? '';
-                                    final date = schedule['date'] as String?;
-                                    final completed = schedule['completed'] as int? ?? 0;
-
-                                    return Card(
-                                      margin: const EdgeInsets.only(bottom: 10),
-                                      elevation: 2,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                      child: Padding(
-                                        padding: const EdgeInsets.all(12),
-                                        child: Row(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Padding(
-                                              padding: const EdgeInsets.only(top: 2),
-                                              child: Checkbox(
-                                                value: isSelected,
-                                                activeColor: const Color(0xFFC2185B),
-                                                onChanged: (v) {
-                                                  setState(() {
-                                                    if (v == true) {
-                                                      _selectedIds.add(id);
-                                                    } else {
-                                                      _selectedIds.remove(id);
-                                                    }
-                                                  });
-                                                },
-                                              ),
-                                            ),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Row(
-                                                    children: [
-                                                      if (date != null && date.isNotEmpty)
-                                                        Container(
-                                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                                          decoration: BoxDecoration(
-                                                            color: Colors.blue.withOpacity(0.1),
-                                                            borderRadius: BorderRadius.circular(4),
-                                                          ),
-                                                          child: Text(
-                                                            _formatDate(date),
-                                                            style: const TextStyle(
-                                                              fontSize: 12,
-                                                              color: Colors.blue,
-                                                              fontWeight: FontWeight.w500,
-                                                            ),
-                                                          ),
-                                                        ),
-                                                      if (date != null && date.isNotEmpty) const SizedBox(width: 8),
-                                                      Text(
-                                                        '$scheduleId. ',
-                                                        style: const TextStyle(
-                                                          fontWeight: FontWeight.bold,
-                                                          fontSize: 15,
-                                                        ),
-                                                      ),
-                                                      Expanded(
-                                                        child: Text(
-                                                          title,
-                                                          style: TextStyle(
-                                                            fontSize: 15,
-                                                            fontWeight: FontWeight.w600,
-                                                            decoration: completed == 1
-                                                                ? TextDecoration.lineThrough
-                                                                : null,
-                                                            color: completed == 1
-                                                                ? Colors.grey
-                                                                : null,
-                                                          ),
-                                                          overflow: TextOverflow.ellipsis,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  const SizedBox(height: 6),
-                                                  Row(
-                                                    children: [
-                                                      Text(
-                                                        '$startTime-$endTime',
-                                                        style: const TextStyle(
-                                                          fontSize: 14,
-                                                          color: Color(0xFF1565C0),
-                                                          fontWeight: FontWeight.w500,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
+                      child: viewContent,
                     ),
                   ],
                 ),
