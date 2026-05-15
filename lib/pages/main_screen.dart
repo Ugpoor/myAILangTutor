@@ -2,8 +2,18 @@ import 'package:flutter/material.dart';
 import 'home_page.dart';
 import 'chat_page.dart';
 import 'inbox_page.dart';
+import 'knowledge_point_page_simple.dart';
+import 'error_record_page_simple.dart';
+import 'exercises_page_simple.dart';
+import 'portfolio_page_simple.dart';
+import 'skills_page_simple.dart';
+import 'efficiency_record_page.dart';
+import 'schedule_page.dart';
 import '../components/chat_bubble_list.dart';
 import '../services/llm_service.dart';
+import '../services/share_intent_service.dart';
+import '../database/models/inbox_item.dart';
+import '../database/db_helper.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -21,13 +31,16 @@ class _MainScreenState extends State<MainScreen> {
   String? _currentPage;
 
   final List<ChatMessage> _chatMessages = [];
-
   final LlmService _llmService = LlmService();
+  final ShareIntentService _shareIntentService = ShareIntentService();
+  bool _showShareDialog = false;
+  String? _sharedContent;
 
   @override
   void initState() {
     super.initState();
     _initLlmService();
+    _checkSharedData();
   }
 
   Future<void> _initLlmService() async {
@@ -47,6 +60,59 @@ class _MainScreenState extends State<MainScreen> {
     setState(() {
       _chatMessages.add(welcomeMessage);
       _lastAiMessage = welcomeMessage.text;
+    });
+  }
+
+  void _checkSharedData() {
+    Future.delayed(const Duration(milliseconds: 500), () {
+      final sharedData = _shareIntentService.sharedData;
+      if (sharedData != null && sharedData['text'] != null) {
+        setState(() {
+          _sharedContent = _shareIntentService.getSharedDataAsString();
+          _showShareDialog = true;
+        });
+      }
+    });
+  }
+
+  Future<void> _saveSharedContent() async {
+    if (_sharedContent == null) return;
+
+    try {
+      final inboxItem = InboxItem(
+        title: _lang == 'cn' ? '共享内容' : 'Shared Content',
+        content: _sharedContent!,
+        source: 'share_intent',
+        url: '',
+        filePath: '',
+        category: '未知归类',
+        status: '未处理',
+        createdAt: DateTime.now(),
+      );
+
+      await DatabaseHelper().insertInboxItem(inboxItem);
+      
+      _shareIntentService.clearSharedData();
+      
+      setState(() {
+        _showShareDialog = false;
+        _sharedContent = null;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_lang == 'cn' ? '共享内容已保存到收件箱' : 'Shared content saved to inbox')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_lang == 'cn' ? '保存失败' : 'Save failed')),
+      );
+    }
+  }
+
+  void _dismissShareDialog() {
+    setState(() {
+      _showShareDialog = false;
+      _shareIntentService.clearSharedData();
     });
   }
 
@@ -144,10 +210,54 @@ class _MainScreenState extends State<MainScreen> {
           lastAiMessage: _lastAiMessage,
           onHomeTap: _goBack,
         );
+      } else if (_currentPage == 'knowledge') {
+        return KnowledgePointPageSimple(
+          lang: _lang,
+          lastAiMessage: _lastAiMessage,
+          onHomeTap: _goBack,
+        );
+      } else if (_currentPage == 'error') {
+        return ErrorRecordPageSimple(
+          lang: _lang,
+          lastAiMessage: _lastAiMessage,
+          onHomeTap: _goBack,
+        );
+      } else if (_currentPage == 'exercise') {
+        return ExercisesPageSimple(
+          lang: _lang,
+          lastAiMessage: _lastAiMessage,
+          onHomeTap: _goBack,
+        );
+      } else if (_currentPage == 'portfolio') {
+        return PortfolioPageSimple(
+          lang: _lang,
+          lastAiMessage: _lastAiMessage,
+          onHomeTap: _goBack,
+        );
+      } else if (_currentPage == 'skills') {
+        return SkillsPageSimple(
+          lang: _lang,
+          lastAiMessage: _lastAiMessage,
+          onHomeTap: _goBack,
+        );
+      } else if (_currentPage == 'efficiency') {
+        return EfficiencyRecordPage(
+          lang: _lang,
+          lastAiMessage: _lastAiMessage,
+          onHomeTap: _goBack,
+        );
+      } else if (_currentPage == 'schedule') {
+        return SchedulePage(
+          lang: _lang,
+          lastAiMessage: _lastAiMessage,
+          onHomeTap: _goBack,
+        );
       }
     }
 
-    return AnimatedSwitcher(
+    return Stack(
+      children: [
+        AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
       switchInCurve: Curves.easeOut,
       switchOutCurve: Curves.easeIn,
@@ -197,8 +307,17 @@ class _MainScreenState extends State<MainScreen> {
                     ? ['收件箱', '错误本', '知识点', '习题集', '作品集', '技能库']
                     : ['Inbox', 'Errors', 'Knowledge', 'Exercises', 'Portfolio', 'Skills'];
                 
-                if (index == 0) {
-                  _navigateToPage('inbox');
+                final pageMapping = {
+                  0: 'inbox',
+                  1: 'error',
+                  2: 'knowledge',
+                  3: 'exercise',
+                  4: 'portfolio',
+                  5: 'skills',
+                };
+                
+                if (pageMapping.containsKey(index)) {
+                  _navigateToPage(pageMapping[index]!);
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('${_lang == 'cn' ? '点击了' : 'Clicked'} ${menuLabels[index]}')),
@@ -208,7 +327,81 @@ class _MainScreenState extends State<MainScreen> {
               lastAiMessage: _lastAiMessage,
               onAiMessageChanged: _updateLastAiMessage,
               onMessageAdded: _addMessage,
+              onEfficiencyTap: () => _navigateToPage('efficiency'),
+              onScheduleTap: () => _navigateToPage('schedule'),
             ),
+        ),
+        if (_showShareDialog)
+          _buildShareDialog(),
+      ],
     );
+  }
+
+  Widget _buildShareDialog() {
+    return Container(
+      color: Colors.black54,
+      child: Center(
+        child: Container(
+          margin: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _lang == 'cn' ? '收到共享内容' : 'Received Shared Content',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                width: 300,
+                height: 200,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: SingleChildScrollView(
+                  child: Text(
+                    _sharedContent ?? '',
+                    style: const TextStyle(fontSize: 14, fontFamily: 'monospace'),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: _dismissShareDialog,
+                    child: Text(_lang == 'cn' ? '取消' : 'Cancel'),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton(
+                    onPressed: _saveSharedContent,
+                    child: Text(_lang == 'cn' ? '保存到收件箱' : 'Save to Inbox'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _checkSharedData();
+  }
+
+  @override
+  void dispose() {
+    _shareIntentService.dispose();
+    super.dispose();
   }
 }

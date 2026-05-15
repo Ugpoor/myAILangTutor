@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../components/app_title_bar.dart';
 import '../components/ai_reply_bar.dart';
-import '../components/submenu_tabs.dart';
 import '../components/menu_grid.dart';
 import '../components/efficiency_section.dart';
 import '../components/input_area.dart';
@@ -16,6 +15,8 @@ class HomePage extends StatefulWidget {
   final VoidCallback? onAvatarTap;
   final VoidCallback? onHomeTap;
   final void Function(int)? onMenuItemTap;
+  final VoidCallback? onEfficiencyTap;
+  final VoidCallback? onScheduleTap;
   final String lastAiMessage;
   final ValueChanged<String>? onAiMessageChanged;
   final ValueChanged<ChatMessage>? onMessageAdded;
@@ -29,6 +30,8 @@ class HomePage extends StatefulWidget {
     this.onAvatarTap,
     this.onHomeTap,
     this.onMenuItemTap,
+    this.onEfficiencyTap,
+    this.onScheduleTap,
     required this.lastAiMessage,
     this.onAiMessageChanged,
     this.onMessageAdded,
@@ -86,10 +89,6 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final List<String> homeTabs = widget.lang == 'cn'
-        ? ['收件箱', '错误本', '知识点', '习题集', '作品集', '技能库']
-        : ['Inbox', 'Errors', 'Knowledge', 'Exercises', 'Portfolio', 'Skills'];
-
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -115,17 +114,13 @@ class _HomePageState extends State<HomePage> {
                       onItemTap: widget.onMenuItemTap,
                     ),
                     const SizedBox(height: 24),
-                    const EfficiencySection(),
+                    EfficiencySection(
+                      onEfficiencyTap: widget.onEfficiencyTap,
+                      onScheduleTap: widget.onScheduleTap,
+                    ),
                   ],
                 ),
               ),
-            ),
-            SubmenuTabs(
-              tabs: homeTabs,
-              selectedTab: widget.selectedTab,
-              onTabSelected: widget.onTabSelected,
-              onHomeTap: widget.onHomeTap,
-              lang: widget.lang,
             ),
             InputArea(
               lang: widget.lang,

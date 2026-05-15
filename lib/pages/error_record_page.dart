@@ -1,0 +1,560 @@
+/Volumes/Data/BaiduSyncdisk/reportLab/github/myAILangTutor/lib/pages/error_record_page.dart
+import 'package:flutter/material.dart';
+import '../database/db_helper.dart';
+import '../database/models/error_record.dart';
+import '../database/models/exercise.dart';
+import '../components/app_title_bar.dart';
+import '../components/submenu_tabs.dart';
+import '../components/ai_reply_bar.dart';
+import '../components/input_area.dart';
+import '../services/llm_service.dart';
+
+class ErrorRecordPage extends StatefulWidget {
+  final String lang;
+  final String lastAiMessage;
+  final VoidCallback onHomeTap;
+
+  const ErrorRecordPage({
+    super.key,
+    this.lang = 'cn',
+    required this.lastAiMessage,
+    required this.onHomeTap,
+  });
+
+  @override
+  State<ErrorRecordPage> createState() => _ErrorRecordPageState();
+}
+
+class _ErrorRecordPageState extends State<ErrorRecordPage> {
+  List<ErrorRecord> _errorRecords = [];
+  List<ErrorRecord> _filteredRecords = [];
+  List<int> _selectedRecords = [];
+  bool _isLoading = false;
+  bool _isProcessing = false;
+  String _selectedTab = '筛选';
+  String _keyword = '';
+  String? _selectedExerciseId;
+  String? _selectedErrorType;
+  String? _selectedLessonUnit;
+  String? _selectedKnowledge;
+  String? _selectedProgress;
+  String _errorTypeOutline = '''1. 审题
+1.1 关键词忽略
+1.2 会错题意
+2. 计算
+2.1 粗心
+2.2 公式错误
+3. 概念
+3.1 理解错误
+3.2 混淆概念
+4. 表达
+4.1 语句不通
+4.2 用词不当''';
+  bool _showOutlineDialog = false;
+  bool _showDetailDialog = false;
+  ErrorRecord? _selectedRecord;
+  final TextEditingController _keywordController = TextEditingController();
+  final LlmService _llmService = LlmService();
+
+  final List<String> _errorTypes = [
+    '1. 审题', '1.1 关键词忽略', '1.2 会错题意',
+    '2. 计算', '2.1 粗心', '2.2 公式错误',
+    '3. 概念', '3.1 理解错误', '3.2 混淆概念',
+    '4. 表达', '4.1 语句不通', '4.2 用词不当'
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadErrorRecords();
+    _llmService.init();
+  }
+
+  Future<void> _loadErrorRecords() async {
+    setState(() => _isLoading = true);
+    try {
+      final db = await DatabaseHelper().database;
+      final dao = ErrorRecordDao(db);
+      _errorRecords = await dao.getAll(lang: widget.lang);
+      _filteredRecords = List.from(_errorRecords);
+    } catch (e) {
+      print('Load error records error: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _filterRecords() {
+    _filteredRecords = _errorRecords.where((record) {
+      if (_keyword.isNotEmpty && 
+          !record.content.toLowerCase().contains(_keyword.toLowerCase())) {
+        return false;
+      }
+      if (_selectedExerciseId != null && record.lesson != _selectedExerciseId) {
+        return false;
+      }
+      if (_selectedErrorType != null && record.subject != _selectedErrorType) {
+        return false;
+      }
+      if (_selectedLessonUnit != null && record.subject != _selectedLessonUnit) {
+        return false;
+      }
+      if (_selectedKnowledge != null && !record.content.contains(_selectedKnowledge!)) {
+        return false;
+      }
+      if (_selectedProgress != null) {
+        final isReviewed = record.reviewed == 1;
+        if (_selectedProgress == '待订正' && isReviewed) return false;
+        if (_selectedProgress == '已订正' && !isReviewed) return false;
+      }
+      return true;
+    }).toList();
+    setState(() {});
+  }
+
+  void _clearFilters() {
+    _keywordController.clear();
+    _keyword = '';
+    _selectedExerciseId = null;
+    _selectedErrorType = null;
+    _selectedLessonUnit = null;
+    _selectedKnowledge = null;
+    _selectedProgress = null;
+    _filteredRecords = List.from(_errorRecords);
+    setState(() {});
+  }
+
+  void _toggleSelect(int id) {
+    setState(() {
+      if (_selectedRecords.contains(id)) {
+        _selectedRecords.remove(id);
+      } else {
+        _selectedRecords.add(id);
+      }
+    });
+  }
+
+  void _openDetailDialog(ErrorRecord record) {
+    setState(() {
+      _selectedRecord = record;
+      _showDetailDialog = true;
+    });
+  }
+
+  void _openOutlineDialog() {
+    setState(() => _showOutlineDialog = true);
+  }
+
+  void _saveOutline() {
+    setState(() => _showOutlineDialog = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(widget.lang == 'cn' ? '错类大纲已保存' : 'Error type outline saved')),
+    );
+  }
+
+  Future<void> _generateExercises() async {
+    if (_selectedRecords.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(widget.lang == 'cn' ? '请先选择错误条目' : 'Please select error records first')),
+      );
+      return;
+    }
+
+    if (_isProcessing) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(widget.lang == 'cn' ? '正在生成练习中' : 'Generating exercises...')),
+      );
+      return;
+    }
+
+    setState(() => _isProcessing = true);
+
+    try {
+      final selectedRecords = _errorRecords.where((r) => _selectedRecords.contains(r.id)).toList();
+      final errorContent = selectedRecords.map((r) => r.content).join('\n');
+      
+      final prompt = widget.lang == 'cn'
+          ? '根据以下错误记录生成类似练习题：\n$errorContent\n请生成5道类似的练习题。'
+          : 'Generate similar exercises based on the following error records:\n$errorContent\nPlease generate 5 similar exercises.';
+
+      final response = await _llmService.generateResponse(prompt);
+      
+      final exercise = Exercise(
+        question: widget.lang == 'cn' ? '错题专项练习' : 'Error-focused Practice',
+        options: response['response'] ?? '',
+        correctAnswer: '',
+        explanation: '',
+        category: '错题',
+        difficulty: 2,
+        completed: false,
+        lang: widget.lang,
+      );
+
+      final db = await DatabaseHelper().database;
+      final exerciseDao = ExerciseDao(db);
+      await exerciseDao.insert(exercise);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(widget.lang == 'cn' ? '练习题已添加到习题集' : 'Exercise added to exercises')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(widget.lang == 'cn' ? '生成练习失败' : 'Failed to generate exercise')),
+      );
+    } finally {
+      setState(() {
+        _isProcessing = false;
+        _selectedRecords.clear();
+      });
+    }
+  }
+
+  Future<void> _saveRecord() async {
+    if (_selectedRecord == null) return;
+    try {
+      final db = await DatabaseHelper().database;
+      final dao = ErrorRecordDao(db);
+      await dao.update(_selectedRecord!);
+      await _loadErrorRecords();
+      setState(() => _showDetailDialog = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(widget.lang == 'cn' ? '保存成功' : 'Saved successfully')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(widget.lang == 'cn' ? '保存失败' : 'Save failed')),
+      );
+    }
+  }
+
+  Future<void> _deleteRecord() async {
+    if (_selectedRecord == null) return;
+    try {
+      final db = await DatabaseHelper().database;
+      final dao = ErrorRecordDao(db);
+      await dao.delete(_selectedRecord!.id!);
+      await _loadErrorRecords();
+      setState(() => _showDetailDialog = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(widget.lang == 'cn' ? '删除成功' : 'Deleted successfully')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(widget.lang == 'cn' ? '删除失败' : 'Delete failed')),
+      );
+    }
+  }
+
+  Widget _buildFilterSection() {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey[300]!))),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _keywordController,
+                  onChanged: (text) {
+                    _keyword = text;
+                    _filterRecords();
+                  },
+                  decoration: InputDecoration(
+                    hintText: widget.lang == 'cn' ? '关键词搜索...' : 'Search keywords...',
+                    prefixIcon: const Icon(Icons.search),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(onPressed: _clearFilters, child: Text(widget.lang == 'cn' ? '清空筛选' : 'Clear Filters')),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              _buildFilterChip(widget.lang == 'cn' ? '习题号' : 'Exercise ID', _selectedExerciseId, 'exercise'),
+              _buildFilterChip(widget.lang == 'cn' ? '错类' : 'Error Type', _selectedErrorType, 'error'),
+              _buildFilterChip(widget.lang == 'cn' ? '课内单元' : 'Lesson', _selectedLessonUnit, 'lesson'),
+              _buildFilterChip(widget.lang == 'cn' ? '知识' : 'Knowledge', _selectedKnowledge, 'knowledge'),
+              _buildFilterChip(widget.lang == 'cn' ? '进度' : 'Progress', _selectedProgress, 'progress'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(String label, String? selectedValue, String type) {
+    return FilterChip(
+      label: Text(selectedValue ?? label),
+      onSelected: (_) => _showFilterOptions(type),
+      onDeleted: selectedValue != null ? () {
+        switch (type) {
+          case 'exercise': _selectedExerciseId = null; break;
+          case 'error': _selectedErrorType = null; break;
+          case 'lesson': _selectedLessonUnit = null; break;
+          case 'knowledge': _selectedKnowledge = null; break;
+          case 'progress': _selectedProgress = null; break;
+        }
+        _filterRecords();
+      } : null,
+    );
+  }
+
+  void _showFilterOptions(String type) {
+    List<String> options = [];
+    switch (type) {
+      case 'exercise':
+        options = ['T001', 'T002', 'T003', 'T004', 'T005'];
+        break;
+      case 'error':
+        options = _errorTypes.where((t) => !t.contains('.1.') && !t.contains('.2.')).toList();
+        break;
+      case 'lesson':
+        options = ['1单元1课', '1单元2课', '1单元3课', '2单元1课', '2单元2课'];
+        break;
+      case 'knowledge':
+        options = ['1. 生字读音', '2. 构词', '3. 句法', '4. 文章', '5. 阅读'];
+        break;
+      case 'progress':
+        options = ['待订正', '已订正'];
+        break;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(labelForType(type)),
+        content: Wrap(
+          spacing: 8,
+          children: options.map((opt) => Chip(
+            label: Text(opt),
+            onPressed: () {
+              setState(() {
+                switch (type) {
+                  case 'exercise': _selectedExerciseId = opt; break;
+                  case 'error': _selectedErrorType = opt; break;
+                  case 'lesson': _selectedLessonUnit = opt; break;
+                  case 'knowledge': _selectedKnowledge = opt; break;
+                  case 'progress': _selectedProgress = opt; break;
+                }
+              });
+              _filterRecords();
+              Navigator.pop(context);
+            },
+          )).toList(),
+        ),
+      ),
+    );
+  }
+
+  String labelForType(String type) {
+    switch (type) {
+      case 'exercise': return widget.lang == 'cn' ? '选择习题号' : 'Select Exercise ID';
+      case 'error': return widget.lang == 'cn' ? '选择错类' : 'Select Error Type';
+      case 'lesson': return widget.lang == 'cn' ? '选择课内单元' : 'Select Lesson';
+      case 'knowledge': return widget.lang == 'cn' ? '选择知识类' : 'Select Knowledge';
+      case 'progress': return widget.lang == 'cn' ? '选择进度' : 'Select Progress';
+      default: return '';
+    }
+  }
+
+  Widget _buildErrorRecordItem(ErrorRecord record) {
+    final isSelected = _selectedRecords.contains(record.id);
+    final progress = record.reviewed == 1 ? (widget.lang == 'cn' ? '已订正' : 'Reviewed') : (widget.lang == 'cn' ? '待订正' : 'Pending');
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey[200]!))),
+      child: Row(
+        children: [
+          Checkbox(value: isSelected, onChanged: (_) => _toggleSelect(record.id!)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text('T${record.id}', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFFF5252))),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(record.content, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    if (record.lesson != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                        decoration: BoxDecoration(color: Colors.blue[100], borderRadius: BorderRadius.circular(4)),
+                        child: Text('课内: ${record.lesson}', style: const TextStyle(fontSize: 12, color: Colors.blue)),
+                      ),
+                    const SizedBox(width: 8),
+                    if (record.subject != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                        decoration: BoxDecoration(color: Colors.green[100], borderRadius: BorderRadius.circular(4)),
+                        child: Text('知识: ${record.subject}', style: const TextStyle(fontSize: 12, color: Colors.green)),
+                      ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      decoration: BoxDecoration(color: Colors.orange[100], borderRadius: BorderRadius.circular(4)),
+                      child: Text(progress, style: const TextStyle(fontSize: 12, color: Colors.orange)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailDialog() {
+    if (_selectedRecord == null) return Container();
+    
+    return AlertDialog(
+      title: Text(widget.lang == 'cn' ? '编辑错误记录' : 'Edit Error Record'),
+      content: SingleChildScrollView(
+        child: Column(
+          children: [
+            TextField(
+              decoration: InputDecoration(labelText: widget.lang == 'cn' ? '标题' : 'Title'),
+              controller: TextEditingController(text: _selectedRecord!.content),
+              onChanged: (text) => _selectedRecord = _selectedRecord!.copyWith(content: text),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              decoration: InputDecoration(labelText: widget.lang == 'cn' ? '正确答案' : 'Correct Answer'),
+              controller: TextEditingController(text: _selectedRecord!.correctAnswer ?? ''),
+              onChanged: (text) => _selectedRecord = _selectedRecord!.copyWith(correctAnswer: text),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              decoration: InputDecoration(labelText: widget.lang == 'cn' ? '题目' : 'Question'),
+              controller: TextEditingController(text: _selectedRecord!.lesson ?? ''),
+              onChanged: (text) => _selectedRecord = _selectedRecord!.copyWith(lesson: text),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              decoration: InputDecoration(labelText: widget.lang == 'cn' ? '错在哪' : 'What\'s wrong'),
+              maxLines: 3,
+              onChanged: (text) {},
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              decoration: InputDecoration(labelText: widget.lang == 'cn' ? '为何错' : 'Why wrong'),
+              maxLines: 3,
+              onChanged: (text) {},
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              decoration: InputDecoration(labelText: widget.lang == 'cn' ? '如何防' : 'How to prevent'),
+              maxLines: 3,
+              onChanged: (text) {},
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => setState(() => _showDetailDialog = false), child: Text(widget.lang == 'cn' ? '取消' : 'Cancel')),
+        TextButton(onPressed: _saveRecord, child: Text(widget.lang == 'cn' ? '保存' : 'Save')),
+        TextButton(onPressed: _deleteRecord, child: Text(widget.lang == 'cn' ? '删除' : 'Delete')),
+      ],
+    );
+  }
+
+  Widget _buildOutlineDialog() {
+    return AlertDialog(
+      title: Text(widget.lang == 'cn' ? '错类大纲' : 'Error Type Outline'),
+      content: Container(
+        width: 400,
+        height: 300,
+        child: TextField(
+          controller: TextEditingController(text: _errorTypeOutline),
+          maxLines: null,
+          expands: true,
+          decoration: const InputDecoration(border: InputBorder.none),
+          onChanged: (text) => _errorTypeOutline = text,
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => setState(() => _showOutlineDialog = false), child: Text(widget.lang == 'cn' ? '取消' : 'Cancel')),
+        TextButton(onPressed: _saveOutline, child: Text(widget.lang == 'cn' ? '保存' : 'Save')),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFFFE4E9),
+      body: SafeArea(
+        child: Column(
+          children: [
+            AppTitleBar(title: widget.lang == 'cn' ? '我的AI语言学习助理-错误本' : 'My AI Language Assistant - Error Book'),
+            AIReplyBar(lang: widget.lang, lastAiMessage: widget.lastAiMessage, onPullDown: () {}),
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey)),
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : Column(
+                        children: [
+                          SubmenuTabs(
+                            tabs: widget.lang == 'cn' ? ['筛选', '视图', '练习', '错类'] : ['Filter', 'View', 'Practice', 'Error Type'],
+                            selectedTab: _selectedTab,
+                            onTabSelected: (tab) {
+                              setState(() => _selectedTab = tab);
+                              if (tab == (widget.lang == 'cn' ? '错类' : 'Error Type')) {
+                                _openOutlineDialog();
+                              } else if (tab == (widget.lang == 'cn' ? '练习' : 'Practice')) {
+                                _generateExercises();
+                              }
+                            },
+                            onHomeTap: widget.onHomeTap,
+                            lang: widget.lang,
+                          ),
+                          if (_selectedTab == (widget.lang == 'cn' ? '筛选' : 'Filter')) _buildFilterSection(),
+                          Expanded(
+                            child: _filteredRecords.isEmpty
+                                ? Center(child: Text(widget.lang == 'cn' ? '暂无错误记录' : 'No error records'))
+                                : ListView.builder(
+                                    itemCount: _filteredRecords.length,
+                                    itemBuilder: (context, index) {
+                                      final record = _filteredRecords[index];
+                                      return GestureDetector(
+                                        onTap: () => _openDetailDialog(record),
+                                        child: _buildErrorRecordItem(record),
+                                      );
+                                    },
+                                  ),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+            InputArea(lang: widget.lang, onTextChanged: (text) {}),
+          ],
+        ),
+      ),
+      floatingActionButton: _selectedTab == (widget.lang == 'cn' ? '筛选' : 'Filter') && _selectedRecords.isNotEmpty
+          ? FloatingActionButton(
+              onPressed: _generateExercises,
+              backgroundColor: const Color(0xFFFF5252),
+              child: const Icon(Icons.add),
+            )
+          : null,
+      // Dialogs
+      ...(_showDetailDialog ? [_buildDetailDialog()] : []),
+      ...(_showOutlineDialog ? [_buildOutlineDialog()] : []),
+    );
+  }
+}

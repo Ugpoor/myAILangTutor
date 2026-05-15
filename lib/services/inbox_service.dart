@@ -2,8 +2,10 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
-import '../database/models/inbox_item.dart';
+import '../database/models/inbox_item.dart' hide DatabaseHelper;
 import 'llm_service.dart';
+import 'app_service.dart';
+import '../database/db_helper.dart' show DatabaseHelper;
 
 typedef ProcessProgressCallback = void Function(int current, int total, String reasoning);
 
@@ -128,6 +130,9 @@ $content
     final category = result['category']!;
     final reasoning = result['reasoning']!;
     
+    // 归档到对应栏目
+    await _archiveToColumn(item, category);
+    
     final updatedItem = item.copyWith(
       category: category,
       status: '已处理',
@@ -135,6 +140,50 @@ $content
     await _dbHelper.updateInboxItem(updatedItem);
     
     return result;
+  }
+
+  Future<void> _archiveToColumn(InboxItem item, String category) async {
+    try {
+      final appService = AppService();
+      await appService.init();
+      
+      switch (category) {
+        case '知识点':
+          await appService.createKnowledgePoint(
+            item.title,
+            content: item.content,
+            category: '自动归类',
+            lang: 'cn',
+          );
+          break;
+        case '错题本':
+          await appService.createErrorRecord(
+            item.content,
+            correctAnswer: '',
+            subject: '语文',
+            lesson: item.title,
+            lang: 'cn',
+          );
+          break;
+        case '习题':
+          await appService.createExercise(
+            item.content,
+            category: '自动归类',
+            lang: 'cn',
+          );
+          break;
+        case '作品集':
+          await appService.createPortfolioItem(
+            item.title,
+            type: '文章',
+            contentPath: item.filePath,
+            lang: 'cn',
+          );
+          break;
+      }
+    } catch (e) {
+      print('归档失败: $e');
+    }
   }
 
   Future<void> processItems(List<InboxItem> items, {ProcessProgressCallback? onProgress}) async {

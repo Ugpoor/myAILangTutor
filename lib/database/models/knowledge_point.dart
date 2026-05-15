@@ -1,4 +1,3 @@
-
 import 'package:sqflite/sqflite.dart';
 
 class KnowledgePoint {
@@ -6,6 +5,8 @@ class KnowledgePoint {
   final String title;
   final String? content;
   final String? category;
+  final String? lessonUnit;
+  final String? errorType;
   final int difficulty;
   final bool mastered;
   final DateTime? createdAt;
@@ -16,6 +17,8 @@ class KnowledgePoint {
     required this.title,
     this.content,
     this.category,
+    this.lessonUnit,
+    this.errorType,
     this.difficulty = 1,
     this.mastered = false,
     this.createdAt,
@@ -28,6 +31,8 @@ class KnowledgePoint {
       'title': title,
       'content': content,
       'category': category,
+      'lesson_unit': lessonUnit,
+      'error_type': errorType,
       'difficulty': difficulty,
       'mastered': mastered ? 1 : 0,
       'created_at': createdAt?.toIso8601String(),
@@ -41,6 +46,8 @@ class KnowledgePoint {
       title: map['title'] as String,
       content: map['content'] as String?,
       category: map['category'] as String?,
+      lessonUnit: map['lesson_unit'] as String?,
+      errorType: map['error_type'] as String?,
       difficulty: map['difficulty'] as int? ?? 1,
       mastered: (map['mastered'] as int?) == 1,
       createdAt: map['created_at'] != null 
@@ -55,6 +62,8 @@ class KnowledgePoint {
     String? title,
     String? content,
     String? category,
+    String? lessonUnit,
+    String? errorType,
     int? difficulty,
     bool? mastered,
     DateTime? createdAt,
@@ -65,6 +74,8 @@ class KnowledgePoint {
       title: title ?? this.title,
       content: content ?? this.content,
       category: category ?? this.category,
+      lessonUnit: lessonUnit ?? this.lessonUnit,
+      errorType: errorType ?? this.errorType,
       difficulty: difficulty ?? this.difficulty,
       mastered: mastered ?? this.mastered,
       createdAt: createdAt ?? this.createdAt,
@@ -82,7 +93,13 @@ class KnowledgePointDao {
     return await db.insert('knowledge_points', point.toMap());
   }
 
-  Future<List<KnowledgePoint>> getAll({String? lang, String? category}) async {
+  Future<List<KnowledgePoint>> getAll({
+    String? lang, 
+    String? category,
+    String? lessonUnit,
+    String? errorType,
+    String? keyword,
+  }) async {
     List<String> conditions = [];
     List<dynamic> args = [];
 
@@ -94,12 +111,25 @@ class KnowledgePointDao {
       conditions.add('category = ?');
       args.add(category);
     }
+    if (lessonUnit != null) {
+      conditions.add('lesson_unit LIKE ?');
+      args.add('%$lessonUnit%');
+    }
+    if (errorType != null) {
+      conditions.add('error_type LIKE ?');
+      args.add('%$errorType%');
+    }
+    if (keyword != null) {
+      conditions.add('(title LIKE ? OR content LIKE ?)');
+      args.add('%$keyword%');
+      args.add('%$keyword%');
+    }
 
     final maps = await db.query(
       'knowledge_points',
       where: conditions.isNotEmpty ? conditions.join(' AND ') : null,
       whereArgs: args.isNotEmpty ? args : null,
-      orderBy: 'difficulty ASC, title ASC',
+      orderBy: 'id ASC',
     );
     return maps.map((map) => KnowledgePoint.fromMap(map)).toList();
   }
@@ -148,5 +178,20 @@ class KnowledgePointDao {
       args.isNotEmpty ? args : null,
     );
     return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  Future<List<String>> getAllCategories() async {
+    final result = await db.rawQuery('SELECT DISTINCT category FROM knowledge_points WHERE category IS NOT NULL');
+    return result.map((map) => map['category'] as String).toList();
+  }
+
+  Future<List<String>> getAllLessonUnits() async {
+    final result = await db.rawQuery('SELECT DISTINCT lesson_unit FROM knowledge_points WHERE lesson_unit IS NOT NULL');
+    return result.map((map) => map['lesson_unit'] as String).toList();
+  }
+
+  Future<List<String>> getAllErrorTypes() async {
+    final result = await db.rawQuery('SELECT DISTINCT error_type FROM knowledge_points WHERE error_type IS NOT NULL');
+    return result.map((map) => map['error_type'] as String).toList();
   }
 }

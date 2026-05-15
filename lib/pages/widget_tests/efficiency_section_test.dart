@@ -33,9 +33,11 @@ class EfficiencySectionTest extends StatelessWidget {
                       borderRadius: BorderRadius.circular(16),
                     ),
                     padding: const EdgeInsets.all(12),
-                    child: const EfficiencySection(),
+                    child: SizedBox(
+                      height: 280,
+                      child: const EfficiencySection(),
+                    ),
                   ),
-                  const SizedBox(height: 24),
                   _buildSection('📝 使用示例'),
                   _buildCodeBlock('''
 const EfficiencySection()

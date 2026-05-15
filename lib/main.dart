@@ -1,7 +1,20 @@
 import 'package:flutter/material.dart';
 import 'pages/widget_gallery.dart';
+import 'services/share_intent_service.dart';
+import 'package:sqflite/sqflite.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  ShareIntentService().init();
+
+  // 🔑 ONE-TIME DB RESET: delete old DB to force fresh onCreate + onUpgrade
+  try {
+    await deleteDatabase('myAILangTutor.db');
+    print('✅ DB RESET: myAILangTutor.db deleted — fresh init on next launch');
+  } catch (e) {
+    print('ℹ️  DB not found or already deleted — proceeding normally');
+  }
+
   runApp(const MyApp());
 }
 
