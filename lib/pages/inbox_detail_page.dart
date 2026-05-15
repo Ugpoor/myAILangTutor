@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import '../database/models/inbox_item.dart';
 import '../services/inbox_service.dart';
 import '../components/app_title_bar.dart';
 import '../components/ai_reply_bar.dart';
 import '../components/submenu_tabs.dart';
 import '../components/input_area.dart';
-import '../components/wysiwyg_editor.dart';
 
 class InboxDetailPage extends StatefulWidget {
   final InboxItem item;
@@ -25,9 +25,10 @@ class InboxDetailPage extends StatefulWidget {
 
 class _InboxDetailPageState extends State<InboxDetailPage> {
   final InboxService _inboxService = InboxService();
+  final TextEditingController _mdController = TextEditingController();
   bool _isLoading = false;
-  String _currentContent = '';
   bool _hasRepairableState = false;
+  bool _showPreview = true; // 默认显示预览
   bool _isEditorFocused = false;
 
   final List<String> _categories = [
@@ -46,9 +47,32 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
   @override
   void initState() {
     super.initState();
-    _currentContent = widget.item.content;
     _selectedCategory = widget.item.category;
     _selectedStatus = widget.item.status;
+    _loadContent();
+  }
+
+  Future<void> _loadContent() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // 首先尝试从文件加载
+      final fileContent = await _inboxService.readMarkdownFile(widget.item.filePath);
+      if (fileContent.isNotEmpty) {
+        _mdController.text = fileContent;
+      } else {
+        // 如果文件不存在，使用数据库中的内容
+        _mdController.text = widget.item.content;
+      }
+    } catch (e) {
+      _mdController.text = widget.item.content;
+    }
+
+    setState(() {
+      _isLoading = false;
+    });
   }
 
   Future<void> _saveChanges() async {
@@ -57,8 +81,12 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
     });
 
     try {
+      // 保存到文件
+      await _inboxService.saveMarkdownFile(widget.item.filePath, _mdController.text);
+
+      // 更新数据库
       final updatedItem = widget.item.copyWith(
-        content: _currentContent,
+        content: _mdController.text,
         category: _selectedCategory,
         status: _selectedStatus,
       );
@@ -72,7 +100,7 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(widget.lang == 'cn' ? '保存失败' : 'Save failed')),
+          SnackBar(content: Text(widget.lang == 'cn' ? '保存失败: $e' : 'Save failed: $e')),
         );
       }
     } finally {
@@ -87,7 +115,9 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(widget.lang == 'cn' ? '确认删除' : 'Confirm Delete'),
-        content: Text(widget.lang == 'cn' ? '确定要删除这条记录吗？' : 'Are you sure you want to delete this item?'),
+        content: Text(widget.lang == 'cn' 
+            ? '确定要删除这条记录吗？这个操作无法撤销。' 
+            : 'Are you sure you want to delete this item? This action cannot be undone.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -95,6 +125,9 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
             child: Text(widget.lang == 'cn' ? '删除' : 'Delete'),
           ),
         ],
@@ -115,7 +148,7 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(widget.lang == 'cn' ? '删除失败' : 'Delete failed')),
+            SnackBar(content: Text(widget.lang == 'cn' ? '删除失败: $e' : 'Delete failed: $e')),
           );
         }
       } finally {
@@ -126,9 +159,15 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
     }
   }
 
-  void _onEditorFocusChanged(bool isFocused) {
+  void _onContentChanged() {
     setState(() {
-      _isEditorFocused = isFocused;
+      _hasRepairableState = true;
+    });
+  }
+
+  void _toggleView() {
+    setState(() {
+      _showPreview = !_showPreview;
     });
   }
 
@@ -141,7 +180,7 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
         child: Column(
           children: [
             AppTitleBar(
-              title: widget.lang == 'cn' ? '我的AI语言学习助理-收件箱条目编辑' : 'My AI Language Assistant - Inbox Item Edit',
+              title: widget.lang == 'cn' ? '我的AI语言学习助理 - 编辑文档' : 'My AI Language Assistant - Edit Document',
             ),
             AnimatedContainer(
               duration: const Duration(milliseconds: 200),
@@ -151,7 +190,7 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
                 opacity: _isEditorFocused ? 0 : 1,
                 child: AIReplyBar(
                   lang: widget.lang,
-                  lastAiMessage: widget.lang == 'cn' ? '你好，我来帮你编辑这条记录。' : 'Hello, I can help you edit this record.',
+                  lastAiMessage: widget.lang == 'cn' ? '欢迎编辑文档，可以在编辑和预览之间切换。' : 'Welcome to edit the document. You can switch between edit and preview.',
                   onPullDown: () {},
                 ),
               ),
@@ -168,7 +207,10 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
                         border: Border.all(color: Colors.grey),
                       ),
                       child: _isLoading
-                          ? const Center(child: CircularProgressIndicator())
+                          ? const Padding(
+                              padding: EdgeInsets.all(40),
+                              child: Center(child: CircularProgressIndicator()),
+                            )
                           : Column(
                               children: [
                                 Padding(
@@ -179,7 +221,7 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
                                       Text(
                                         widget.item.title,
                                         style: const TextStyle(
-                                          fontSize: 16,
+                                          fontSize: 18,
                                           fontWeight: FontWeight.bold,
                                         ),
                                       ),
@@ -232,6 +274,7 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
                                                 onChanged: (value) {
                                                   setState(() {
                                                     _selectedCategory = value!;
+                                                    _hasRepairableState = true;
                                                   });
                                                 },
                                               ),
@@ -242,20 +285,83 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
                                     ],
                                   ),
                                 ),
-                                SizedBox(
-                                  height: 400,
-                                  child: WysiwygEditor(
-                                    initialContent: widget.item.content,
-                                    lang: widget.lang,
-                                    onContentChanged: (content) {
-                                      setState(() {
-                                        _currentContent = content;
-                                        _hasRepairableState = true;
-                                      });
-                                    },
-                                    onFocusChanged: _onEditorFocusChanged,
+                                // 视图切换按钮
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                                  child: Row(
+                                    children: [
+                                      ElevatedButton.icon(
+                                        onPressed: _toggleView,
+                                        icon: Icon(_showPreview ? Icons.edit : Icons.visibility),
+                                        label: Text(_showPreview ? (widget.lang == 'cn' ? '编辑' : 'Edit') : (widget.lang == 'cn' ? '预览' : 'Preview')),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(0xFF651FFF),
+                                          foregroundColor: Colors.white,
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      if (widget.item.url.isNotEmpty)
+                                        TextButton.icon(
+                                          onPressed: () {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(content: Text(widget.lang == 'cn' ? '原始链接功能待实现' : 'Original link feature coming soon')),
+                                            );
+                                          },
+                                          icon: const Icon(Icons.link, size: 16),
+                                          label: Text(widget.lang == 'cn' ? '原始链接' : 'Original Link', style: const TextStyle(fontSize: 12)),
+                                        ),
+                                    ],
                                   ),
                                 ),
+                                const SizedBox(height: 8),
+                                // Markdown编辑器或预览
+                                if (_showPreview)
+                                  Container(
+                                    height: 400,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                                    child: Markdown(
+                                      data: _mdController.text.isEmpty 
+                                          ? (widget.lang == 'cn' ? '暂无内容' : 'No content') 
+                                          : _mdController.text,
+                                      styleSheet: MarkdownStyleSheet(
+                                        h1: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                                        h2: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                                        h3: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                        p: const TextStyle(fontSize: 14, height: 1.5),
+                                        code: const TextStyle(
+                                          backgroundColor: Colors.grey,
+                                          fontFamily: 'monospace',
+                                          fontSize: 12,
+                                        ),
+                                        codeblockDecoration: BoxDecoration(
+                                          color: Colors.grey,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                else
+                                  Container(
+                                    height: 400,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                                    child: TextField(
+                                      controller: _mdController,
+                                      maxLines: null,
+                                      expands: true,
+                                      decoration: InputDecoration(
+                                        hintText: widget.lang == 'cn' ? '在此输入Markdown内容...' : 'Enter Markdown content here...',
+                                        border: const OutlineInputBorder(),
+                                        contentPadding: const EdgeInsets.all(12),
+                                      ),
+                                      onChanged: (_) => _onContentChanged(),
+                                      onTap: () {
+                                        setState(() {
+                                          _isEditorFocused = true;
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                const SizedBox(height: 12),
                               ],
                             ),
                     ),
@@ -293,6 +399,7 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
 
   @override
   void dispose() {
+    _mdController.dispose();
     super.dispose();
   }
 }
