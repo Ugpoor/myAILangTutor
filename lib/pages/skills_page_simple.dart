@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../components/app_title_bar.dart';
 import '../components/submenu_tabs.dart';
 import '../components/ai_reply_bar.dart';
+import '../components/input_area.dart';
 
 final List<Map<String, dynamic>> _skillPrompts = [
   {
@@ -66,12 +67,14 @@ class SkillsPageSimple extends StatefulWidget {
   final String lang;
   final String lastAiMessage;
   final VoidCallback onHomeTap;
+  final VoidCallback? onPullDown;
 
   const SkillsPageSimple({
     super.key,
     this.lang = 'cn',
     required this.lastAiMessage,
     required this.onHomeTap,
+    this.onPullDown,
   });
 
   @override
@@ -235,7 +238,7 @@ class _SkillsPageSimpleState extends State<SkillsPageSimple> {
             AIReplyBar(
               lang: widget.lang,
               lastAiMessage: _currentAiMessage,
-              onPullDown: () {},
+              onPullDown: widget.onPullDown ?? () {},
             ),
             Expanded(
               child: Container(
@@ -264,6 +267,9 @@ class _SkillsPageSimpleState extends State<SkillsPageSimple> {
               selectedTab: tabs[0],
               onTabSelected: _handleTabSelected,
               onHomeTap: widget.onHomeTap,
+              lang: widget.lang,
+            ),
+            InputArea(
               lang: widget.lang,
             ),
           ],

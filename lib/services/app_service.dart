@@ -9,6 +9,7 @@ import '../database/models/portfolio_item.dart';
 import '../database/models/skill.dart';
 import '../database/models/setting.dart';
 import '../database/models/chat_message.dart';
+import '../database/models/inbox_item.dart';
 import '../services/document_manager.dart';
 import '../services/llm_service.dart';
 
@@ -51,7 +52,12 @@ class AppService {
     _skillDao = SkillDao(db);
     _settingsDao = SettingsDao(db);
     _chatMessageDao = ChatMessageDao(db);
-    await LlmService().init();
+    try {
+      await LlmService().init();
+    } catch (e) {
+      print('Warning: LlmService.init() failed: $e');
+      // 即使 LLM 初始化失败不影响其他功能
+    }
   }
 
   Future<String> getLanguage() async {
@@ -416,11 +422,228 @@ class AppService {
     return 0;
   }
 
+  Future<int> insertChatMessage({
+    required String content,
+    required bool isUser,
+    String lang = 'cn',
+  }) async {
+    final message = ChatMessage(
+      content: content,
+      isUser: isUser,
+      createdAt: DateTime.now(),
+      lang: lang,
+    );
+    return await _chatMessageDao.insert(message);
+  }
+
   Future<Map<String, dynamic>> testLlmConnection() async {
     return await LlmService().generateResponse('hello');
   }
 
   Future<Map<String, dynamic>> testToolCall(String prompt) async {
     return await LlmService().testToolCall(prompt);
+  }
+
+  Future<String> _generateSummary(String content, String instruction) async {
+    final prompt = '''$instruction
+
+内容：
+$content
+
+请提供简洁的摘要，不超过200字。''';
+
+    try {
+      final response = await LlmService().generateResponse(prompt);
+      return (response['response'] as String).trim();
+    } catch (e) {
+      print('生成摘要失败: $e');
+      return content.length > 200 ? content.substring(0, 200) + '...' : content;
+    }
+  }
+
+  Future<Map<String, dynamic>> convertInboxToErrorRecord(InboxItem inboxItem, {
+    String? customSubject,
+    String? customLesson,
+  }) async {
+    try {
+      final summary = await _generateSummary(
+        inboxItem.content,
+        '请将以下内容作为错题进行简要总结，提取题目、答案和解析要点：',
+      );
+
+      final errorRecord = ErrorRecord(
+        content: summary,
+        correctAnswer: null,
+        subject: customSubject,
+        lesson: customLesson,
+        contentPath: inboxItem.filePath,
+        createdAt: inboxItem.createdAt,
+        reviewed: false,
+      );
+
+      final id = await _errorRecordDao.insert(errorRecord);
+      return {
+        'success': true,
+        'id': id,
+        'message': '成功转换为错题本记录',
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'message': '转换失败: $e',
+      };
+    }
+  }
+
+  Future<Map<String, dynamic>> convertInboxToKnowledgePoint(InboxItem inboxItem, {
+    String? customCategory,
+    String? customLessonUnit,
+    String? customErrorType,
+    int customDifficulty = 1,
+  }) async {
+    try {
+      final summary = await _generateSummary(
+        inboxItem.content,
+        '请将以下内容作为知识点进行简要总结：',
+      );
+
+      final knowledgePoint = KnowledgePoint(
+        title: inboxItem.title,
+        content: summary,
+        category: customCategory,
+        lessonUnit: customLessonUnit,
+        errorType: customErrorType,
+        difficulty: customDifficulty,
+        mastered: false,
+        contentPath: inboxItem.filePath,
+        createdAt: inboxItem.createdAt,
+      );
+
+      final id = await _knowledgePointDao.insert(knowledgePoint);
+      return {
+        'success': true,
+        'id': id,
+        'message': '成功转换为知识点',
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'message': '转换失败: $e',
+      };
+    }
+  }
+
+  Future<Map<String, dynamic>> convertInboxToExercise(InboxItem inboxItem, {
+    String? customCategory,
+    int customDifficulty = 1,
+  }) async {
+    try {
+      final summary = await _generateSummary(
+        inboxItem.content,
+        '请将以下内容作为练习题进行简要总结，提取题目和选项：',
+      );
+
+      final exercise = Exercise(
+        question: summary,
+        options: null,
+        correctAnswer: null,
+        explanation: null,
+        category: customCategory,
+        difficulty: customDifficulty,
+        completed: false,
+        contentPath: inboxItem.filePath,
+        createdAt: inboxItem.createdAt,
+      );
+
+      final id = await _exerciseDao.insert(exercise);
+      return {
+        'success': true,
+        'id': id,
+        'message': '成功转换为习题',
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'message': '转换失败: $e',
+      };
+    }
+  }
+
+  Future<Map<String, dynamic>> convertInboxToPortfolioItem(InboxItem inboxItem, {
+    String? customType,
+  }) async {
+    try {
+      final portfolioItem = PortfolioItem(
+        title: inboxItem.title,
+        type: customType ?? '文章',
+        contentPath: inboxItem.filePath,
+        thumbnailPath: null,
+        createdAt: inboxItem.createdAt,
+      );
+
+      final id = await _portfolioDao.insert(portfolioItem);
+      return {
+        'success': true,
+        'id': id,
+        'message': '成功转换为作品集',
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'message': '转换失败: $e',
+      };
+    }
+  }
+
+  Future<Map<String, dynamic>> autoConvertInboxItem(InboxItem inboxItem, {
+    String? suggestedCategory,
+  }) async {
+    String targetCategory = suggestedCategory ?? '作品集';
+
+    switch (targetCategory) {
+      case '错题本':
+        return await convertInboxToErrorRecord(inboxItem);
+      case '知识点':
+        return await convertInboxToKnowledgePoint(inboxItem);
+      case '习题集':
+        return await convertInboxToExercise(inboxItem);
+      case '作品集':
+      default:
+        return await convertInboxToPortfolioItem(inboxItem);
+    }
+  }
+
+  Future<void> deleteByContentPath(String contentPath) async {
+    final errorRecords = await _errorRecordDao.getAll();
+    for (final record in errorRecords) {
+      if (record.contentPath == contentPath) {
+        await _errorRecordDao.delete(record.id!);
+        return;
+      }
+    }
+    
+    final knowledgePoints = await _knowledgePointDao.getAll();
+    for (final point in knowledgePoints) {
+      if (point.contentPath == contentPath) {
+        await _knowledgePointDao.delete(point.id!);
+        return;
+      }
+    }
+    
+    final exercises = await _exerciseDao.getAll();
+    for (final exercise in exercises) {
+      if (exercise.contentPath == contentPath) {
+        await _exerciseDao.delete(exercise.id!);
+        return;
+      }
+    }
+    
+    final portfolioItems = await _portfolioDao.getAll();
+    for (final item in portfolioItems) {
+      if (item.contentPath == contentPath) {
+        await _portfolioDao.delete(item.id!);
+        return;
+      }
+    }
   }
 }

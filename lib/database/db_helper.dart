@@ -17,7 +17,7 @@ class DatabaseHelper {
   Future<Database> _initDatabase() async {
     return await openDatabase(
       'myAILangTutor.db',
-      version: 8,
+      version: 9,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -60,6 +60,7 @@ class DatabaseHelper {
         correct_answer TEXT,
         subject TEXT,
         lesson TEXT,
+        content_path TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         reviewed INTEGER DEFAULT 0,
         lang TEXT DEFAULT 'cn'
@@ -72,8 +73,11 @@ class DatabaseHelper {
         title TEXT NOT NULL,
         content TEXT,
         category TEXT,
+        lesson_unit TEXT,
+        error_type TEXT,
         difficulty INTEGER DEFAULT 1,
         mastered INTEGER DEFAULT 0,
+        content_path TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         lang TEXT DEFAULT 'cn'
       )
@@ -89,6 +93,7 @@ class DatabaseHelper {
         category TEXT,
         difficulty INTEGER DEFAULT 1,
         completed INTEGER DEFAULT 0,
+        content_path TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         lang TEXT DEFAULT 'cn'
       )
@@ -254,6 +259,22 @@ class DatabaseHelper {
         // 如果列已存在，忽略错误
       }
     }
+    if (oldVersion < 9) {
+      // 添加content_path字段到各个表
+      try {
+        await db.execute('ALTER TABLE error_records ADD COLUMN IF NOT EXISTS content_path TEXT');
+      } catch (e) { /* 忽略 */ }
+      
+      try {
+        await db.execute('ALTER TABLE knowledge_points ADD COLUMN IF NOT EXISTS lesson_unit TEXT');
+        await db.execute('ALTER TABLE knowledge_points ADD COLUMN IF NOT EXISTS error_type TEXT');
+        await db.execute('ALTER TABLE knowledge_points ADD COLUMN IF NOT EXISTS content_path TEXT');
+      } catch (e) { /* 忽略 */ }
+      
+      try {
+        await db.execute('ALTER TABLE exercises ADD COLUMN IF NOT EXISTS content_path TEXT');
+      } catch (e) { /* 忽略 */ }
+    }
   }
 
   Future<int> insert(String table, Map<String, dynamic> data) async {
@@ -353,6 +374,19 @@ class DatabaseHelper {
       where: 'id = ?',
       whereArgs: [id],
     );
+  }
+
+  Future<InboxItem?> getInboxItemById(int id) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'inbox_items',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    if (maps.isNotEmpty) {
+      return InboxItem.fromMap(maps.first);
+    }
+    return null;
   }
 
   Future<List<InboxItem>> getInboxItemsByCategory(String category) async {

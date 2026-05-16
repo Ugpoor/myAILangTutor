@@ -11,12 +11,14 @@ class InboxPage extends StatefulWidget {
   final String lang;
   final String lastAiMessage;
   final VoidCallback onHomeTap;
+  final VoidCallback? onPullDown;
 
   const InboxPage({
     super.key,
     this.lang = 'cn',
     required this.lastAiMessage,
     required this.onHomeTap,
+    this.onPullDown,
   });
 
   @override
@@ -325,7 +327,7 @@ class _InboxPageState extends State<InboxPage> {
             AIReplyBar(
               lang: widget.lang,
               lastAiMessage: _currentAiMessage,
-              onPullDown: () {},
+              onPullDown: widget.onPullDown ?? () {},
             ),
             Expanded(
               child: Container(
@@ -469,6 +471,18 @@ class _InboxPageState extends State<InboxPage> {
                           ),
                       ],
                     ),
+                    if (item.filePath.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '文件路径: ${item.filePath}',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ],
                 ),
               ),

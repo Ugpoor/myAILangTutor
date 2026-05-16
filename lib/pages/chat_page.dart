@@ -37,11 +37,7 @@ class _ChatPageState extends State<ChatPage> {
   void _handleSend() {
     final text = _textController.text.trim();
     if (text.isNotEmpty) {
-      final message = ChatMessage(
-        sender: '用户',
-        text: text,
-        isAI: false,
-      );
+      final message = ChatMessage(sender: '用户', text: text, isAI: false);
       widget.onSendMessage(message);
       _textController.clear();
     }
@@ -57,7 +53,9 @@ class _ChatPageState extends State<ChatPage> {
         child: Column(
           children: [
             AppTitleBar(
-              title: widget.lang == 'cn' ? '我的AI语言学习助理-聊天' : 'My AI Language Assistant - Chat',
+              title: widget.lang == 'cn'
+                  ? '我的AI语言学习助理-聊天'
+                  : 'My AI Language Assistant - Chat',
               lang: widget.lang,
             ),
             Expanded(
@@ -98,7 +96,9 @@ class _ChatPageState extends State<ChatPage> {
             PullUpControl(onPullUp: widget.onCollapse),
             SubmenuTabs(
               tabs: chatTabs,
-              selectedTab: widget.selectedTab == chatTabs[0] ? widget.selectedTab : chatTabs[0],
+              selectedTab: widget.selectedTab == chatTabs[0]
+                  ? widget.selectedTab
+                  : chatTabs[0],
               onTabSelected: widget.onTabSelected,
               onHomeTap: widget.onHomeTap,
               lang: widget.lang,

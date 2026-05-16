@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../components/app_title_bar.dart';
 import '../components/submenu_tabs.dart';
 import '../components/ai_reply_bar.dart';
+import '../components/input_area.dart';
 
 // Fake错误本数据
 final List<Map<String, dynamic>> _fakeErrorRecords = [
@@ -41,12 +42,14 @@ class ErrorRecordPageSimple extends StatefulWidget {
   final String lang;
   final String lastAiMessage;
   final VoidCallback onHomeTap;
+  final VoidCallback? onPullDown;
 
   const ErrorRecordPageSimple({
     super.key,
     this.lang = 'cn',
     required this.lastAiMessage,
     required this.onHomeTap,
+    this.onPullDown,
   });
 
   @override
@@ -119,7 +122,7 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
             AIReplyBar(
               lang: widget.lang,
               lastAiMessage: _currentAiMessage,
-              onPullDown: () {},
+              onPullDown: widget.onPullDown ?? () {},
             ),
             Expanded(
               child: Container(
@@ -148,6 +151,9 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
               selectedTab: tabs[0],
               onTabSelected: _handleTabSelected,
               onHomeTap: widget.onHomeTap,
+              lang: widget.lang,
+            ),
+            InputArea(
               lang: widget.lang,
             ),
           ],

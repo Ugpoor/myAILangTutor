@@ -12,6 +12,7 @@ class Exercise {
   final bool completed;
   final DateTime? createdAt;
   final String lang;
+  final String? contentPath;
 
   Exercise({
     this.id,
@@ -24,6 +25,7 @@ class Exercise {
     this.completed = false,
     this.createdAt,
     this.lang = 'cn',
+    this.contentPath,
   });
 
   Map<String, dynamic> toMap() {
@@ -38,6 +40,7 @@ class Exercise {
       'completed': completed ? 1 : 0,
       'created_at': createdAt?.toIso8601String(),
       'lang': lang,
+      'content_path': contentPath,
     };
   }
 
@@ -55,6 +58,7 @@ class Exercise {
           ? DateTime.parse(map['created_at'] as String) 
           : null,
       lang: map['lang'] as String? ?? 'cn',
+      contentPath: map['content_path'] as String?,
     );
   }
 
@@ -69,6 +73,7 @@ class Exercise {
     bool? completed,
     DateTime? createdAt,
     String? lang,
+    String? contentPath,
   }) {
     return Exercise(
       id: id ?? this.id,
@@ -81,6 +86,7 @@ class Exercise {
       completed: completed ?? this.completed,
       createdAt: createdAt ?? this.createdAt,
       lang: lang ?? this.lang,
+      contentPath: contentPath ?? this.contentPath,
     );
   }
 }

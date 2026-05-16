@@ -18,8 +18,12 @@ class ShareIntentService {
   Map<String, dynamic>? get sharedData => _sharedData;
 
   Future<void> init() async {
+    print('[ShareIntent] ========== 初始化 ShareIntentService ==========');
     try {
+      print('[ShareIntent] 调用 getSharedData');
       final Map<dynamic, dynamic>? data = await _channel.invokeMethod('getSharedData');
+      print('[ShareIntent] getSharedData 返回: $data');
+      
       if (data != null) {
         _sharedText = data['text'] as String?;
         _sharedTitle = data['title'] as String?;
@@ -32,11 +36,18 @@ class ShareIntentService {
           'subject': _sharedSubject,
           'timestamp': DateTime.now().toIso8601String(),
         };
+        
+        print('[ShareIntent] 共享数据解析完成');
+        print('[ShareIntent]   text: ${_sharedText}');
+        print('[ShareIntent]   title: ${_sharedTitle}');
+        print('[ShareIntent]   subject: ${_sharedSubject}');
+      } else {
+        print('[ShareIntent] getSharedData 返回 null');
       }
     } on PlatformException catch (e) {
-      print('Share Intent Error: ${e.message}');
+      print('[ShareIntent] PlatformException: ${e.message}');
     } catch (e) {
-      print('Share Intent Error: $e');
+      print('[ShareIntent] Error: $e');
     }
   }
 

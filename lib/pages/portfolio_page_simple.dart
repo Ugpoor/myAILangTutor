@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../components/app_title_bar.dart';
 import '../components/submenu_tabs.dart';
 import '../components/ai_reply_bar.dart';
+import '../components/input_area.dart';
 
 // Fake作品集数据
 final List<Map<String, dynamic>> _fakePortfolioItems = [
@@ -39,12 +40,14 @@ class PortfolioPageSimple extends StatefulWidget {
   final String lang;
   final String lastAiMessage;
   final VoidCallback onHomeTap;
+  final VoidCallback? onPullDown;
 
   const PortfolioPageSimple({
     super.key,
     this.lang = 'cn',
     required this.lastAiMessage,
     required this.onHomeTap,
+    this.onPullDown,
   });
 
   @override
@@ -106,7 +109,7 @@ class _PortfolioPageSimpleState extends State<PortfolioPageSimple> {
             AIReplyBar(
               lang: widget.lang,
               lastAiMessage: _currentAiMessage,
-              onPullDown: () {},
+              onPullDown: widget.onPullDown ?? () {},
             ),
             Expanded(
               child: Container(
@@ -135,6 +138,9 @@ class _PortfolioPageSimpleState extends State<PortfolioPageSimple> {
               selectedTab: tabs[0],
               onTabSelected: _handleTabSelected,
               onHomeTap: widget.onHomeTap,
+              lang: widget.lang,
+            ),
+            InputArea(
               lang: widget.lang,
             ),
           ],

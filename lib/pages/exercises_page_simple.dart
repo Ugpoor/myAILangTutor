@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../components/app_title_bar.dart';
 import '../components/submenu_tabs.dart';
 import '../components/ai_reply_bar.dart';
+import '../components/input_area.dart';
 
 // Fake习题集数据
 final List<Map<String, dynamic>> _fakeExercises = [
@@ -39,12 +40,14 @@ class ExercisesPageSimple extends StatefulWidget {
   final String lang;
   final String lastAiMessage;
   final VoidCallback onHomeTap;
+  final VoidCallback? onPullDown;
 
   const ExercisesPageSimple({
     super.key,
     this.lang = 'cn',
     required this.lastAiMessage,
     required this.onHomeTap,
+    this.onPullDown,
   });
 
   @override
@@ -115,7 +118,7 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
             AIReplyBar(
               lang: widget.lang,
               lastAiMessage: _currentAiMessage,
-              onPullDown: () {},
+              onPullDown: widget.onPullDown ?? () {},
             ),
             Expanded(
               child: Container(
@@ -144,6 +147,9 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
               selectedTab: tabs[0],
               onTabSelected: _handleTabSelected,
               onHomeTap: widget.onHomeTap,
+              lang: widget.lang,
+            ),
+            InputArea(
               lang: widget.lang,
             ),
           ],

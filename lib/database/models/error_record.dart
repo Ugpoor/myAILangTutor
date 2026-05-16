@@ -10,6 +10,7 @@ class ErrorRecord {
   final DateTime? createdAt;
   final bool reviewed;
   final String lang;
+  final String? contentPath;
 
   ErrorRecord({
     this.id,
@@ -20,6 +21,7 @@ class ErrorRecord {
     this.createdAt,
     this.reviewed = false,
     this.lang = 'cn',
+    this.contentPath,
   });
 
   Map<String, dynamic> toMap() {
@@ -32,6 +34,7 @@ class ErrorRecord {
       'created_at': createdAt?.toIso8601String(),
       'reviewed': reviewed ? 1 : 0,
       'lang': lang,
+      'content_path': contentPath,
     };
   }
 
@@ -47,6 +50,7 @@ class ErrorRecord {
           : null,
       reviewed: (map['reviewed'] as int?) == 1,
       lang: map['lang'] as String? ?? 'cn',
+      contentPath: map['content_path'] as String?,
     );
   }
 
@@ -59,6 +63,7 @@ class ErrorRecord {
     DateTime? createdAt,
     bool? reviewed,
     String? lang,
+    String? contentPath,
   }) {
     return ErrorRecord(
       id: id ?? this.id,
@@ -69,6 +74,7 @@ class ErrorRecord {
       createdAt: createdAt ?? this.createdAt,
       reviewed: reviewed ?? this.reviewed,
       lang: lang ?? this.lang,
+      contentPath: contentPath ?? this.contentPath,
     );
   }
 }

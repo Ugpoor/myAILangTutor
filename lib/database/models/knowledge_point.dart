@@ -11,6 +11,7 @@ class KnowledgePoint {
   final bool mastered;
   final DateTime? createdAt;
   final String lang;
+  final String? contentPath;
 
   KnowledgePoint({
     this.id,
@@ -23,6 +24,7 @@ class KnowledgePoint {
     this.mastered = false,
     this.createdAt,
     this.lang = 'cn',
+    this.contentPath,
   });
 
   Map<String, dynamic> toMap() {
@@ -37,6 +39,7 @@ class KnowledgePoint {
       'mastered': mastered ? 1 : 0,
       'created_at': createdAt?.toIso8601String(),
       'lang': lang,
+      'content_path': contentPath,
     };
   }
 
@@ -54,6 +57,7 @@ class KnowledgePoint {
           ? DateTime.parse(map['created_at'] as String) 
           : null,
       lang: map['lang'] as String? ?? 'cn',
+      contentPath: map['content_path'] as String?,
     );
   }
 
@@ -68,6 +72,7 @@ class KnowledgePoint {
     bool? mastered,
     DateTime? createdAt,
     String? lang,
+    String? contentPath,
   }) {
     return KnowledgePoint(
       id: id ?? this.id,
@@ -80,6 +85,7 @@ class KnowledgePoint {
       mastered: mastered ?? this.mastered,
       createdAt: createdAt ?? this.createdAt,
       lang: lang ?? this.lang,
+      contentPath: contentPath ?? this.contentPath,
     );
   }
 }

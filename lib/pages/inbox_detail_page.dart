@@ -36,6 +36,7 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
     '错题本',
     '习题',
     '作品集',
+    '无法分类',
     '未知归类',
   ];
 
