@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -6,12 +7,14 @@ class HtmlPreview extends StatefulWidget {
   final String? filePath;
   final String? htmlContent;
   final String? url;
+  final bool showAppBar; // 是否显示自带的AppBar
 
   const HtmlPreview({
     super.key,
     this.filePath,
     this.htmlContent,
     this.url,
+    this.showAppBar = true,
   });
 
   @override
@@ -71,7 +74,10 @@ class _HtmlPreviewState extends State<HtmlPreview> {
         final file = File(htmlPath);
         if (await file.exists()) {
           print('[HtmlPreview] 从文件加载: $htmlPath');
-          await _controller.loadFile(htmlPath);
+          // 使用 loadHtmlString 替代 loadFile，避免文件路径问题
+          final content = await file.readAsString(encoding: utf8);
+          print('[HtmlPreview] 文件内容长度: ${content.length}');
+          await _controller.loadHtmlString(content);
         } else {
           throw Exception('文件不存在: $htmlPath');
         }
@@ -92,12 +98,15 @@ class _HtmlPreviewState extends State<HtmlPreview> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('网页预览'),
-      ),
-      body: _buildBody(),
-    );
+    if (widget.showAppBar) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('网页预览'),
+        ),
+        body: _buildBody(),
+      );
+    }
+    return _buildBody();
   }
 
   Widget _buildBody() {

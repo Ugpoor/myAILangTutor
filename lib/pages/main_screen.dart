@@ -166,38 +166,47 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       }
 
       // 先创建一个处理中的条目
-      print('[SaveClipboard] 创建处理中条目');
+      _addLog('[SaveClipboard] 创建处理中条目');
       final pendingItem = await _inboxService.createPendingClipboardItem(url);
 
       if (pendingItem != null) {
+        _addLog('[SaveClipboard] ✅ 创建条目成功，ID: ${pendingItem.id}');
         _lastClipboardContent = _detectedClipboardContent!;
         setState(() {
           _detectedClipboardContent = null;
         });
 
+        // 保存 item ID 到局部变量，确保回调中可以访问
+        final itemId = pendingItem.id!;
+        _addLog('[SaveClipboard] 准备打开WebViewExtractor，ItemID: $itemId');
+
         // 打开WebViewExtractor来加载和保存页面
-        print('[SaveClipboard] 打开WebViewExtractor');
         if (mounted) {
-          Navigator.of(context).push(
+          final navigator = Navigator.of(context);
+          navigator.push(
             MaterialPageRoute(
-              builder: (context) => WebViewExtractor(
+              builder: (ctx) => WebViewExtractor(
                 url: url,
                 onContentExtracted: (result) async {
-                  Navigator.of(context).pop();
+                  _addLog('[SaveClipboard] WebViewExtractor回调触发');
+
+                  // 使用 navigator.pop() 而不是 Navigator.of(context).pop()
+                  navigator.pop();
 
                   if (result != null) {
-                    print('[SaveClipboard] WebView提取成功，更新条目');
-                    await _inboxService.updateClipboardItemWithContent(
-                      pendingItem.id!,
-                      result,
-                    );
+                    _addLog('[SaveClipboard] ✅ WebView提取成功，开始更新条目，ID: $itemId');
+                    try {
+                      await _inboxService.updateClipboardItemWithContent(
+                        itemId,
+                        result,
+                      );
+                      _addLog('[SaveClipboard] ✅ 条目更新成功');
+                    } catch (e) {
+                      _addLog('[SaveClipboard] ❌ 更新条目失败: $e');
+                    }
                   } else {
-                    print('[SaveClipboard] WebView提取失败');
-                    // 更新为失败状态
-                    await _inboxService.updateItemStatus(
-                      pendingItem.id!,
-                      'error',
-                    );
+                    _addLog('[SaveClipboard] ❌ WebView提取失败，ID: $itemId');
+                    await _inboxService.updateItemStatus(itemId, 'error');
                   }
 
                   _handleSaveComplete();
@@ -206,11 +215,20 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             ),
           );
         }
+      } else {
+        _addLog('[SaveClipboard] ❌ 创建处理中条目失败！');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(_lang == 'cn' ? '创建条目失败' : 'Failed to create item'),
+            ),
+          );
+        }
       }
     } catch (e, stackTrace) {
-      print('[SaveClipboard] ❌ 保存失败');
-      print('[SaveClipboard] 错误: $e');
-      print('[SaveClipboard] 堆栈: $stackTrace');
+      _addLog('[SaveClipboard] ❌ 保存失败');
+      _addLog('[SaveClipboard] 错误: $e');
+      _addLog('[SaveClipboard] 堆栈: $stackTrace');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -219,25 +237,142 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           ),
         );
       }
+
+      // 显示日志对话框
+      if (mounted && _lastSaveLog.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            showDialog(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: Text(_lang == 'cn' ? '保存日志' : 'Save Log'),
+                content: SingleChildScrollView(
+                  child: Container(
+                    width: 400,
+                    height: 300,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.black,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: SingleChildScrollView(
+                      child: Text(
+                        _lastSaveLog,
+                        style: const TextStyle(
+                          color: Colors.red,
+                          fontFamily: 'Courier New',
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: Text(_lang == 'cn' ? '关闭' : 'Close'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () async {
+                      await Clipboard.setData(
+                        ClipboardData(text: _lastSaveLog),
+                      );
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              _lang == 'cn' ? '日志已复制' : 'Log copied',
+                            ),
+                          ),
+                        );
+                      }
+                      Navigator.of(context).pop();
+                    },
+                    child: Text(_lang == 'cn' ? '复制日志' : 'Copy Log'),
+                  ),
+                ],
+              ),
+            );
+          }
+        });
+      }
+
+      // 清空日志
+      _lastSaveLog = '';
     }
   }
 
+  // 用于存储日志信息，显示给用户
+  String _lastSaveLog = '';
+
+  void _addLog(String message) {
+    final timestamp = DateTime.now().toLocal().toString().split(' ').last;
+    _lastSaveLog += '[$timestamp] $message\n';
+    print(message);
+  }
+
   void _handleSaveComplete() {
-    print('[SaveClipboard] 保存完成');
+    _addLog('[SaveClipboard] 保存完成');
 
     // 如果当前在收件箱页面，重新加载数据
     if (_currentPage == 'inbox') {
-      print('[SaveClipboard] 当前在收件箱页面，触发刷新');
+      _addLog('[SaveClipboard] 当前在收件箱页面，触发刷新');
       _navigateToPage('inbox');
     }
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_lang == 'cn' ? '内容已保存到收件箱' : 'Content saved to inbox'),
+      // 显示日志对话框
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(_lang == 'cn' ? '保存日志' : 'Save Log'),
+          content: SingleChildScrollView(
+            child: Container(
+              width: 400,
+              height: 300,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.black,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: SingleChildScrollView(
+                child: Text(
+                  _lastSaveLog,
+                  style: const TextStyle(
+                    color: Colors.green,
+                    fontFamily: 'Courier New',
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(_lang == 'cn' ? '关闭' : 'Close'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: _lastSaveLog));
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(_lang == 'cn' ? '日志已复制' : 'Log copied'),
+                    ),
+                  );
+                }
+                Navigator.of(context).pop();
+              },
+              child: Text(_lang == 'cn' ? '复制日志' : 'Copy Log'),
+            ),
+          ],
         ),
       );
     }
+
+    // 清空日志，准备下次使用
+    _lastSaveLog = '';
   }
 
   void _showClipboardDialogAsDialog() {

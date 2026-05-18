@@ -111,7 +111,7 @@ class _InboxPageState extends State<InboxPage> {
       _selectedSource = null;
       _selectedCategory = null;
       _selectedStatus = null;
-      _filterStartDate = null;
+      _filterStartDate = null;;
       _filterEndDate = null;
       _items = _allItems;
       _showFilterDialog = false;
@@ -354,7 +354,7 @@ class _InboxPageState extends State<InboxPage> {
               ),
             ),
             SubmenuTabs(
-              tabs: widget.lang == 'cn' ? ['筛选', '整理', '归档'] : ['Filter', 'Organize', 'Archive'],
+              tabs: widget.lang == 'cn' ? ['筛选', '整理', '归档', '调试'] : ['Filter', 'Organize', 'Archive', 'Debug'],
               selectedTab: widget.lang == 'cn' ? '筛选' : 'Filter',
               onTabSelected: (tab) async {
                 if (_isProcessing) {
@@ -386,6 +386,15 @@ class _InboxPageState extends State<InboxPage> {
                   await _processSelectedItems();
                 } else if (tab == (widget.lang == 'cn' ? '归档' : 'Archive')) {
                   await _archiveSelectedItems();
+                } else if (tab == (widget.lang == 'cn' ? '调试' : 'Debug')) {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => InboxDebugPage(
+                        lang: widget.lang,
+                        onHomeTap: widget.onHomeTap,
+                      ),
+                    ),
+                  );
                 }
               },
               onHomeTap: widget.onHomeTap,
