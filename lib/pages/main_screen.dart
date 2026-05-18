@@ -11,6 +11,7 @@ import 'skills_page_simple.dart';
 import 'efficiency_record_page.dart';
 import 'schedule_page.dart';
 import '../components/chat_bubble_list.dart';
+import '../components/webview_extractor.dart';
 import '../services/llm_service.dart';
 import '../services/inbox_service.dart';
 import '../database/models/inbox_item.dart';
@@ -151,33 +152,60 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         _showClipboardDialog = false;
       });
 
-      print('[SaveClipboard] 调用 InboxService 处理内容');
-      await _inboxService.saveClipboardContent(_detectedClipboardContent!);
+      // 提取URL
+      final urlRegExp = RegExp(r'https?://[^\s]+');
+      final match = urlRegExp.firstMatch(_detectedClipboardContent!);
+      final url = match?.group(0) ?? '';
 
-      // 更新上次内容记录
-      _lastClipboardContent = _detectedClipboardContent!;
-
-      setState(() {
-        _detectedClipboardContent = null;
-      });
-
-      print('[SaveClipboard] 保存成功');
-
-      // 如果当前在收件箱页面，重新加载数据
-      if (_currentPage == 'inbox') {
-        print('[SaveClipboard] 当前在收件箱页面，触发刷新');
-        // 通过重新导航到收件箱页面来刷新数据
-        _navigateToPage('inbox');
+      if (url.isEmpty) {
+        // 如果没有URL，直接保存文本
+        print('[SaveClipboard] 没有检测到URL，保存文本内容');
+        await _inboxService.saveClipboardContent(_detectedClipboardContent!);
+        _handleSaveComplete();
+        return;
       }
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _lang == 'cn' ? '内容已保存到收件箱' : 'Content saved to inbox',
+      // 先创建一个处理中的条目
+      print('[SaveClipboard] 创建处理中条目');
+      final pendingItem = await _inboxService.createPendingClipboardItem(url);
+
+      if (pendingItem != null) {
+        _lastClipboardContent = _detectedClipboardContent!;
+        setState(() {
+          _detectedClipboardContent = null;
+        });
+
+        // 打开WebViewExtractor来加载和保存页面
+        print('[SaveClipboard] 打开WebViewExtractor');
+        if (mounted) {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => WebViewExtractor(
+                url: url,
+                onContentExtracted: (result) async {
+                  Navigator.of(context).pop();
+
+                  if (result != null) {
+                    print('[SaveClipboard] WebView提取成功，更新条目');
+                    await _inboxService.updateClipboardItemWithContent(
+                      pendingItem.id!,
+                      result,
+                    );
+                  } else {
+                    print('[SaveClipboard] WebView提取失败');
+                    // 更新为失败状态
+                    await _inboxService.updateItemStatus(
+                      pendingItem.id!,
+                      'error',
+                    );
+                  }
+
+                  _handleSaveComplete();
+                },
+              ),
             ),
-          ),
-        );
+          );
+        }
       }
     } catch (e, stackTrace) {
       print('[SaveClipboard] ❌ 保存失败');
@@ -191,6 +219,24 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           ),
         );
       }
+    }
+  }
+
+  void _handleSaveComplete() {
+    print('[SaveClipboard] 保存完成');
+
+    // 如果当前在收件箱页面，重新加载数据
+    if (_currentPage == 'inbox') {
+      print('[SaveClipboard] 当前在收件箱页面，触发刷新');
+      _navigateToPage('inbox');
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_lang == 'cn' ? '内容已保存到收件箱' : 'Content saved to inbox'),
+        ),
+      );
     }
   }
 

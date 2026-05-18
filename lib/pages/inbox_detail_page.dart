@@ -6,6 +6,7 @@ import '../components/app_title_bar.dart';
 import '../components/ai_reply_bar.dart';
 import '../components/submenu_tabs.dart';
 import '../components/input_area.dart';
+import '../components/html_preview.dart';
 
 class InboxDetailPage extends StatefulWidget {
   final InboxItem item;
@@ -40,10 +41,11 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
     '未知归类',
   ];
 
-  final List<String> _statuses = ['未处理', '已处理'];
+  final List<String> _statuses = ['未处理', '已处理', '未整理', '处理中', 'error'];
 
   late String _selectedCategory;
   late String _selectedStatus;
+  bool _showHtmlPreview = true; // 默认显示HTML预览
 
   @override
   void initState() {
@@ -292,11 +294,15 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
                                   child: Row(
                                     children: [
                                       ElevatedButton.icon(
-                                        onPressed: _toggleView,
-                                        icon: Icon(_showPreview ? Icons.edit : Icons.visibility),
-                                        label: Text(_showPreview ? (widget.lang == 'cn' ? '编辑' : 'Edit') : (widget.lang == 'cn' ? '预览' : 'Preview')),
+                                        onPressed: () {
+                                          setState(() {
+                                            _showHtmlPreview = !_showHtmlPreview;
+                                          });
+                                        },
+                                        icon: Icon(_showHtmlPreview ? Icons.edit : Icons.public),
+                                        label: Text(_showHtmlPreview ? (widget.lang == 'cn' ? '编辑源码' : 'Edit Source') : (widget.lang == 'cn' ? '网页预览' : 'Web Preview')),
                                         style: ElevatedButton.styleFrom(
-                                          backgroundColor: const Color(0xFF651FFF),
+                                          backgroundColor: _showHtmlPreview ? Colors.teal : const Color(0xFF651FFF),
                                           foregroundColor: Colors.white,
                                         ),
                                       ),
@@ -315,30 +321,13 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
                                   ),
                                 ),
                                 const SizedBox(height: 8),
-                                // Markdown编辑器或预览
-                                if (_showPreview)
+                                // HTML预览或源码编辑
+                                if (_showHtmlPreview)
                                   Container(
                                     height: 400,
                                     padding: const EdgeInsets.symmetric(horizontal: 12),
-                                    child: Markdown(
-                                      data: _mdController.text.isEmpty 
-                                          ? (widget.lang == 'cn' ? '暂无内容' : 'No content') 
-                                          : _mdController.text,
-                                      styleSheet: MarkdownStyleSheet(
-                                        h1: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                                        h2: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                                        h3: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                                        p: const TextStyle(fontSize: 14, height: 1.5),
-                                        code: const TextStyle(
-                                          backgroundColor: Colors.grey,
-                                          fontFamily: 'monospace',
-                                          fontSize: 12,
-                                        ),
-                                        codeblockDecoration: BoxDecoration(
-                                          color: Colors.grey,
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                      ),
+                                    child: HtmlPreview(
+                                      filePath: widget.item.filePath,
                                     ),
                                   )
                                 else
@@ -350,7 +339,7 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
                                       maxLines: null,
                                       expands: true,
                                       decoration: InputDecoration(
-                                        hintText: widget.lang == 'cn' ? '在此输入Markdown内容...' : 'Enter Markdown content here...',
+                                        hintText: widget.lang == 'cn' ? '在此编辑HTML源码...' : 'Edit HTML source here...',
                                         border: const OutlineInputBorder(),
                                         contentPadding: const EdgeInsets.all(12),
                                       ),

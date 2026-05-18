@@ -1029,4 +1029,117 @@ $content
     final mdFile = File(p.join(filePath, 'content.md'));
     await mdFile.writeAsString(content);
   }
+
+  // 创建处理中的剪贴板条目
+  Future<InboxItem?> createPendingClipboardItem(String url) async {
+    print('[ClipboardService] 创建处理中的剪贴板条目');
+    
+    try {
+      // 识别来源
+      final source = _identifySource(url);
+      
+      // 生成标题
+      final existingItems = await _dbHelper.getAllInboxItems();
+      int clipboardCount = 1;
+      for (final item in existingItems) {
+        if (item.title.startsWith('来自粘贴板')) {
+          clipboardCount++;
+        }
+      }
+      final title = '来自粘贴板$clipboardCount';
+      
+      // 创建目录
+      final inboxDir = await getInboxDirectory();
+      final cleanTitle = _sanitizeFileName(title);
+      final itemDir = Directory(p.join(inboxDir.path, cleanTitle));
+      
+      // 如果目录已存在，添加时间戳
+      if (await itemDir.exists()) {
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final newItemDir = Directory(p.join(inboxDir.path, '${cleanTitle}_$timestamp'));
+        await newItemDir.create(recursive: true);
+      } else {
+        await itemDir.create(recursive: true);
+      }
+      
+      // 先保存空文件
+      final mdFile = File(p.join(itemDir.path, 'content.md'));
+      await mdFile.writeAsString('正在处理中...');
+      
+      final htmlFile = File(p.join(itemDir.path, 'index.html'));
+      await htmlFile.writeAsString('');
+      
+      // 创建收件箱条目（处理中状态）
+      InboxItem item = InboxItem(
+        title: title,
+        source: source,
+        url: url,
+        filePath: itemDir.path,
+        content: '正在处理中...',
+        status: '处理中',
+        createdAt: DateTime.now(),
+      );
+      
+      final id = await _dbHelper.insertInboxItem(item);
+      item = item.copyWith(id: id);
+      print('[ClipboardService] 创建处理中条目完成: ${item.title}');
+      
+      return item;
+    } catch (e) {
+      print('[ClipboardService] 创建处理中条目失败: $e');
+      return null;
+    }
+  }
+
+  // 更新剪贴板条目内容
+  Future<void> updateClipboardItemWithContent(int id, String jsonResult) async {
+    print('[ClipboardService] 更新剪贴板条目内容，ID: $id');
+    
+    try {
+      final result = jsonDecode(jsonResult) as Map<String, dynamic>;
+      
+      final title = result['title'] as String? ?? '未命名';
+      final filePath = result['filePath'] as String?;
+      final htmlFile = result['htmlFile'] as String?;
+      final textContent = result['textContent'] as String? ?? '';
+      final url = result['url'] as String? ?? '';
+      
+      // 获取现有条目
+      final existingItem = await _dbHelper.getInboxItemById(id);
+      if (existingItem == null) {
+        print('[ClipboardService] 条目不存在: $id');
+        return;
+      }
+      
+      // 更新条目标题和内容
+      final updatedItem = existingItem.copyWith(
+        title: title,
+        content: textContent,
+        filePath: filePath,
+        url: url,
+        status: '未整理',
+      );
+      
+      await _dbHelper.updateInboxItem(updatedItem);
+      print('[ClipboardService] 条目更新完成，状态: 未整理');
+    } catch (e) {
+      print('[ClipboardService] 更新条目失败: $e');
+      // 更新为失败状态
+      await updateItemStatus(id, 'error');
+    }
+  }
+
+  // 更新条目状态
+  Future<void> updateItemStatus(int id, String status) async {
+    try {
+      final item = await _dbHelper.getInboxItemById(id);
+      if (item != null) {
+        final updatedItem = item.copyWith(status: status);
+        await _dbHelper.updateInboxItem(updatedItem);
+        print('[ClipboardService] 条目状态更新: $status');
+      }
+    } catch (e) {
+      print('[ClipboardService] 更新状态失败: $e');
+    }
+  }
 }
