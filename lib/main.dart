@@ -1,18 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'pages/main_screen.dart';
-import 'package:sqflite/sqflite.dart';
+import 'services/demo_data_initializer.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: '.env');
 
-  // 🔑 ONE-TIME DB RESET: delete old DB to force fresh onCreate + onUpgrade
-  try {
-    print('[Main] 重置数据库');
-    await deleteDatabase('myAILangTutor.db');
-    print('✅ DB RESET: myAILangTutor.db deleted — fresh init on next launch');
-  } catch (e) {
-    print('[Main] 数据库重置: $e');
-  }
+  // 初始化演示样例数据（仅在数据库为空时插入）
+  await DemoDataInitializer().initIfEmpty();
 
   print('[Main] 启动应用');
   runApp(const MyApp());

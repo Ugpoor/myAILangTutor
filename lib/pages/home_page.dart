@@ -17,9 +17,9 @@ class HomePage extends StatefulWidget {
   final void Function(int)? onMenuItemTap;
   final VoidCallback? onEfficiencyTap;
   final VoidCallback? onScheduleTap;
-  final String lastAiMessage;
-  final ValueChanged<String>? onAiMessageChanged;
-  final ValueChanged<ChatMessage>? onMessageAdded;
+  /// 共享的对话消息列表（与 ChatPage 共用）
+  final List<ChatMessage>? messages;
+  final VoidCallback? onPullDown;
 
   const HomePage({
     super.key,
@@ -32,9 +32,8 @@ class HomePage extends StatefulWidget {
     this.onMenuItemTap,
     this.onEfficiencyTap,
     this.onScheduleTap,
-    required this.lastAiMessage,
-    this.onAiMessageChanged,
-    this.onMessageAdded,
+    this.messages,
+    this.onPullDown,
   });
 
   @override
@@ -66,7 +65,7 @@ class _HomePageState extends State<HomePage> {
         text: text,
         isAI: false,
       );
-      widget.onMessageAdded?.call(userMessage);
+      widget.messages!.add(userMessage);
 
       final response = await _llmService.generateResponse(text);
       
@@ -76,9 +75,8 @@ class _HomePageState extends State<HomePage> {
         reasoningText: response['reasoning'] ?? (widget.lang == 'cn' ? '这是AI推理内容。' : 'This is AI reasoning.'),
         isAI: true,
       );
-      widget.onMessageAdded?.call(aiMessage);
+      widget.messages!.add(aiMessage);
 
-      widget.onAiMessageChanged?.call(aiMessage.text);
       _textController.clear();
     } finally {
       setState(() {
@@ -99,7 +97,7 @@ class _HomePageState extends State<HomePage> {
             ),
             AIReplyBar(
               lang: widget.lang,
-              lastAiMessage: widget.lastAiMessage,
+              messages: widget.messages ?? [],
               onPullDown: widget.onExpandChat,
               onAvatarTap: widget.onAvatarTap,
             ),

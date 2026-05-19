@@ -9,6 +9,7 @@ class InboxItem {
   final String status;
   final DateTime createdAt;
   final DateTime? updatedAt;
+  final bool isValid; // 是否有效（数据库中有记录）
 
   InboxItem({
     this.id,
@@ -21,6 +22,7 @@ class InboxItem {
     this.status = '未处理',
     required this.createdAt,
     this.updatedAt,
+    this.isValid = true, // 默认有效
   });
 
   Map<String, dynamic> toMap() {
@@ -64,6 +66,7 @@ class InboxItem {
     String? status,
     DateTime? createdAt,
     DateTime? updatedAt,
+    bool? isValid,
   }) {
     return InboxItem(
       id: id ?? this.id,
@@ -76,6 +79,7 @@ class InboxItem {
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      isValid: isValid ?? this.isValid,
     );
   }
 }

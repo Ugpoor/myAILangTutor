@@ -7,12 +7,14 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 class WebViewExtractor extends StatefulWidget {
   final String url;
+  final String targetDirectory;
   final ValueChanged<String?> onContentExtracted;
   final Duration timeout;
 
   const WebViewExtractor({
     super.key,
     required this.url,
+    required this.targetDirectory,
     required this.onContentExtracted,
     this.timeout = const Duration(seconds: 60),
   });
@@ -192,18 +194,8 @@ class _WebViewExtractorState extends State<WebViewExtractor> {
 
       final htmlString = rawHtml.toString();
 
-      final appDocDir = await getApplicationDocumentsDirectory();
-      
-      // 使用时间戳 + 随机字符串作为目录名，确保绝对唯一性
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final randomString = _generateRandomString(8);
-      final directoryName = '$timestamp-$randomString';
-      
-      final inboxDir = Directory('${appDocDir.path}/inbox/$directoryName');
-      await inboxDir.create(recursive: true);
-
-      final filePath = inboxDir.path;
-      print('[WebViewExtractor] ✓ 创建保存目录: $filePath');
+      final filePath = widget.targetDirectory;
+      print('[WebViewExtractor] ✓ 使用目标目录: $filePath');
 
       // 解码Unicode转义字符
       final decodedHtml = _decodeUnicodeEscapes(htmlString);

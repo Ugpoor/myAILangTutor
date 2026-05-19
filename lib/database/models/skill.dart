@@ -1,4 +1,3 @@
-
 import 'package:sqflite/sqflite.dart';
 
 class Skill {
@@ -9,6 +8,14 @@ class Skill {
   final DateTime? lastPracticed;
   final DateTime? createdAt;
   final String lang;
+  final String? skillId;
+  final String? category;
+  final String? prerequisite;
+  final String? promptText;
+  final String? internalFunction;
+  final String? parameters;
+  final String? returnType;
+  final String? description;
 
   Skill({
     this.id,
@@ -18,6 +25,14 @@ class Skill {
     this.lastPracticed,
     this.createdAt,
     this.lang = 'cn',
+    this.skillId,
+    this.category,
+    this.prerequisite,
+    this.promptText,
+    this.internalFunction,
+    this.parameters,
+    this.returnType,
+    this.description,
   });
 
   Map<String, dynamic> toMap() {
@@ -29,6 +44,14 @@ class Skill {
       'last_practiced': lastPracticed?.toIso8601String(),
       'created_at': createdAt?.toIso8601String(),
       'lang': lang,
+      'skill_id': skillId,
+      'category': category,
+      'prerequisite': prerequisite,
+      'prompt_text': promptText,
+      'internal_function': internalFunction,
+      'parameters': parameters,
+      'return_type': returnType,
+      'description': description,
     };
   }
 
@@ -37,14 +60,22 @@ class Skill {
       id: map['id'] as int?,
       name: map['name'] as String,
       level: map['level'] as int? ?? 1,
-      progress: (map['progress'] as double?) ?? 0,
-      lastPracticed: map['last_practiced'] != null 
-          ? DateTime.parse(map['last_practiced'] as String) 
+      progress: (map['progress'] as num?)?.toDouble() ?? 0,
+      lastPracticed: map['last_practiced'] != null
+          ? DateTime.parse(map['last_practiced'] as String)
           : null,
-      createdAt: map['created_at'] != null 
-          ? DateTime.parse(map['created_at'] as String) 
+      createdAt: map['created_at'] != null
+          ? DateTime.parse(map['created_at'] as String)
           : null,
       lang: map['lang'] as String? ?? 'cn',
+      skillId: map['skill_id'] as String?,
+      category: map['category'] as String?,
+      prerequisite: map['prerequisite'] as String?,
+      promptText: map['prompt_text'] as String?,
+      internalFunction: map['internal_function'] as String?,
+      parameters: map['parameters'] as String?,
+      returnType: map['return_type'] as String?,
+      description: map['description'] as String?,
     );
   }
 
@@ -56,6 +87,14 @@ class Skill {
     DateTime? lastPracticed,
     DateTime? createdAt,
     String? lang,
+    String? skillId,
+    String? category,
+    String? prerequisite,
+    String? promptText,
+    String? internalFunction,
+    String? parameters,
+    String? returnType,
+    String? description,
   }) {
     return Skill(
       id: id ?? this.id,
@@ -65,6 +104,14 @@ class Skill {
       lastPracticed: lastPracticed ?? this.lastPracticed,
       createdAt: createdAt ?? this.createdAt,
       lang: lang ?? this.lang,
+      skillId: skillId ?? this.skillId,
+      category: category ?? this.category,
+      prerequisite: prerequisite ?? this.prerequisite,
+      promptText: promptText ?? this.promptText,
+      internalFunction: internalFunction ?? this.internalFunction,
+      parameters: parameters ?? this.parameters,
+      returnType: returnType ?? this.returnType,
+      description: description ?? this.description,
     );
   }
 }
@@ -78,12 +125,39 @@ class SkillDao {
     return await db.insert('skills', skill.toMap());
   }
 
-  Future<List<Skill>> getAll({String? lang}) async {
+  Future<List<Skill>> getAll({
+    String? lang,
+    String? category,
+    String? prerequisite,
+    String? keyword,
+  }) async {
+    List<String> conditions = [];
+    List<dynamic> args = [];
+
+    if (lang != null) {
+      conditions.add('lang = ?');
+      args.add(lang);
+    }
+    if (category != null) {
+      conditions.add('category = ?');
+      args.add(category);
+    }
+    if (prerequisite != null) {
+      conditions.add('prerequisite = ?');
+      args.add(prerequisite);
+    }
+    if (keyword != null && keyword.isNotEmpty) {
+      conditions.add('(name LIKE ? OR skill_id LIKE ? OR description LIKE ?)');
+      args.add('%$keyword%');
+      args.add('%$keyword%');
+      args.add('%$keyword%');
+    }
+
     final maps = await db.query(
       'skills',
-      where: lang != null ? 'lang = ?' : null,
-      whereArgs: lang != null ? [lang] : null,
-      orderBy: 'level DESC, progress DESC',
+      where: conditions.isNotEmpty ? conditions.join(' AND ') : null,
+      whereArgs: args.isNotEmpty ? args : null,
+      orderBy: 'created_at DESC',
     );
     return maps.map((map) => Skill.fromMap(map)).toList();
   }
@@ -95,6 +169,25 @@ class SkillDao {
       whereArgs: [id],
     );
     return maps.isNotEmpty ? Skill.fromMap(maps.first) : null;
+  }
+
+  Future<Skill?> getBySkillId(String skillId) async {
+    final maps = await db.query(
+      'skills',
+      where: 'skill_id = ?',
+      whereArgs: [skillId],
+    );
+    return maps.isNotEmpty ? Skill.fromMap(maps.first) : null;
+  }
+
+  Future<List<Skill>> getChildrenOf(String skillId) async {
+    final maps = await db.query(
+      'skills',
+      where: 'prerequisite = ?',
+      whereArgs: [skillId],
+      orderBy: 'level ASC, created_at ASC',
+    );
+    return maps.map((map) => Skill.fromMap(map)).toList();
   }
 
   Future<int> update(Skill skill) async {
@@ -114,11 +207,35 @@ class SkillDao {
     );
   }
 
-  Future<int> count({String? lang}) async {
+  Future<int> count({String? lang, String? category}) async {
+    List<String> conditions = [];
+    List<dynamic> args = [];
+
+    if (lang != null) {
+      conditions.add('lang = ?');
+      args.add(lang);
+    }
+    if (category != null) {
+      conditions.add('category = ?');
+      args.add(category);
+    }
+
     final result = await db.rawQuery(
-      'SELECT COUNT(*) FROM skills${lang != null ? " WHERE lang = ?" : ""}',
-      lang != null ? [lang] : null,
+      'SELECT COUNT(*) FROM skills${conditions.isNotEmpty ? " WHERE ${conditions.join(' AND ')}" : ""}',
+      args.isNotEmpty ? args : null,
     );
     return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  Future<int> nextSkillIdNumber() async {
+    final result = await db.rawQuery(
+      "SELECT skill_id FROM skills WHERE skill_id LIKE 'S%' ORDER BY id DESC LIMIT 1",
+    );
+    if (result.isEmpty) return 1;
+    final lastId = result.first['skill_id'] as String?;
+    if (lastId == null) return 1;
+    final match = RegExp(r'S(\d+)').firstMatch(lastId);
+    if (match != null) return int.parse(match.group(1)!) + 1;
+    return 1;
   }
 }

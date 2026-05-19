@@ -3,49 +3,20 @@ import '../components/app_title_bar.dart';
 import '../components/submenu_tabs.dart';
 import '../components/ai_reply_bar.dart';
 import '../components/input_area.dart';
-
-// Fake作品集数据
-final List<Map<String, dynamic>> _fakePortfolioItems = [
-  {
-    'id': 'W1',
-    'title': '我的第一篇作文',
-    'isOriginal': true,
-    'category': '写作',
-    'contentPreview': '这是一篇关于春天的作文...',
-  },
-  {
-    'id': 'W2',
-    'title': '《红楼梦》赏析',
-    'isOriginal': false,
-    'category': '阅读',
-    'contentPreview': '《红楼梦》是中国古典文学...',
-  },
-  {
-    'id': 'W3',
-    'title': '古诗《静夜思》赏析',
-    'isOriginal': false,
-    'category': '阅读',
-    'contentPreview': '床前明月光，疑是地上霜...',
-  },
-  {
-    'id': 'W4',
-    'title': '我的日记',
-    'isOriginal': true,
-    'category': '写作',
-    'contentPreview': '今天天气很好，我去了公园...',
-  },
-];
+import '../database/db_helper.dart';
+import '../database/models/portfolio_item.dart';
+import 'portfolio_detail_page.dart';
 
 class PortfolioPageSimple extends StatefulWidget {
   final String lang;
-  final String lastAiMessage;
+  final String messages;
   final VoidCallback onHomeTap;
   final VoidCallback? onPullDown;
 
   const PortfolioPageSimple({
     super.key,
     this.lang = 'cn',
-    required this.lastAiMessage,
+    required this.messages,
     required this.onHomeTap,
     this.onPullDown,
   });
@@ -55,41 +26,163 @@ class PortfolioPageSimple extends StatefulWidget {
 }
 
 class _PortfolioPageSimpleState extends State<PortfolioPageSimple> {
-  List<Map<String, dynamic>> _displayItems = [];
-  final Set<String> _selectedIds = {};
-  String _currentAiMessage = '';
+  List<PortfolioItem> _allItems = [];
+  List<PortfolioItem> _displayItems = [];
+  final Set<int> _selectedIds = {};
+  bool? _filterIsOriginal;
+  String? _filterKnowledgeTag;
+  late PortfolioDao _portfolioDao;
 
   @override
   void initState() {
     super.initState();
-    _currentAiMessage = widget.lastAiMessage;
-    _loadFakeData();
+    _initDao();
   }
 
-  void _loadFakeData() {
+  Future<void> _initDao() async {
+    final db = await DatabaseHelper().database;
+    _portfolioDao = PortfolioDao(db);
+    await _loadItems();
+  }
+
+  Future<void> _loadItems() async {
+    final items = await _portfolioDao.getAll(lang: widget.lang);
     setState(() {
-      _displayItems = List.from(_fakePortfolioItems);
+      _allItems = items;
+      _applyFilter();
     });
+  }
+
+  void _applyFilter() {
+    _displayItems = _allItems.where((item) {
+      if (_filterIsOriginal != null && item.isOriginal != _filterIsOriginal) return false;
+      if (_filterKnowledgeTag != null &&
+          (item.knowledgeTag == null || !item.knowledgeTag!.contains(_filterKnowledgeTag!))) {
+        return false;
+      }
+      return true;
+    }).toList();
   }
 
   Future<void> _handleTabSelected(String tab) async {
     if (tab == (widget.lang == 'cn' ? '筛选' : 'Filter')) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.lang == 'cn' ? '筛选功能（待实现）' : 'Filter function (to be implemented)')),
-      );
+      _showFilterDialog();
     } else if (tab == (widget.lang == 'cn' ? '原创' : 'Original')) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.lang == 'cn' ? '原创编辑功能（待实现）' : 'Original editor (to be implemented)')),
-      );
+      _navigateToNewOriginal();
     } else if (tab == (widget.lang == 'cn' ? '练习' : 'Practice')) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.lang == 'cn' ? '练习生成功能（待实现）' : 'Practice generation (to be implemented)')),
-      );
+      _generateExercisesForSelected();
     } else if (tab == (widget.lang == 'cn' ? '评析' : 'Analyze')) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.lang == 'cn' ? 'AI评析功能（待实现）' : 'AI analysis (to be implemented)')),
-      );
+      _aiAnalyzeSelected();
     }
+  }
+
+  Future<void> _navigateToDetail(PortfolioItem item) async {
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (context) => PortfolioDetailPage(
+          lang: widget.lang,
+          item: item,
+          portfolioDao: _portfolioDao,
+          onHomeTap: widget.onHomeTap,
+        ),
+      ),
+    );
+    if (result == true) {
+      await _loadItems();
+    }
+  }
+
+  Future<void> _navigateToNewOriginal() async {
+    final nextNum = await _portfolioDao.nextPortfolioIdNumber();
+    final newItem = PortfolioItem(
+      title: widget.lang == 'cn' ? '新原创作品' : 'New Original',
+      portfolioId: 'W$nextNum',
+      isOriginal: true,
+      createdAt: DateTime.now(),
+      lang: widget.lang,
+    );
+    final id = await _portfolioDao.insert(newItem);
+    final created = await _portfolioDao.getById(id);
+    if (created != null && mounted) {
+      await _navigateToDetail(created);
+    }
+  }
+
+  Future<void> _generateExercisesForSelected() async {
+    if (_selectedIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(widget.lang == 'cn' ? '请先选择非原创作品' : 'Select non-original items first')),
+      );
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(widget.lang == 'cn' ? '练习生成功能开发中' : 'Exercise generation in development')),
+    );
+  }
+
+  Future<void> _aiAnalyzeSelected() async {
+    if (_selectedIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(widget.lang == 'cn' ? '请先选择作品' : 'Select items first')),
+      );
+      return;
+    }
+    // Navigate to first selected item for AI review
+    final firstItem = _allItems.firstWhere((item) => _selectedIds.contains(item.id));
+    await _navigateToDetail(firstItem);
+  }
+
+  void _showFilterDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(widget.lang == 'cn' ? '筛选作品' : 'Filter Portfolio'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(widget.lang == 'cn' ? '按类型筛选：' : 'Filter by type:'),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      _filterIsOriginal = true;
+                      _applyFilter();
+                    });
+                    Navigator.pop(context);
+                  },
+                  child: Text(widget.lang == 'cn' ? '原创' : 'Original'),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      _filterIsOriginal = false;
+                      _applyFilter();
+                    });
+                    Navigator.pop(context);
+                  },
+                  child: Text(widget.lang == 'cn' ? '赏析' : 'Analysis'),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      _filterIsOriginal = null;
+                      _filterKnowledgeTag = null;
+                      _applyFilter();
+                    });
+                    Navigator.pop(context);
+                  },
+                  child: Text(widget.lang == 'cn' ? '全部' : 'All'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -108,7 +201,7 @@ class _PortfolioPageSimpleState extends State<PortfolioPageSimple> {
             ),
             AIReplyBar(
               lang: widget.lang,
-              lastAiMessage: _currentAiMessage,
+              messages: widget.messages ?? [],
               onPullDown: widget.onPullDown ?? () {},
             ),
             Expanded(
@@ -149,18 +242,13 @@ class _PortfolioPageSimpleState extends State<PortfolioPageSimple> {
     );
   }
 
-  Widget _buildPortfolioItem(Map<String, dynamic> item) {
-    final isSelected = _selectedIds.contains(item['id']);
-    final isOriginal = item['isOriginal'] as bool;
+  Widget _buildPortfolioItem(PortfolioItem item) {
+    final isSelected = _selectedIds.contains(item.id);
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
       child: InkWell(
-        onTap: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('${widget.lang == 'cn' ? '查看作品' : 'View portfolio item'}: ${item['title']}')),
-          );
-        },
+        onTap: () => _navigateToDetail(item),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
@@ -170,9 +258,9 @@ class _PortfolioPageSimpleState extends State<PortfolioPageSimple> {
                 onChanged: (value) {
                   setState(() {
                     if (value == true) {
-                      _selectedIds.add(item['id']);
+                      _selectedIds.add(item.id!);
                     } else {
-                      _selectedIds.remove(item['id']);
+                      _selectedIds.remove(item.id!);
                     }
                   });
                 },
@@ -184,41 +272,44 @@ class _PortfolioPageSimpleState extends State<PortfolioPageSimple> {
                     Row(
                       children: [
                         Text(
-                          '${item['id']} ${item['title']}',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
+                          '${item.portfolioId ?? ""} ',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
-                        if (isOriginal)
+                        Expanded(child: Text(item.title)),
+                        if (item.isOriginal)
                           Padding(
-                            padding: const EdgeInsets.only(left: 8),
+                            padding: const EdgeInsets.only(left: 4),
                             child: Chip(
                               label: Text(widget.lang == 'cn' ? '原创' : 'Original'),
                               backgroundColor: const Color(0xFFDDA0DD),
-                              labelStyle: const TextStyle(fontSize: 12),
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              labelStyle: const TextStyle(fontSize: 10),
+                              padding: const EdgeInsets.symmetric(horizontal: 6),
                             ),
                           ),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      item['contentPreview'],
-                      style: const TextStyle(fontSize: 14, color: Colors.grey),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
                     Wrap(
-                      spacing: 8,
+                      spacing: 6,
                       children: [
-                        Chip(
-                          label: Text(item['category']),
-                          backgroundColor: const Color(0xFFDDA0DD),
-                          labelStyle: const TextStyle(fontSize: 12),
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                        ),
+                        if (item.lessonUnit != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(color: Colors.blue[100], borderRadius: BorderRadius.circular(4)),
+                            child: Text('课内: ${item.lessonUnit}', style: const TextStyle(fontSize: 11, color: Colors.blue)),
+                          ),
+                        if (item.knowledgeTag != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(color: Colors.green[100], borderRadius: BorderRadius.circular(4)),
+                            child: Text('知识: ${item.knowledgeTag}', style: const TextStyle(fontSize: 11, color: Colors.green)),
+                          ),
+                        if (item.aiReview != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(color: Colors.purple[100], borderRadius: BorderRadius.circular(4)),
+                            child: Text(widget.lang == 'cn' ? '已评析' : 'Reviewed', style: const TextStyle(fontSize: 11, color: Colors.purple)),
+                          ),
                       ],
                     ),
                   ],

@@ -1,4 +1,3 @@
-/Volumes/Data/BaiduSyncdisk/reportLab/github/myAILangTutor/lib/pages/error_record_page.dart
 import 'package:flutter/material.dart';
 import '../database/db_helper.dart';
 import '../database/models/error_record.dart';

@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../database/models/inbox_item.dart';
 import '../services/inbox_service.dart';
-import '../services/llm_service.dart';
+import '../database/db_helper.dart';
 import '../components/app_title_bar.dart';
 import '../components/ai_reply_bar.dart';
 import '../components/submenu_tabs.dart';
@@ -28,6 +28,69 @@ class InboxDetailPage extends StatefulWidget {
 class _InboxDetailPageState extends State<InboxDetailPage> {
   final InboxService _inboxService = InboxService();
   bool _isProcessing = false;
+  String _selectedSource = '';
+  String _selectedCategory = '';
+  // Classification history for AIReplyBar display (user message + AI response)
+  List<Map<String, String>> _classificationHistory = [];
+
+  final List<String> _sourceOptions = [
+    '豆包', '文心一言', '通义千问', '讯飞星火', 'Kimi',
+    'ChatGPT', 'Claude', 'Gemini', 'Copilot', '智谱清言', '混元', '元宝',
+    'Perplexity', 'Mistral', 'Poe', '其他', '未知',
+  ];
+
+  final List<String> _categoryOptions = [
+    '错题本', '知识点', '习题集', '作品集', '无法分类', '未知归类',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedSource = _sourceOptions.contains(widget.item.source)
+        ? widget.item.source
+        : '未知';
+    _selectedCategory = _categoryOptions.contains(widget.item.category)
+        ? widget.item.category
+        : '未知归类';
+
+    // Load historical classification messages from database
+    _loadChatHistory();
+  }
+
+  /// Load AI classification messages from database for display in AIReplyBar
+  Future<void> _loadChatHistory() async {
+    try {
+      final db = DatabaseHelper();
+      final rawMessages = await db.getClassificationMessages();
+
+      final List<Map<String, String>> history = rawMessages.map((msg) {
+        return {
+          'user': '', // empty since these are auto-generated AI replies
+          'ai': msg['content'] as String,
+        };
+      }).toList();
+
+      if (mounted) {
+        setState(() {
+          _classificationHistory = history.reversed.toList(); // show newest first
+        });
+      }
+    } catch (e) {
+      print('[InboxDetailPage] Failed to load chat history: $e');
+    }
+  }
+
+  Future<void> _updateSource(String value) async {
+    setState(() => _selectedSource = value);
+    final updated = widget.item.copyWith(source: value);
+    await _inboxService.updateInboxItem(updated);
+  }
+
+  Future<void> _updateCategory(String value) async {
+    setState(() => _selectedCategory = value);
+    final updated = widget.item.copyWith(category: value);
+    await _inboxService.updateInboxItem(updated);
+  }
 
   Future<void> _deleteItem() async {
     final confirmed = await showDialog<bool>(
@@ -54,7 +117,7 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
     if (confirmed == true) {
       setState(() => _isProcessing = true);
       try {
-        await _inboxService.deleteInboxItem(widget.item.id!);
+        await _inboxService.deleteItem(widget.item);
         if (mounted) {
           widget.onUpdate();
           Navigator.of(context).pop();
@@ -74,44 +137,51 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
   Future<void> _organizeItem() async {
     setState(() => _isProcessing = true);
 
+    // Build user prompt text for history display
+    final userPromptText = widget.item.content.length > 200
+        ? '${widget.item.content.substring(0, 200)}...(truncated)'
+        : widget.item.content;
+
     try {
-      // 1. 读取HTML文件并提取h标签
-      final htmlPath = '${widget.item.filePath}/index.html';
-      final file = File(htmlPath);
-      if (!await file.exists()) {
-        throw Exception('HTML文件不存在');
+      // Use unified classification from InboxService
+      final result = await _inboxService.classifyItem(widget.item);
+      final category = result.category;
+      final newTitle = result.newTitle;
+
+      // Update the item with classified category and optional new title
+      final updatedItem = widget.item.copyWith(
+        title: newTitle ?? widget.item.title,
+        category: category,
+        status: '已处理',
+      );
+
+      // Save to database first
+      await _inboxService.updateInboxItem(updatedItem);
+
+      if (mounted) {
+        // Refresh local UI state
+        setState(() {
+          _selectedCategory = category;
+        });
+
+        // Re-fetch fresh data to ensure consistency
+        widget.onUpdate();
+
+        // Add classification conversation to history for AIReplyBar
+        final aiReplyText = '分类结果：$category\n依据：${result.reasoning}';
+        setState(() {
+          _classificationHistory.add({
+            'user': userPromptText,
+            'ai': aiReplyText,
+          });
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(widget.lang == 'cn'
+              ? '整理完成！（分类: $category）'
+              : 'Organized! (Category: $category)')),
+        );
       }
-
-      final htmlContent = await file.readAsString(encoding: utf8);
-      final extractedTitles = _extractHeadings(htmlContent);
-      extractedTitles.add(widget.item.title);
-      final uniqueTitles = extractedTitles.toSet().toList();
-
-      // 2. 提取HTML文本内容
-      final textContent = _extractTextFromHtml(htmlContent);
-
-      if (uniqueTitles.length < 2) {
-        // 如果没有足够的标题可选择，跳过标题优化
-        await _performClassification(textContent);
-        return;
-      }
-
-      // 3. 调用LLM选择最佳标题
-      final titlePrompt = _buildTitlePrompt(uniqueTitles, textContent);
-      final titleResponse = await LlmService().generateResponse(titlePrompt);
-
-      String selectedTitle = widget.item.title;
-      if (titleResponse['success'] == true) {
-        final response = titleResponse['response'] as String;
-        final selectedIndex = _parseNumberResponse(response);
-        if (selectedIndex >= 1 && selectedIndex <= uniqueTitles.length) {
-          selectedTitle = uniqueTitles[selectedIndex - 1];
-        }
-      }
-
-      // 4. 调用LLM进行分类
-      await _performClassification(textContent, selectedTitle);
-
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -123,103 +193,24 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
     }
   }
 
-  List<String> _extractHeadings(String html) {
-    final List<String> headings = [];
-    final regex = RegExp(r'<h([1-6])[^>]*>(.*?)</h[1-6]>', caseSensitive: false);
-    
-    for (final match in regex.allMatches(html)) {
-      final text = match.group(2)?.replaceAll(RegExp(r'<[^>]+>'), '').trim() ?? '';
-      if (text.isNotEmpty && text.length > 2) {
-        headings.add(text);
-      }
-    }
-    return headings;
-  }
-
-  String _extractTextFromHtml(String html) {
-    // 移除脚本和样式
-    var text = html
-        .replaceAll(RegExp(r'<script[^>]*>[\s\S]*?</script>', caseSensitive: false), '')
-        .replaceAll(RegExp(r'<style[^>]*>[\s\S]*?</style>', caseSensitive: false), '')
-        .replaceAll(RegExp(r'<[^>]+>'), '')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    
-    // 限制长度
-    if (text.length > 5000) {
-      text = text.substring(0, 5000) + '...';
-    }
-    return text;
-  }
-
-  String _buildTitlePrompt(List<String> titles, String content) {
-    final titlesList = titles.asMap().entries
-        .map((entry) => '${entry.key + 1}、"${entry.value}"')
-        .join('\n');
-
-    return '''请选择最能反映以下内容的标题，只需回复序号（如：1、2、3等）。
-
-内容摘要：
-$content
-
-可选标题：
-$titlesList
-
-请只回复序号。''';
-  }
-
-  int _parseNumberResponse(String response) {
-    final match = RegExp(r'(\d+)').firstMatch(response);
-    if (match != null) {
-      return int.tryParse(match.group(1)!) ?? 1;
-    }
-    return 1;
-  }
-
   Future<void> _performClassification(String content, [String? newTitle]) async {
-    // 分类提示语
-    final categoryPrompt = '''请对以下内容进行分类，选择最合适的栏目标签，只需回复分类名称。
-
-可选分类：知识点、错题本、习题、作品集、无法分类、未知归类
-
-内容摘要：
-$content
-
-请只回复分类名称。''';
-
-    final categoryResponse = await LlmService().generateResponse(categoryPrompt);
-    String category = '未知归类';
-    final validCategories = ['知识点', '错题本', '习题', '作品集', '无法分类', '未知归类'];
-
-    if (categoryResponse['success'] == true) {
-      final response = categoryResponse['response'] as String;
-      for (final cat in validCategories) {
-        if (response.contains(cat)) {
-          category = cat;
-          break;
-        }
-      }
-    }
-
-    // 更新条目
-    final updatedItem = widget.item.copyWith(
-      title: newTitle ?? widget.item.title,
-      category: category,
-      status: '已处理',
-    );
-
-    await _inboxService.updateInboxItem(updatedItem);
-
-    if (mounted) {
-      widget.onUpdate();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.lang == 'cn' ? '整理完成！' : 'Organized successfully!')),
-      );
-    }
+    // Deprecated: All classification goes through _organizeItem() -> _inboxService.classifyItem()
+    await _organizeItem();
   }
 
   @override
   Widget build(BuildContext context) {
+    // Current AI message shows either progress or last result
+    String currentAiMessage;
+    if (_isProcessing) {
+      currentAiMessage = widget.lang == 'cn' ? '正在整理文档...' : 'Organizing document...';
+    } else if (_classificationHistory.isNotEmpty) {
+      final lastMsg = _classificationHistory.last;
+      currentAiMessage = lastMsg['ai']!;
+    } else {
+      currentAiMessage = widget.lang == 'cn' ? '正在查看文档' : 'Viewing the document';
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFFFE4E9),
       resizeToAvoidBottomInset: false,
@@ -231,8 +222,9 @@ $content
             ),
             AIReplyBar(
               lang: widget.lang,
-              lastAiMessage: widget.lang == 'cn' ? '正在查看文档' : 'Viewing the document',
+              lastAiMessage: currentAiMessage,
               onPullDown: () {},
+              historyMessages: _classificationHistory.isEmpty ? null : _classificationHistory,
             ),
             Expanded(
               child: _isProcessing
@@ -260,8 +252,22 @@ $content
                                   spacing: 16,
                                   runSpacing: 8,
                                   children: [
-                                    _buildLabelValue('来源', widget.item.source, const Color(0xFFFF69B4), const Color(0xFFFFE4E9)),
-                                    _buildLabelValue('分类', widget.item.category, Colors.blue, const Color(0xFF87CEEB)),
+                                    _buildEditableDropdown(
+                                      '来源',
+                                      _selectedSource,
+                                      const Color(0xFFFF69B4),
+                                      const Color(0xFFFFE4E9),
+                                      _sourceOptions,
+                                      _updateSource,
+                                    ),
+                                    _buildEditableDropdown(
+                                      '分类',
+                                      _selectedCategory,
+                                      Colors.blue,
+                                      const Color(0xFF87CEEB),
+                                      _categoryOptions,
+                                      _updateCategory,
+                                    ),
                                     _buildLabelValue('状态', widget.item.status, Colors.green, _getStatusColor(widget.item.status)),
                                   ],
                                 ),
@@ -296,6 +302,36 @@ $content
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildEditableDropdown(String label, String value, Color labelColor, Color bgColor, List<String> options, ValueChanged<String> onChanged) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label, style: TextStyle(color: labelColor, fontWeight: FontWeight.bold)),
+        const SizedBox(width: 4),
+        Container(
+          decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(3)),
+          child: DropdownButton<String>(
+            value: options.contains(value) ? value : null,
+            underline: const SizedBox.shrink(),
+            iconEnabledColor: Colors.grey[600],
+            dropdownColor: Colors.white,
+            isDense: true,
+            items: options.map((opt) {
+              return DropdownMenuItem<String>(
+                value: opt,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  child: Text(opt, style: const TextStyle(fontSize: 12)),
+                ),
+              );
+            }).toList(),
+            onChanged: (v) { if (v != null) onChanged(v); },
+          ),
+        ),
+      ],
     );
   }
 

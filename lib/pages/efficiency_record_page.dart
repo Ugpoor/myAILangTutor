@@ -5,18 +5,19 @@ import '../components/app_title_bar.dart';
 import '../components/ai_reply_bar.dart';
 import '../components/submenu_tabs.dart';
 import '../components/input_area.dart';
+import '../components/chat_bubble_list.dart';
 import 'timer_page.dart';
 import 'efficiency_record_add_page.dart';
 
 class EfficiencyRecordPage extends StatefulWidget {
   final String lang;
-  final String lastAiMessage;
+  final List<ChatMessage>? messages;
   final VoidCallback? onHomeTap;
 
   const EfficiencyRecordPage({
     super.key,
     this.lang = 'cn',
-    required this.lastAiMessage,
+    this.messages,
     this.onHomeTap,
   });
 
@@ -190,7 +191,7 @@ class _EfficiencyRecordPageState extends State<EfficiencyRecordPage> {
             ),
             AIReplyBar(
               lang: widget.lang,
-              lastAiMessage: widget.lastAiMessage,
+              messages: widget.messages,
               onPullDown: () {},
             ),
             Expanded(

@@ -1,4 +1,3 @@
-
 import 'package:sqflite/sqflite.dart';
 
 class ErrorRecord {
@@ -11,6 +10,18 @@ class ErrorRecord {
   final bool reviewed;
   final String lang;
   final String? contentPath;
+  final String? errorId;
+  final String? errorType;
+  final String? exerciseTag;
+  final String? knowledgeTag;
+  final String progress;
+  final String? question;
+  final String? wrongAnswer;
+  final String? wrongWhere;
+  final String? whyWrong;
+  final String? howPrevent;
+  final String? notes;
+  final String? images;
 
   ErrorRecord({
     this.id,
@@ -22,6 +33,18 @@ class ErrorRecord {
     this.reviewed = false,
     this.lang = 'cn',
     this.contentPath,
+    this.errorId,
+    this.errorType,
+    this.exerciseTag,
+    this.knowledgeTag,
+    this.progress = '待订正',
+    this.question,
+    this.wrongAnswer,
+    this.wrongWhere,
+    this.whyWrong,
+    this.howPrevent,
+    this.notes,
+    this.images,
   });
 
   Map<String, dynamic> toMap() {
@@ -35,6 +58,18 @@ class ErrorRecord {
       'reviewed': reviewed ? 1 : 0,
       'lang': lang,
       'content_path': contentPath,
+      'error_id': errorId,
+      'error_type': errorType,
+      'exercise_tag': exerciseTag,
+      'knowledge_tag': knowledgeTag,
+      'progress': progress,
+      'question': question,
+      'wrong_answer': wrongAnswer,
+      'wrong_where': wrongWhere,
+      'why_wrong': whyWrong,
+      'how_prevent': howPrevent,
+      'notes': notes,
+      'images': images,
     };
   }
 
@@ -45,12 +80,24 @@ class ErrorRecord {
       correctAnswer: map['correct_answer'] as String?,
       subject: map['subject'] as String?,
       lesson: map['lesson'] as String?,
-      createdAt: map['created_at'] != null 
-          ? DateTime.parse(map['created_at'] as String) 
+      createdAt: map['created_at'] != null
+          ? DateTime.parse(map['created_at'] as String)
           : null,
       reviewed: (map['reviewed'] as int?) == 1,
       lang: map['lang'] as String? ?? 'cn',
       contentPath: map['content_path'] as String?,
+      errorId: map['error_id'] as String?,
+      errorType: map['error_type'] as String?,
+      exerciseTag: map['exercise_tag'] as String?,
+      knowledgeTag: map['knowledge_tag'] as String?,
+      progress: map['progress'] as String? ?? '待订正',
+      question: map['question'] as String?,
+      wrongAnswer: map['wrong_answer'] as String?,
+      wrongWhere: map['wrong_where'] as String?,
+      whyWrong: map['why_wrong'] as String?,
+      howPrevent: map['how_prevent'] as String?,
+      notes: map['notes'] as String?,
+      images: map['images'] as String?,
     );
   }
 
@@ -64,6 +111,18 @@ class ErrorRecord {
     bool? reviewed,
     String? lang,
     String? contentPath,
+    String? errorId,
+    String? errorType,
+    String? exerciseTag,
+    String? knowledgeTag,
+    String? progress,
+    String? question,
+    String? wrongAnswer,
+    String? wrongWhere,
+    String? whyWrong,
+    String? howPrevent,
+    String? notes,
+    String? images,
   }) {
     return ErrorRecord(
       id: id ?? this.id,
@@ -75,6 +134,18 @@ class ErrorRecord {
       reviewed: reviewed ?? this.reviewed,
       lang: lang ?? this.lang,
       contentPath: contentPath ?? this.contentPath,
+      errorId: errorId ?? this.errorId,
+      errorType: errorType ?? this.errorType,
+      exerciseTag: exerciseTag ?? this.exerciseTag,
+      knowledgeTag: knowledgeTag ?? this.knowledgeTag,
+      progress: progress ?? this.progress,
+      question: question ?? this.question,
+      wrongAnswer: wrongAnswer ?? this.wrongAnswer,
+      wrongWhere: wrongWhere ?? this.wrongWhere,
+      whyWrong: whyWrong ?? this.whyWrong,
+      howPrevent: howPrevent ?? this.howPrevent,
+      notes: notes ?? this.notes,
+      images: images ?? this.images,
     );
   }
 }
@@ -88,7 +159,14 @@ class ErrorRecordDao {
     return await db.insert('error_records', record.toMap());
   }
 
-  Future<List<ErrorRecord>> getAll({String? lang, bool? reviewed}) async {
+  Future<List<ErrorRecord>> getAll({
+    String? lang,
+    bool? reviewed,
+    String? errorType,
+    String? knowledgeTag,
+    String? progress,
+    String? keyword,
+  }) async {
     List<String> conditions = [];
     List<dynamic> args = [];
 
@@ -99,6 +177,24 @@ class ErrorRecordDao {
     if (reviewed != null) {
       conditions.add('reviewed = ?');
       args.add(reviewed ? 1 : 0);
+    }
+    if (errorType != null) {
+      conditions.add('error_type = ?');
+      args.add(errorType);
+    }
+    if (knowledgeTag != null) {
+      conditions.add('knowledge_tag LIKE ?');
+      args.add('%$knowledgeTag%');
+    }
+    if (progress != null) {
+      conditions.add('progress = ?');
+      args.add(progress);
+    }
+    if (keyword != null && keyword.isNotEmpty) {
+      conditions.add('(content LIKE ? OR question LIKE ? OR error_id LIKE ?)');
+      args.add('%$keyword%');
+      args.add('%$keyword%');
+      args.add('%$keyword%');
     }
 
     final maps = await db.query(
@@ -154,5 +250,17 @@ class ErrorRecordDao {
       args.isNotEmpty ? args : null,
     );
     return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  Future<int> nextErrorIdNumber() async {
+    final result = await db.rawQuery(
+      "SELECT error_id FROM error_records WHERE error_id LIKE 'T%' ORDER BY id DESC LIMIT 1",
+    );
+    if (result.isEmpty) return 1;
+    final lastId = result.first['error_id'] as String?;
+    if (lastId == null) return 1;
+    final match = RegExp(r'T(\d+)').firstMatch(lastId);
+    if (match != null) return int.parse(match.group(1)!) + 1;
+    return 1;
   }
 }

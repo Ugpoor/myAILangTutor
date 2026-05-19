@@ -29,7 +29,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   String _selectedTab = '收件箱';
   String _lang = 'cn';
   bool _isLoading = false;
-  String _lastAiMessage = '你好，我是你的语文学习助手！';
   String? _currentPage;
   final List<String> _pageHistory = [];
 
@@ -41,36 +40,26 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   bool _showClipboardDialog = false;
   String? _detectedClipboardContent;
   String _lastClipboardContent = '';
+  
+  final GlobalKey<InboxPageState> inboxPageKey = GlobalKey<InboxPageState>();
 
   @override
   void initState() {
     super.initState();
-    print('[MainScreen] ========== initState 开始 ==========');
     WidgetsBinding.instance.addObserver(this);
-    print('[MainScreen] 添加生命周期监听器');
     _initLlmService();
-    print('[MainScreen] 初始化 LLM 服务');
     _checkClipboard();
-    print('[MainScreen] initState 完成');
   }
 
   @override
   void dispose() {
-    print('[MainScreen] ========== dispose 开始 ==========');
     WidgetsBinding.instance.removeObserver(this);
-    print('[MainScreen] 移除生命周期监听器');
     super.dispose();
-    print('[MainScreen] dispose 完成');
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    print('[MainScreen] ========== 生命周期状态变化 ==========');
-    print('[MainScreen] 当前状态: $state');
-
     if (state == AppLifecycleState.resumed) {
-      print('[MainScreen] 应用恢复前台，延迟检查剪贴板');
-      // 延迟执行，避免阻塞主线程
       Future.delayed(const Duration(milliseconds: 100), () {
         if (mounted) {
           _checkClipboard();
@@ -95,118 +84,89 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
     setState(() {
       _chatMessages.add(welcomeMessage);
-      _lastAiMessage = welcomeMessage.text;
     });
   }
 
   Future<void> _checkClipboard() async {
-    print('[Clipboard] ========== 开始检查剪贴板 ==========');
-
     try {
-      print('[Clipboard] 读取剪贴板...');
       final clipboardData = await Clipboard.getData('text/plain');
       final clipboardText = clipboardData?.text ?? '';
 
-      print('[Clipboard] 剪贴板文本长度: ${clipboardText.length}');
-
-      // 检查是否为HTTP链接
       final urlRegExp = RegExp(r'https?://[^\s]+');
       final hasUrl = urlRegExp.hasMatch(clipboardText);
-      print('[Clipboard] 是否包含URL: $hasUrl');
 
-      // 只要包含HTTP链接就弹窗（每次都弹）
-      if (clipboardText.isNotEmpty && hasUrl) {
-        print('[Clipboard] ✅ 检测到HTTP链接，显示对话框');
+      // 只在有新内容时才提示（避免重复提示）
+      if (clipboardText.isNotEmpty &&
+          hasUrl &&
+          clipboardText != _lastClipboardContent) {
         setState(() {
           _detectedClipboardContent = clipboardText;
         });
-        // 使用 showDialog 确保在任何页面都能显示
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && _detectedClipboardContent != null) {
             _showClipboardDialogAsDialog();
           }
         });
-        print('[Clipboard] 对话框状态已设置');
-      } else {
-        print('[Clipboard] 不包含URL或内容为空');
       }
     } catch (e, stackTrace) {
-      print('[Clipboard] ❌ 读取剪贴板出错');
-      print('[Clipboard] 错误: $e');
-      print('[Clipboard] 堆栈: $stackTrace');
+      print('[Clipboard] 读取剪贴板出错: $e');
     }
-    print('[Clipboard] ========== 检查完成 ==========');
   }
 
   Future<void> _saveClipboardContent() async {
-    print('[SaveClipboard] ========== 开始保存 ==========');
     if (_detectedClipboardContent == null ||
         _detectedClipboardContent!.isEmpty) {
-      print('[SaveClipboard] 没有内容，直接返回');
       return;
     }
 
     try {
-      print('[SaveClipboard] 关闭对话框');
       setState(() {
         _showClipboardDialog = false;
       });
 
-      // 提取URL
       final urlRegExp = RegExp(r'https?://[^\s]+');
       final match = urlRegExp.firstMatch(_detectedClipboardContent!);
       final url = match?.group(0) ?? '';
 
       if (url.isEmpty) {
-        // 如果没有URL，直接保存文本
-        print('[SaveClipboard] 没有检测到URL，保存文本内容');
-        await _inboxService.saveClipboardContent(_detectedClipboardContent!);
         _handleSaveComplete();
         return;
       }
 
-      // 先创建一个处理中的条目
-      _addLog('[SaveClipboard] 创建处理中条目');
       final pendingItem = await _inboxService.createPendingClipboardItem(url);
 
       if (pendingItem != null) {
-        _addLog('[SaveClipboard] ✅ 创建条目成功，ID: ${pendingItem.id}');
         _lastClipboardContent = _detectedClipboardContent!;
         setState(() {
           _detectedClipboardContent = null;
         });
 
-        // 保存 item ID 到局部变量，确保回调中可以访问
         final itemId = pendingItem.id!;
-        _addLog('[SaveClipboard] 准备打开WebViewExtractor，ItemID: $itemId');
 
-        // 打开WebViewExtractor来加载和保存页面
         if (mounted) {
           final navigator = Navigator.of(context);
           navigator.push(
             MaterialPageRoute(
               builder: (ctx) => WebViewExtractor(
                 url: url,
+                targetDirectory: pendingItem.filePath,
                 onContentExtracted: (result) async {
-                  _addLog('[SaveClipboard] WebViewExtractor回调触发');
-
-                  // 使用 navigator.pop() 而不是 Navigator.of(context).pop()
                   navigator.pop();
 
                   if (result != null) {
-                    _addLog('[SaveClipboard] ✅ WebView提取成功，开始更新条目，ID: $itemId');
                     try {
                       await _inboxService.updateClipboardItemWithContent(
                         itemId,
                         result,
                       );
-                      _addLog('[SaveClipboard] ✅ 条目更新成功');
                     } catch (e) {
-                      _addLog('[SaveClipboard] ❌ 更新条目失败: $e');
+                      print('[SaveClipboard] 更新条目失败: $e');
                     }
                   } else {
-                    _addLog('[SaveClipboard] ❌ WebView提取失败，ID: $itemId');
-                    await _inboxService.updateItemStatus(itemId, 'error');
+                    await _inboxService.updateItemStatusWithCleanup(
+                      itemId,
+                      'error',
+                    );
                   }
 
                   _handleSaveComplete();
@@ -216,7 +176,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           );
         }
       } else {
-        _addLog('[SaveClipboard] ❌ 创建处理中条目失败！');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -226,9 +185,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         }
       }
     } catch (e, stackTrace) {
-      _addLog('[SaveClipboard] ❌ 保存失败');
-      _addLog('[SaveClipboard] 错误: $e');
-      _addLog('[SaveClipboard] 堆栈: $stackTrace');
+      print('[SaveClipboard] 保存失败: $e');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -237,142 +194,29 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           ),
         );
       }
-
-      // 显示日志对话框
-      if (mounted && _lastSaveLog.isNotEmpty) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            showDialog(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: Text(_lang == 'cn' ? '保存日志' : 'Save Log'),
-                content: SingleChildScrollView(
-                  child: Container(
-                    width: 400,
-                    height: 300,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.black,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: SingleChildScrollView(
-                      child: Text(
-                        _lastSaveLog,
-                        style: const TextStyle(
-                          color: Colors.red,
-                          fontFamily: 'Courier New',
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: Text(_lang == 'cn' ? '关闭' : 'Close'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () async {
-                      await Clipboard.setData(
-                        ClipboardData(text: _lastSaveLog),
-                      );
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              _lang == 'cn' ? '日志已复制' : 'Log copied',
-                            ),
-                          ),
-                        );
-                      }
-                      Navigator.of(context).pop();
-                    },
-                    child: Text(_lang == 'cn' ? '复制日志' : 'Copy Log'),
-                  ),
-                ],
-              ),
-            );
-          }
-        });
-      }
-
-      // 清空日志
-      _lastSaveLog = '';
     }
-  }
-
-  // 用于存储日志信息，显示给用户
-  String _lastSaveLog = '';
-
-  void _addLog(String message) {
-    final timestamp = DateTime.now().toLocal().toString().split(' ').last;
-    _lastSaveLog += '[$timestamp] $message\n';
-    print(message);
   }
 
   void _handleSaveComplete() {
-    _addLog('[SaveClipboard] 保存完成');
-
-    // 如果当前在收件箱页面，重新加载数据
     if (_currentPage == 'inbox') {
-      _addLog('[SaveClipboard] 当前在收件箱页面，触发刷新');
-      _navigateToPage('inbox');
+      // Refresh inbox data before navigating
+      inboxPageKey.currentState?.loadItems();
     }
 
     if (mounted) {
-      // 显示日志对话框
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text(_lang == 'cn' ? '保存日志' : 'Save Log'),
-          content: SingleChildScrollView(
-            child: Container(
-              width: 400,
-              height: 300,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.black,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: SingleChildScrollView(
-                child: Text(
-                  _lastSaveLog,
-                  style: const TextStyle(
-                    color: Colors.green,
-                    fontFamily: 'Courier New',
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text(_lang == 'cn' ? '关闭' : 'Close'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: _lastSaveLog));
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(_lang == 'cn' ? '日志已复制' : 'Log copied'),
-                    ),
-                  );
-                }
-                Navigator.of(context).pop();
-              },
-              child: Text(_lang == 'cn' ? '复制日志' : 'Copy Log'),
-            ),
-          ],
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_lang == 'cn' ? '内容已保存到收件箱' : 'Content saved to inbox'),
         ),
       );
     }
 
-    // 清空日志，准备下次使用
-    _lastSaveLog = '';
+    // 清空粘贴板避免重复提示
+    try {
+      Clipboard.setData(const ClipboardData(text: ''));
+    } catch (e) {
+      print('[Clipboard] 清空粘贴板失败: $e');
+    }
   }
 
   void _showClipboardDialogAsDialog() {
@@ -435,7 +279,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   void _toggleChatMode() {
     if (!_isChatMode && _currentPage != null) {
-      // 进入聊天模式前记录当前页面
       _pageHistory.add(_currentPage!);
     }
 
@@ -444,7 +287,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       if (_isChatMode) {
         _currentPage = null;
       } else if (_pageHistory.isNotEmpty) {
-        // 从聊天模式退出，返回上一页
         _currentPage = _pageHistory.removeLast();
       }
     });
@@ -454,14 +296,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     setState(() {
       _lang = _lang == 'cn' ? 'en' : 'cn';
       _selectedTab = _lang == 'cn' ? '收件箱' : 'Inbox';
-
-      if (_chatMessages.isNotEmpty) {
-        _lastAiMessage = _chatMessages.last.isAI
-            ? _chatMessages.last.text
-            : (_lang == 'cn'
-                  ? '你好，我是你的语文学习助手！'
-                  : 'Hello, I\'m your English learning assistant!');
-      }
     });
   }
 
@@ -471,23 +305,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     });
   }
 
-  void _updateLastAiMessage(String message) {
-    setState(() {
-      _lastAiMessage = message;
-    });
-  }
-
-  void _addMessage(ChatMessage message) {
-    setState(() {
-      _chatMessages.add(message);
-      if (message.isAI) {
-        _lastAiMessage = message.text;
-      }
-    });
-  }
-
   void _navigateToPage(String pageName) {
-    // 保存当前页面（如果有）
     if (_currentPage != null) {
       _pageHistory.add(_currentPage!);
     }
@@ -499,12 +317,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   void _goBack() {
     if (_pageHistory.isNotEmpty) {
-      // 返回上一页
       setState(() {
         _currentPage = _pageHistory.removeLast();
       });
     } else {
-      // 没有历史记录，返回首页
       setState(() {
         _currentPage = null;
       });
@@ -533,7 +349,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             isAI: true,
           ),
         );
-        _lastAiMessage = _chatMessages.last.text;
         _isLoading = false;
       });
     } catch (e) {
@@ -557,63 +372,60 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    print(
-      '[MainScreen] build - currentPage: $_currentPage, showClipboardDialog: $_showClipboardDialog',
-    );
-
     if (_currentPage != null) {
       if (_currentPage == 'inbox') {
         return InboxPage(
+          key: inboxPageKey,
           lang: _lang,
-          lastAiMessage: _lastAiMessage,
+          messages: _chatMessages,
           onHomeTap: _goBack,
           onPullDown: _toggleChatMode,
         );
       } else if (_currentPage == 'knowledge') {
         return KnowledgePointPageSimple(
           lang: _lang,
-          lastAiMessage: _lastAiMessage,
+          messages: _chatMessages,
           onHomeTap: _goBack,
           onPullDown: _toggleChatMode,
         );
       } else if (_currentPage == 'error') {
         return ErrorRecordPageSimple(
           lang: _lang,
-          lastAiMessage: _lastAiMessage,
+          messages: _chatMessages,
           onHomeTap: _goBack,
           onPullDown: _toggleChatMode,
         );
       } else if (_currentPage == 'exercise') {
         return ExercisesPageSimple(
           lang: _lang,
-          lastAiMessage: _lastAiMessage,
+          messages: _chatMessages,
           onHomeTap: _goBack,
           onPullDown: _toggleChatMode,
         );
       } else if (_currentPage == 'portfolio') {
         return PortfolioPageSimple(
           lang: _lang,
-          lastAiMessage: _lastAiMessage,
+          messages: _chatMessages,
           onHomeTap: _goBack,
           onPullDown: _toggleChatMode,
         );
       } else if (_currentPage == 'skills') {
         return SkillsPageSimple(
           lang: _lang,
-          lastAiMessage: _lastAiMessage,
+          messages: _chatMessages,
           onHomeTap: _goBack,
           onPullDown: _toggleChatMode,
         );
       } else if (_currentPage == 'efficiency') {
         return EfficiencyRecordPage(
           lang: _lang,
-          lastAiMessage: _lastAiMessage,
+          messages: _chatMessages,
           onHomeTap: _goBack,
         );
       } else if (_currentPage == 'schedule') {
         return SchedulePage(
           lang: _lang,
-          lastAiMessage: _lastAiMessage,
+          messages: _chatMessages,
           onHomeTap: _goBack,
         );
       }
@@ -696,9 +508,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                       );
                     }
                   },
-                  lastAiMessage: _lastAiMessage,
-                  onAiMessageChanged: _updateLastAiMessage,
-                  onMessageAdded: _addMessage,
                   onEfficiencyTap: () => _navigateToPage('efficiency'),
                   onScheduleTap: () => _navigateToPage('schedule'),
                 ),
@@ -768,10 +577,5 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         ),
       ),
     );
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
   }
 }

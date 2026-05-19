@@ -1,16 +1,13 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class LlmService {
   static final LlmService _instance = LlmService._internal();
   factory LlmService() => _instance;
   LlmService._internal();
 
-  // 硬编码配置，避免 .env 文件依赖问题
-  static const String _defaultApiKey = '40188f40-f9a6-479d-adfd-fc06021ad16e';
-  static const String _defaultBaseUrl = 'https://ark.cn-beijing.volces.com/api/v3';
-  static const String _defaultModelName = 'doubao-seed-2-0-mini-260428';
   static const int _defaultMaxTokens = 256000;
   static const double _defaultTemperature = 0.7;
 
@@ -19,10 +16,9 @@ class LlmService {
   String? _modelName;
 
   Future<void> init() async {
-    // 直接使用硬编码配置，不再依赖 .env 文件
-    _apiKey = _defaultApiKey;
-    _baseUrl = _defaultBaseUrl;
-    _modelName = _defaultModelName;
+    _apiKey = dotenv.env['API_KEY'] ?? '';
+    _baseUrl = dotenv.env['BASE_URL'] ?? 'https://ark.cn-beijing.volces.com/api/v3';
+    _modelName = dotenv.env['MODEL_NAME'] ?? 'doubao-seed-2-0-mini-260428';
   }
 
   Future<Map<String, dynamic>> generateResponse(String prompt) async {
@@ -220,7 +216,20 @@ class LlmService {
         }
 
         try {
-          final jsonResult = json.decode(content);
+          // Clean potential markdown code fence from response
+          String cleanContent = content.trim();
+          final markdownRegex = RegExp(r'^```(?:json)?\s*([\s\S]*?)```$');
+          final markdownMatch = markdownRegex.firstMatch(cleanContent);
+          if (markdownMatch != null) {
+            cleanContent = markdownMatch.group(1)!.trim();
+          } else if (cleanContent.startsWith('```')) {
+            // Handle unclosed backticks
+            cleanContent = cleanContent.substring(3).trim();
+            cleanContent = cleanContent.replaceAll(RegExp(r'```$'), '').trim();
+          }
+
+          // Try direct JSON parse first
+          final jsonResult = json.decode(cleanContent);
           return {
             'success': true,
             'response': content,
@@ -228,6 +237,52 @@ class LlmService {
             'raw_response': data,
           };
         } catch (e) {
+          // Fallback: try extracting JSON object with regex
+          final jsonRegex = RegExp(r'\{[\s\S]*"number"\s*:\s*\d+[\s\S]*"category"\s*:\s*"[^"]*"[^\}]*\}');
+          final match = jsonRegex.firstMatch(content);
+          if (match != null) {
+            try {
+              final jsonResult = json.decode(match.group(0)!);
+              debugPrint('[JSONFallback] Extracted via regex: ${jsonResult}');
+              return {
+                'success': true,
+                'response': content,
+                'json': jsonResult,
+                'raw_response': data,
+              };
+            } catch (innerE) {
+              debugPrint('[JSONFallback] Regex extract failed: $innerE');
+            }
+          }
+
+          // Ultimate fallback - try any balanced braces
+          var braceCount = 0;
+          var startIdx = -1;
+          for (var i = 0; i < content.length && startIdx == -1; i++) {
+            if (content[i] == '{') {
+              startIdx = i;
+            }
+            if (startIdx != -1) {
+              if (content[i] == '{') braceCount++;
+              if (content[i] == '}') braceCount--;
+              if (braceCount == 0) {
+                try {
+                  final jsonResult = json.decode(content.substring(startIdx, i + 1));
+                  debugPrint('[JSONFallback] Extracted via brace matching: ${jsonResult}');
+                  return {
+                    'success': true,
+                    'response': content,
+                    'json': jsonResult,
+                    'raw_response': data,
+                  };
+                } catch (innerE) {
+                  debugPrint('[JSONFallback] Brace match failed: $innerE');
+                }
+                break;
+              }
+            }
+          }
+
           return {
             'success': true,
             'response': content,

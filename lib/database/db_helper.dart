@@ -17,7 +17,7 @@ class DatabaseHelper {
   Future<Database> _initDatabase() async {
     return await openDatabase(
       'myAILangTutor.db',
-      version: 9,
+      version: 11,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -63,7 +63,19 @@ class DatabaseHelper {
         content_path TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         reviewed INTEGER DEFAULT 0,
-        lang TEXT DEFAULT 'cn'
+        lang TEXT DEFAULT 'cn',
+        error_id TEXT,
+        error_type TEXT,
+        exercise_tag TEXT,
+        knowledge_tag TEXT,
+        progress TEXT DEFAULT '待订正',
+        question TEXT,
+        wrong_answer TEXT,
+        wrong_where TEXT,
+        why_wrong TEXT,
+        how_prevent TEXT,
+        notes TEXT,
+        images TEXT
       )
     ''');
 
@@ -75,11 +87,13 @@ class DatabaseHelper {
         category TEXT,
         lesson_unit TEXT,
         error_type TEXT,
+        parent_id INTEGER,
         difficulty INTEGER DEFAULT 1,
         mastered INTEGER DEFAULT 0,
         content_path TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        lang TEXT DEFAULT 'cn'
+        lang TEXT DEFAULT 'cn',
+        FOREIGN KEY (parent_id) REFERENCES knowledge_points(id) ON DELETE SET NULL
       )
     ''');
 
@@ -95,7 +109,15 @@ class DatabaseHelper {
         completed INTEGER DEFAULT 0,
         content_path TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        lang TEXT DEFAULT 'cn'
+        lang TEXT DEFAULT 'cn',
+        exercise_id TEXT,
+        lesson_unit TEXT,
+        knowledge_tag TEXT,
+        progress TEXT DEFAULT '未答题',
+        exam_paper TEXT,
+        answer_sheet TEXT,
+        answer_key TEXT,
+        grading TEXT
       )
     ''');
 
@@ -107,7 +129,12 @@ class DatabaseHelper {
         content_path TEXT,
         thumbnail_path TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        lang TEXT DEFAULT 'cn'
+        lang TEXT DEFAULT 'cn',
+        portfolio_id TEXT,
+        is_original INTEGER DEFAULT 0,
+        knowledge_tag TEXT,
+        lesson_unit TEXT,
+        ai_review TEXT
       )
     ''');
 
@@ -119,7 +146,15 @@ class DatabaseHelper {
         progress REAL DEFAULT 0,
         last_practiced TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        lang TEXT DEFAULT 'cn'
+        lang TEXT DEFAULT 'cn',
+        skill_id TEXT,
+        category TEXT,
+        prerequisite TEXT,
+        prompt_text TEXT,
+        internal_function TEXT,
+        parameters TEXT,
+        return_type TEXT,
+        description TEXT
       )
     ''');
 
@@ -275,6 +310,44 @@ class DatabaseHelper {
         await db.execute('ALTER TABLE exercises ADD COLUMN IF NOT EXISTS content_path TEXT');
       } catch (e) { /* 忽略 */ }
     }
+    if (oldVersion < 10) {
+      // v10: 扩充 error_records, exercises, portfolio_items, skills 表字段
+      const errorRecordColumns = [
+        'error_id TEXT', 'error_type TEXT', 'exercise_tag TEXT',
+        'knowledge_tag TEXT', "progress TEXT DEFAULT '待订正'",
+        'question TEXT', 'wrong_answer TEXT', 'wrong_where TEXT',
+        'why_wrong TEXT', 'how_prevent TEXT', 'notes TEXT', 'images TEXT',
+      ];
+      for (final col in errorRecordColumns) {
+        try { await db.execute('ALTER TABLE error_records ADD COLUMN $col'); } catch (e) { /* 忽略 */ }
+      }
+
+      const exerciseColumns = [
+        'exercise_id TEXT', 'lesson_unit TEXT', 'knowledge_tag TEXT',
+        "progress TEXT DEFAULT '未答题'",
+        'exam_paper TEXT', 'answer_sheet TEXT', 'answer_key TEXT', 'grading TEXT',
+      ];
+      for (final col in exerciseColumns) {
+        try { await db.execute('ALTER TABLE exercises ADD COLUMN $col'); } catch (e) { /* 忽略 */ }
+      }
+
+      const portfolioColumns = [
+        'portfolio_id TEXT', 'is_original INTEGER DEFAULT 0',
+        'knowledge_tag TEXT', 'lesson_unit TEXT', 'ai_review TEXT',
+      ];
+      for (final col in portfolioColumns) {
+        try { await db.execute('ALTER TABLE portfolio_items ADD COLUMN $col'); } catch (e) { /* 忽略 */ }
+      }
+
+      const skillColumns = [
+        'skill_id TEXT', 'category TEXT', 'prerequisite TEXT',
+        'prompt_text TEXT', 'internal_function TEXT', 'parameters TEXT',
+        'return_type TEXT', 'description TEXT',
+      ];
+      for (final col in skillColumns) {
+        try { await db.execute('ALTER TABLE skills ADD COLUMN $col'); } catch (e) { /* 忽略 */ }
+      }
+    }
   }
 
   Future<int> insert(String table, Map<String, dynamic> data) async {
@@ -389,6 +462,19 @@ class DatabaseHelper {
     return null;
   }
 
+  Future<InboxItem?> getInboxItemByFilePath(String filePath) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'inbox_items',
+      where: 'filePath = ?',
+      whereArgs: [filePath],
+    );
+    if (maps.isNotEmpty) {
+      return InboxItem.fromMap(maps.first);
+    }
+    return null;
+  }
+
   Future<List<InboxItem>> getInboxItemsByCategory(String category) async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
@@ -437,6 +523,16 @@ class DatabaseHelper {
       whereArgs: [today],
       orderBy: 'start_time ASC',
       limit: limit,
+    );
+  }
+
+  // Chat messages methods - retrieve AI messages (especially classification records)
+  Future<List<Map<String, dynamic>>> getClassificationMessages() async {
+    final db = await database;
+    return await db.query(
+      'chat_messages',
+      where: 'is_user = 0',
+      orderBy: 'created_at DESC',
     );
   }
 }

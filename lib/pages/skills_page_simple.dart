@@ -1,78 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../components/app_title_bar.dart';
 import '../components/submenu_tabs.dart';
 import '../components/ai_reply_bar.dart';
 import '../components/input_area.dart';
-
-final List<Map<String, dynamic>> _skillPrompts = [
-  {
-    'id': 'S1',
-    'title': '搜集文章',
-    'category': '外部',
-    'description': '搜集指定作者的文章',
-    'prompt': '请帮我搜集一篇老舍的《猫》全文。',
-  },
-  {
-    'id': 'S2',
-    'title': '错题识别',
-    'category': '外部',
-    'description': '将照片中的答卷识别成错题本格式',
-    'prompt': '请帮我将这张答卷照片识别成错题本格式，包括题目、我的答案、正确答案和解析。',
-  },
-  {
-    'id': 'S3',
-    'title': '作文点评',
-    'category': '外部',
-    'description': '点评用户的习作',
-    'prompt': '请帮我点评这篇作文，从内容、结构、语言三个方面给出详细的修改建议。',
-  },
-  {
-    'id': 'S4',
-    'title': '名篇赏析',
-    'category': '外部',
-    'description': '点评名家名篇',
-    'prompt': '请帮我赏析朱自清的《春》，分析其写作手法和艺术特色。',
-  },
-  {
-    'id': 'S5',
-    'title': '练习题批改',
-    'category': '内部',
-    'description': '批改练习题',
-    'prompt': '请帮我批改以下练习题，给出正确答案和详细解析。',
-  },
-  {
-    'id': 'S6',
-    'title': '知识点梳理',
-    'category': '内部',
-    'description': '梳理知识点',
-    'prompt': '请帮我梳理一下小学语文五年级上册第三单元的知识点，包括生字词、重点句型和课文理解要点。',
-  },
-  {
-    'id': 'S7',
-    'title': '练习题生成',
-    'category': '内部',
-    'description': '根据知识点生成练习题',
-    'prompt': '请根据以下知识点生成5道填空题、3道选择题和2道阅读理解题：',
-  },
-  {
-    'id': 'S8',
-    'title': '同义词辨析',
-    'category': '内部',
-    'description': '辨析同义词',
-    'prompt': '请帮我辨析以下几组同义词的区别：美丽/漂亮、高兴/快乐、安静/宁静。',
-  },
-];
+import '../components/chat_bubble_list.dart';
+import '../database/db_helper.dart';
+import '../database/models/skill.dart';
+import 'skill_detail_page.dart';
 
 class SkillsPageSimple extends StatefulWidget {
   final String lang;
-  final String lastAiMessage;
+  final List<ChatMessage>? messages;
   final VoidCallback onHomeTap;
   final VoidCallback? onPullDown;
 
   const SkillsPageSimple({
     super.key,
     this.lang = 'cn',
-    required this.lastAiMessage,
+    this.messages,
     required this.onHomeTap,
     this.onPullDown,
   });
@@ -82,24 +28,42 @@ class SkillsPageSimple extends StatefulWidget {
 }
 
 class _SkillsPageSimpleState extends State<SkillsPageSimple> {
-  List<Map<String, dynamic>> _displaySkills = [];
-  final Set<String> _selectedIds = {};
-  String _currentAiMessage = '';
+  List<Skill> _allSkills = [];
+  List<Skill> _displaySkills = [];
+  final Set<int> _selectedIds = {};
+  String? _filterCategory;
+  late SkillDao _skillDao;
 
   @override
   void initState() {
     super.initState();
-    _currentAiMessage = widget.lastAiMessage;
-    _loadSkills();
+    _initDao();
   }
 
-  void _loadSkills() {
+  Future<void> _initDao() async {
+    final db = await DatabaseHelper().database;
+    _skillDao = SkillDao(db);
+    await _loadSkills();
+  }
+
+  Future<void> _loadSkills() async {
+    final skills = await _skillDao.getAll(lang: widget.lang);
     setState(() {
-      _displaySkills = List.from(_skillPrompts);
+      _allSkills = skills;
+      _applyFilter();
     });
   }
 
+  void _applyFilter() {
+    if (_filterCategory == null) {
+      _displaySkills = List.from(_allSkills);
+    } else {
+      _displaySkills = _allSkills.where((s) => s.category == _filterCategory).toList();
+    }
+  }
+
   void _copyToClipboard(String text) {
+    Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(widget.lang == 'cn' ? '已复制到剪贴板' : 'Copied to clipboard')),
     );
@@ -109,11 +73,25 @@ class _SkillsPageSimpleState extends State<SkillsPageSimple> {
     if (tab == (widget.lang == 'cn' ? '筛选' : 'Filter')) {
       _showFilterDialog();
     } else if (tab == (widget.lang == 'cn' ? '新增' : 'Add')) {
-      _showAddSkillDialog();
+      await _navigateToDetail(null);
     } else if (tab == (widget.lang == 'cn' ? '技能树' : 'Skill Tree')) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.lang == 'cn' ? '技能树功能（待实现）' : 'Skill tree function (to be implemented)')),
-      );
+      _showSkillTreeDialog();
+    }
+  }
+
+  Future<void> _navigateToDetail(Skill? skill) async {
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (context) => SkillDetailPage(
+          lang: widget.lang,
+          skill: skill,
+          skillDao: _skillDao,
+          onHomeTap: widget.onHomeTap,
+        ),
+      ),
+    );
+    if (result == true) {
+      await _loadSkills();
     }
   }
 
@@ -133,7 +111,8 @@ class _SkillsPageSimpleState extends State<SkillsPageSimple> {
                 ElevatedButton(
                   onPressed: () {
                     setState(() {
-                      _displaySkills = _skillPrompts.where((s) => s['category'] == '内部').toList();
+                      _filterCategory = '内部';
+                      _applyFilter();
                     });
                     Navigator.pop(context);
                   },
@@ -143,7 +122,8 @@ class _SkillsPageSimpleState extends State<SkillsPageSimple> {
                 ElevatedButton(
                   onPressed: () {
                     setState(() {
-                      _displaySkills = _skillPrompts.where((s) => s['category'] == '外部').toList();
+                      _filterCategory = '外部';
+                      _applyFilter();
                     });
                     Navigator.pop(context);
                   },
@@ -152,7 +132,10 @@ class _SkillsPageSimpleState extends State<SkillsPageSimple> {
                 const SizedBox(width: 8),
                 ElevatedButton(
                   onPressed: () {
-                    _loadSkills();
+                    setState(() {
+                      _filterCategory = null;
+                      _applyFilter();
+                    });
                     Navigator.pop(context);
                   },
                   child: Text(widget.lang == 'cn' ? '全部' : 'All'),
@@ -165,42 +148,22 @@ class _SkillsPageSimpleState extends State<SkillsPageSimple> {
     );
   }
 
-  void _showAddSkillDialog() {
-    final titleController = TextEditingController();
-    final descriptionController = TextEditingController();
-    final promptController = TextEditingController();
-
+  void _showSkillTreeDialog() {
+    final controller = TextEditingController();
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(widget.lang == 'cn' ? '新增技能' : 'Add Skill'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: titleController,
-                decoration: InputDecoration(
-                  labelText: widget.lang == 'cn' ? '技能名称' : 'Skill Name',
-                ),
+        title: Text(widget.lang == 'cn' ? '技能树' : 'Skill Tree'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                labelText: widget.lang == 'cn' ? '输入技能ID（如S1）' : 'Enter skill ID (e.g. S1)',
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: descriptionController,
-                decoration: InputDecoration(
-                  labelText: widget.lang == 'cn' ? '描述' : 'Description',
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: promptController,
-                maxLines: 3,
-                decoration: InputDecoration(
-                  labelText: widget.lang == 'cn' ? '提示语' : 'Prompt',
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -209,14 +172,97 @@ class _SkillsPageSimpleState extends State<SkillsPageSimple> {
           ),
           ElevatedButton(
             onPressed: () {
-              if (titleController.text.isNotEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(widget.lang == 'cn' ? '技能已添加' : 'Skill added')),
-                );
-              }
               Navigator.pop(context);
+              _showSkillTree(controller.text.trim());
             },
-            child: Text(widget.lang == 'cn' ? '确定' : 'OK'),
+            child: Text(widget.lang == 'cn' ? '查看' : 'View'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showSkillTree(String skillId) async {
+    final target = await _skillDao.getBySkillId(skillId);
+    if (target == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(widget.lang == 'cn' ? '未找到该技能' : 'Skill not found')),
+        );
+      }
+      return;
+    }
+
+    final parent = target.prerequisite != null
+        ? await _skillDao.getBySkillId(target.prerequisite!)
+        : null;
+    final children = await _skillDao.getChildrenOf(skillId);
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('${widget.lang == 'cn' ? '技能树' : 'Skill Tree'}: $skillId'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (parent != null) ...[
+                Text(
+                  '${widget.lang == 'cn' ? '父技能' : 'Parent'}:',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                _buildSkillTreeItem(parent),
+                const Divider(),
+              ],
+              Text(
+                '${widget.lang == 'cn' ? '当前技能' : 'Current'}:',
+                style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFFF69B4)),
+              ),
+              _buildSkillTreeItem(target),
+              const Divider(),
+              if (children.isNotEmpty) ...[
+                Text(
+                  '${widget.lang == 'cn' ? '子技能' : 'Children'}:',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                ...children.map((c) => _buildSkillTreeItem(c)),
+              ] else ...[
+                Text(
+                  widget.lang == 'cn' ? '暂无子技能' : 'No child skills',
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(widget.lang == 'cn' ? '关闭' : 'Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSkillTreeItem(Skill skill) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Text('${skill.skillId} ', style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text(skill.name),
+          const SizedBox(width: 8),
+          Chip(
+            label: Text(skill.category ?? '', style: const TextStyle(fontSize: 10)),
+            backgroundColor: skill.category == '内部'
+                ? const Color(0xFF87CEEB)
+                : const Color(0xFF98FB98),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            labelStyle: const TextStyle(fontSize: 10),
           ),
         ],
       ),
@@ -237,7 +283,7 @@ class _SkillsPageSimpleState extends State<SkillsPageSimple> {
             ),
             AIReplyBar(
               lang: widget.lang,
-              lastAiMessage: _currentAiMessage,
+              messages: widget.messages ?? [],
               onPullDown: widget.onPullDown ?? () {},
             ),
             Expanded(
@@ -278,93 +324,133 @@ class _SkillsPageSimpleState extends State<SkillsPageSimple> {
     );
   }
 
-  Widget _buildSkillItem(Map<String, dynamic> skill) {
-    final isSelected = _selectedIds.contains(skill['id']);
-    final categoryColor = skill['category'] == '内部' ? const Color(0xFF87CEEB) : const Color(0xFF98FB98);
+  Widget _buildSkillItem(Skill skill) {
+    final isSelected = _selectedIds.contains(skill.id);
+    final categoryColor = skill.category == '内部' ? const Color(0xFF87CEEB) : const Color(0xFF98FB98);
+    final isExternal = skill.category == '外部';
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Checkbox(
-                  value: isSelected,
-                  onChanged: (value) {
-                    setState(() {
-                      if (value == true) {
-                        _selectedIds.add(skill['id']);
-                      } else {
-                        _selectedIds.remove(skill['id']);
-                      }
-                    });
-                  },
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
+      child: InkWell(
+        onTap: () => _navigateToDetail(skill),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Checkbox(
+                    value: isSelected,
+                    onChanged: (value) {
+                      setState(() {
+                        if (value == true) {
+                          _selectedIds.add(skill.id!);
+                        } else {
+                          _selectedIds.remove(skill.id!);
+                        }
+                      });
+                    },
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              '${skill.skillId ?? ""} ',
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            Expanded(child: Text(skill.name)),
+                            const SizedBox(width: 8),
+                            if (skill.category != null)
+                              Chip(
+                                label: Text(skill.category!, style: const TextStyle(fontSize: 10)),
+                                backgroundColor: categoryColor,
+                                padding: const EdgeInsets.symmetric(horizontal: 6),
+                                labelStyle: const TextStyle(fontSize: 10),
+                              ),
+                            if (skill.prerequisite != null) ...[
+                              const SizedBox(width: 4),
+                              Chip(
+                                label: Text('前置:${skill.prerequisite}', style: const TextStyle(fontSize: 9)),
+                                backgroundColor: Colors.orange[100],
+                                padding: const EdgeInsets.symmetric(horizontal: 4),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        if (skill.description != null && skill.description!.isNotEmpty)
                           Text(
-                            '${skill['id']} ',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
+                            skill.description!,
+                            style: TextStyle(color: Colors.grey[600], fontSize: 12),
                           ),
-                          Text(skill['title']),
-                          const SizedBox(width: 8),
-                          Chip(
-                            label: Text(skill['category']),
-                            backgroundColor: categoryColor,
-                            labelStyle: const TextStyle(fontSize: 10),
-                            padding: const EdgeInsets.symmetric(horizontal: 6),
-                          ),
-                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              if (isExternal && skill.promptText != null && skill.promptText!.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F5F5),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.grey[200]!),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          skill.promptText!,
+                          style: const TextStyle(fontSize: 13, fontStyle: FontStyle.italic),
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        skill['description'],
-                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: () => _copyToClipboard(skill.promptText!),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF651FFF),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        ),
+                        child: Text(
+                          widget.lang == 'cn' ? '复制' : 'Copy',
+                          style: const TextStyle(fontSize: 12, color: Colors.white),
+                        ),
                       ),
                     ],
                   ),
                 ),
               ],
-            ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF5F5F5),
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: Colors.grey[200]!),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      skill['prompt'],
-                      style: const TextStyle(fontSize: 13, fontStyle: FontStyle.italic),
-                    ),
+              if (!isExternal && skill.internalFunction != null) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[50],
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.blue[200]!),
                   ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: () => _copyToClipboard(skill['prompt']),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF651FFF),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    ),
-                    child: Text(
-                      widget.lang == 'cn' ? '复制' : 'Copy',
-                      style: const TextStyle(fontSize: 12),
-                    ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.settings, size: 16, color: Colors.blue),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${widget.lang == 'cn' ? "内部函数" : "Internal"}: ${skill.internalFunction}',
+                        style: TextStyle(fontSize: 13, color: Colors.blue[700]),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
-          ],
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );
