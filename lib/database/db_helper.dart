@@ -17,7 +17,7 @@ class DatabaseHelper {
   Future<Database> _initDatabase() async {
     return await openDatabase(
       'myAILangTutor.db',
-      version: 11,
+      version: 12,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -348,6 +348,22 @@ class DatabaseHelper {
         try { await db.execute('ALTER TABLE skills ADD COLUMN $col'); } catch (e) { /* 忽略 */ }
       }
     }
+    if (oldVersion < 12) {
+      // v12: exercises 表添加 source 字段（来源标签：收件箱/知识点/错误本/作品集）
+      try {
+        await db.execute("ALTER TABLE exercises ADD COLUMN source TEXT DEFAULT ''");
+      } catch (e) { /* 列已存在，忽略 */ }
+    }
+    if (oldVersion < 13) {
+      // v13: knowledge_points 表添加 cid 和 father_id 字段
+      try {
+        await db.execute("ALTER TABLE knowledge_points ADD COLUMN cid TEXT DEFAULT ''");
+      } catch (e) { /* 列已存在，忽略 */ }
+      
+      try {
+        await db.execute("ALTER TABLE knowledge_points ADD COLUMN father_id INTEGER DEFAULT NULL");
+      } catch (e) { /* 列已存在，忽略 */ }
+    }
   }
 
   Future<int> insert(String table, Map<String, dynamic> data) async {
@@ -402,6 +418,103 @@ class DatabaseHelper {
     final db = await database;
     await db.close();
     _database = null;
+  }
+
+  // ========== Exercises 清理方法 ==========
+
+  /// 删除包含数学内容的习题
+  Future<int> deleteMathExercises() async {
+    final db = await database;
+    
+    // 数学相关关键词（中文 + 英文）
+    const mathKeywords = [
+      '分数', '计算', '运算', '加减', '乘除', '方程', '几何', '代数',
+      '函数', '三角', '面积', '周长', '整数', '小数', '百分', 'π',
+      '勾股', '二次', 'x²', '√', 'math', 'calculate', '算术', '算数',
+      '3/4', '1/4', '2/5', '5/6', '1/2', '7/8',
+    ];
+
+    int deletedCount = 0;
+    
+    for (final keyword in mathKeywords) {
+      // 在 question、exam_paper、knowledge_tag 字段中搜索
+      final result = await db.rawDelete(
+        "DELETE FROM exercises WHERE "
+        "(question LIKE ? OR exam_paper LIKE ? OR knowledge_tag LIKE ?)",
+        ['%$keyword%', '%$keyword%', '%$keyword%'],
+      );
+      deletedCount += result;
+    }
+
+    return deletedCount;
+  }
+
+  /// 删除重复的习题（保留 id 最小的那条）
+  Future<int> deduplicateExercises() async {
+    final db = await database;
+    
+    // 通过 exercise_id 或 exam_paper 内容判断重复
+    // 如果 exercise_id 相同，或 exam_paper 完全相同，则视为重复
+    int deletedCount = 0;
+
+    // 1. 基于 exercise_id 去重
+    final duplicateById = await db.rawQuery(
+      """
+      SELECT MIN(id) as keep_id, GROUP_CONCAT(id) as all_ids
+      FROM exercises
+      WHERE exercise_id IS NOT NULL AND exercise_id != ''
+      GROUP BY exercise_id
+      HAVING COUNT(*) > 1
+      """,
+    );
+
+    for (final row in duplicateById) {
+      final keepId = row['keep_id'] as int?;
+      final allIdsStr = row['all_ids'] as String?;
+      if (keepId != null && allIdsStr != null) {
+        final ids = (allIdsStr as String).split(',').map(int.parse).where((id) => id != keepId).toList();
+        for (final id in ids) {
+          await db.delete('exercises', where: 'id = ?', whereArgs: [id]);
+          deletedCount++;
+        }
+      }
+    }
+
+    // 2. 基于 exam_paper 内容去重（完全相同的内容）
+    final duplicateByContent = await db.rawQuery(
+      """
+      SELECT MIN(id) as keep_id, GROUP_CONCAT(id) as all_ids
+      FROM exercises
+      WHERE exam_paper IS NOT NULL AND exam_paper != ''
+      GROUP BY exam_paper
+      HAVING COUNT(*) > 1
+      """,
+    );
+
+    for (final row in duplicateByContent) {
+      final keepId = row['keep_id'] as int?;
+      final allIdsStr = row['all_ids'] as String?;
+      if (keepId != null && allIdsStr != null) {
+        final ids = (allIdsStr as String).split(',').map(int.parse).where((id) => id != keepId).toList();
+        for (final id in ids) {
+          await db.delete('exercises', where: 'id = ?', whereArgs: [id]);
+          deletedCount++;
+        }
+      }
+    }
+
+    return deletedCount;
+  }
+
+  /// 一键清理：删除数学题 + 去重
+  Future<Map<String, int>> cleanExercises() async {
+    final mathDeleted = await deleteMathExercises();
+    final dupDeleted = await deduplicateExercises();
+    
+    return {
+      'math_deleted': mathDeleted,
+      'duplicate_deleted': dupDeleted,
+    };
   }
 
   // Inbox items methods

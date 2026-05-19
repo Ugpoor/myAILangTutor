@@ -1,24 +1,24 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import '../components/app_title_bar.dart';
 import '../components/submenu_tabs.dart';
 import '../components/ai_reply_bar.dart';
 import '../components/input_area.dart';
-import '../components/chat_bubble_list.dart';
 import '../database/db_helper.dart';
 import '../database/models/error_record.dart';
 import '../database/models/exercise.dart';
+import '../services/llm_service.dart';
 import 'error_detail_page.dart';
 
 class ErrorRecordPageSimple extends StatefulWidget {
   final String lang;
-  final List<ChatMessage>? messages;
   final VoidCallback onHomeTap;
   final VoidCallback? onPullDown;
 
   const ErrorRecordPageSimple({
     super.key,
     this.lang = 'cn',
-    this.messages,
     required this.onHomeTap,
     this.onPullDown,
   });
@@ -34,6 +34,7 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
   String? _filterErrorType;
   String? _filterKnowledgeTag;
   String? _filterProgress;
+  
   String _errorTypeOutline = '''1. 审题
   1.1 关键词忽略
   1.2 会错题意
@@ -46,6 +47,9 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
 4. 表达
   4.1 语句不通
   4.2 用词不当''';
+  
+  // ===== 视图排序相关 =====
+  int _viewMode = 0;
   late ErrorRecordDao _errorRecordDao;
 
   @override
@@ -69,7 +73,7 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
   }
 
   void _applyFilter() {
-    _displayRecords = _allRecords.where((r) {
+    List<ErrorRecord> filtered = _allRecords.where((r) {
       if (_filterErrorType != null && r.errorType != _filterErrorType) return false;
       if (_filterKnowledgeTag != null &&
           (r.knowledgeTag == null || !r.knowledgeTag!.contains(_filterKnowledgeTag!))) {
@@ -78,21 +82,70 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
       if (_filterProgress != null && r.progress != _filterProgress) return false;
       return true;
     }).toList();
+    
+    // Apply view mode sorting after filter
+    switch (_viewMode) {
+      case 0: // 按知识点大纲排列（errorType→knowledgeTag分组）
+        filtered.sort((a, b) {
+          final typeA = a.errorType ?? '';
+          final typeB = b.errorType ?? '';
+          if (typeA != typeB) return typeA.compareTo(typeB);
+          final tagA = a.knowledgeTag ?? '';
+          final tagB = b.knowledgeTag ?? '';
+          return tagA.compareTo(tagB);
+        });
+        break;
+      case 1: // 按习题标号排列（exerciseTag升序）
+        filtered.sort((a, b) {
+          final tagA = a.exerciseTag ?? '';
+          final tagB = b.exerciseTag ?? '';
+          if (tagA.isEmpty && tagB.isEmpty) {
+            return (a.id ?? 0).compareTo(b.id ?? 0);
+          }
+          if (tagA.isEmpty) return 1;
+          if (tagB.isEmpty) return -1;
+          final numA = _extractNumberFromTag(tagA);
+          final numB = _extractNumberFromTag(tagB);
+          if (numA != null && numB != null) return numA.compareTo(numB);
+          return tagA.compareTo(tagB);
+        });
+        break;
+      default: // 按错题标号排列（errorId升序）
+        filtered.sort((a, b) {
+          final idA = a.errorId ?? '';
+          final idB = b.errorId ?? '';
+          if (idA.isEmpty && idB.isEmpty) {
+            return (a.id ?? 0).compareTo(b.id ?? 0);
+          }
+          if (idA.isEmpty) return 1;
+          if (idB.isEmpty) return -1;
+          final numA = _extractNumberFromTag(idA);
+          final numB = _extractNumberFromTag(idB);
+          if (numA != null && numB != null) return numA.compareTo(numB);
+          return idA.compareTo(idB);
+        });
+    }
+    _displayRecords = filtered;
+  }
+
+  int? _extractNumberFromTag(String tag) {
+    final match = RegExp(r'(\d+)').firstMatch(tag);
+    return match != null ? int.tryParse(match.group(1)!) : null;
   }
 
   Future<void> _handleTabSelected(String tab) async {
     if (tab == (widget.lang == 'cn' ? '筛选' : 'Filter')) {
       _showFilterDialog();
     } else if (tab == (widget.lang == 'cn' ? '视图' : 'View')) {
-      // 视图切换暂不实现
+      _showViewDialog();
     } else if (tab == (widget.lang == 'cn' ? '练习' : 'Practice')) {
-      _generateExercisesForSelected();
+      await _generateExercisesForSelectedWithLLM();
     } else if (tab == (widget.lang == 'cn' ? '错类' : 'Error Type')) {
       _showOutlineDialog();
     }
   }
 
-  Future<void> _navigateToDetail(ErrorRecord record) async {
+  Future<void> navigateToDetail(ErrorRecord record) async {
     final result = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (context) => ErrorDetailPage(
@@ -108,7 +161,44 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
     }
   }
 
-  Future<void> _generateExercisesForSelected() async {
+  void _showViewDialog() {
+    final labels = widget.lang == 'cn' 
+        ? ['知识点大纲', '习题标号', '错题标号']
+        : ['Knowledge Outline', 'Exercise No.', 'Error No.'];
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(widget.lang == 'cn' ? '错误本视图' : 'Error Record View'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.lang == 'cn' ? '请选择排列方式：' : 'Select sorting mode:'),
+            const SizedBox(height: 8),
+            ...labels.asMap().entries.map((entry) {
+              return RadioListTile<int>(
+                title: Text(entry.value),
+                value: entry.key,
+                groupValue: _viewMode,
+                onChanged: (value) {
+                  setState(() {
+                    _viewMode = value!;
+                  });
+                  Navigator.pop(context);
+                },
+              );
+            }),
+          ],
+        ),
+      ),
+    ).then((_) {
+      _applyFilter();
+    });
+  }
+
+  /// 根据选中错误记录，使用LLM生成练习题
+  Future<void> _generateExercisesForSelectedWithLLM() async {
     if (_selectedIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(widget.lang == 'cn' ? '请先选择错误条目' : 'Select error records first')),
@@ -118,28 +208,108 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
 
     final db = await DatabaseHelper().database;
     final exerciseDao = ExerciseDao(db);
-    final nextNum = await exerciseDao.nextExerciseIdNumber();
+    final llmService = LlmService();
+    await llmService.init();
 
     final selectedRecords = _allRecords.where((r) => _selectedIds.contains(r.id)).toList();
-    final errorContent = selectedRecords.map((r) => r.question ?? r.content).join('\n');
+    final errorContent = selectedRecords.map((r) {
+      return '${r.errorId} ${r.question ?? r.content}\n错因：${r.whyWrong ?? ''}\n预防：${r.howPrevent ?? ''}';
+    }).join('\n\n');
 
-    await exerciseDao.insert(Exercise(
-      question: widget.lang == 'cn' ? '错题专项练习' : 'Error-focused Practice',
-      exerciseId: 'T$nextNum',
-      knowledgeTag: selectedRecords.first.knowledgeTag,
-      progress: '未答题',
-      category: '错题',
-      examPaper: errorContent,
-      createdAt: DateTime.now(),
-      lang: widget.lang,
-    ));
+    try {
+      final prompt = '''你是一位教育专家。请根据以下错误记录内容，出一组针对性的练习题来帮助学生巩固薄弱知识点。
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.lang == 'cn' ? '练习题已添加到习题集' : 'Exercise added')),
-      );
+错误案例分析：
+$errorContent
+
+要求：
+1. 出填空题2题（针对薄弱知识点）
+2. 出选择题5题（每题A/B/C/D四个选项）
+3. 题目要针对错误原因设计，帮助学生避免同类错误
+4. 只出与当前错误记录相关的语文题目，不要涉及数学等其他学科
+
+请以如下JSON数组格式回复（只回复JSON，不要其他文字）：
+[
+  {
+    "type": "fill_blank" 或 "multiple_choice",
+    "question": "题目内容",
+    "options": null 或 ["A. 选项1", "B. 选项2", "C. 选项3", "D. 选项4"],
+    "correctAnswer": "答案",
+    "explanation": "解析"
+  },
+  ...
+]
+
+注意：
+- question 字段是完整的题目描述
+- options 字段对于选择题是 A/B/C/D 选项数组，填空题为 null
+- correctAnswer 是简短的答案
+- explanation 是详细的解题思路
+- 请严格按照格式输出7道题目的JSON数组
+''';
+
+      final response = await llmService.generateResponse(prompt);
+      
+      if (response['success'] != true || response['response'] == null) {
+        throw Exception('LLM响应失败');
+      }
+
+      final jsonResponse = response['response'] as String;
+      
+      final jsonMatch = RegExp(r'\[[\s\S]*\]').firstMatch(jsonResponse);
+      if (jsonMatch == null) {
+        throw Exception('未找到JSON数组');
+      }
+
+      final List<dynamic> exercisesJson = json.decode(jsonMatch.group(0)!);
+      int createdCount = 0;
+
+      for (final exData in exercisesJson) {
+        final nextNum = await exerciseDao.nextExerciseIdNumber();
+        
+        final exercise = Exercise(
+          question: exData['question'] ?? '',
+          options: exData['options'] != null 
+              ? (exData['options'] as List).join('\n') 
+              : null,
+          correctAnswer: exData['correctAnswer'] as String?,
+          explanation: exData['explanation'] as String?,
+          category: '错题',
+          difficulty: 1,
+          knowledgeTag: selectedRecords.first.knowledgeTag,
+          progress: '未答题',
+          source: '错误本',
+          exerciseId: 'T$nextNum',
+          contentPath: selectedRecords.first.contentPath,
+          createdAt: DateTime.now(),
+          lang: widget.lang,
+        );
+
+        await exerciseDao.insert(exercise);
+        createdCount++;
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(
+            widget.lang == 'cn' 
+                ? '已从${selectedRecords.length}条错误记录生成$createdCount道练习题并添加到习题集'
+                : 'Generated $createdCount exercises from ${selectedRecords.length} error records',
+          )),
+        );
+      }
+    } catch (e) {
+      print('[GenerateExercises] 生成失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(
+            widget.lang == 'cn' ? '生成练习失败: ${e.toString()}' : 'Failed to generate exercises: ${e.toString()}',
+          )),
+        );
+      }
+    } finally {
+      setState(() => _selectedIds.clear());
     }
-    setState(() => _selectedIds.clear());
   }
 
   void _showFilterDialog() {
@@ -278,7 +448,7 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
             ),
             AIReplyBar(
               lang: widget.lang,
-              messages: widget.messages ?? [],
+              topic: 'error',
               onPullDown: widget.onPullDown ?? () {},
             ),
             Expanded(
@@ -305,7 +475,7 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
             ),
             SubmenuTabs(
               tabs: tabs,
-              selectedTab: tabs[0],
+              selectedTab: '',
               onTabSelected: _handleTabSelected,
               onHomeTap: widget.onHomeTap,
               lang: widget.lang,
@@ -326,7 +496,7 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
       child: InkWell(
-        onTap: () => _navigateToDetail(record),
+        onTap: () => navigateToDetail(record),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(

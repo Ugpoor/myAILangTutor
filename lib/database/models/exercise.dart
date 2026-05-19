@@ -20,6 +20,7 @@ class Exercise {
   final String? answerSheet;
   final String? answerKey;
   final String? grading;
+  final String? source;
 
   Exercise({
     this.id,
@@ -41,6 +42,7 @@ class Exercise {
     this.answerSheet,
     this.answerKey,
     this.grading,
+    this.source,
   });
 
   Map<String, dynamic> toMap() {
@@ -64,6 +66,7 @@ class Exercise {
       'answer_sheet': answerSheet,
       'answer_key': answerKey,
       'grading': grading,
+      'source': source,
     };
   }
 
@@ -90,6 +93,7 @@ class Exercise {
       answerSheet: map['answer_sheet'] as String?,
       answerKey: map['answer_key'] as String?,
       grading: map['grading'] as String?,
+      source: map['source'] as String?,
     );
   }
 
@@ -113,6 +117,7 @@ class Exercise {
     String? answerSheet,
     String? answerKey,
     String? grading,
+    String? source,
   }) {
     return Exercise(
       id: id ?? this.id,
@@ -134,6 +139,7 @@ class Exercise {
       answerSheet: answerSheet ?? this.answerSheet,
       answerKey: answerKey ?? this.answerKey,
       grading: grading ?? this.grading,
+      source: source ?? this.source,
     );
   }
 }
@@ -250,6 +256,103 @@ class ExerciseDao {
       args.isNotEmpty ? args : null,
     );
     return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  // ========== 习题集清理方法 ==========
+
+  /// 删除包含数学内容的习题
+  Future<int> deleteMathExercises() async {
+    const mathKeywords = [
+      '分数', '计算', '运算', '加减', '乘除', '方程', '几何', '代数',
+      '函数', '三角', '面积', '周长', '整数', '小数', '百分', 'π',
+      '勾股', '二次', 'x²', '√', 'math', 'calculate', '算术', '算数',
+      '3/4', '1/4', '2/5', '5/6', '1/2', '7/8',
+    ];
+
+    int deletedCount = 0;
+    
+    for (final keyword in mathKeywords) {
+      final result = await db.rawDelete(
+        "DELETE FROM exercises WHERE "
+        "(question LIKE ? OR exam_paper LIKE ? OR knowledge_tag LIKE ?)",
+        ['%$keyword%', '%$keyword%', '%$keyword%'],
+      );
+      deletedCount += result;
+    }
+
+    return deletedCount;
+  }
+
+  /// 删除重复的习题（保留 id 最小的那条）
+  Future<int> deduplicateExercises() async {
+    int deletedCount = 0;
+
+    // 1. 基于 exercise_id 去重
+    final duplicateById = await db.rawQuery(
+      """
+      SELECT MIN(id) as keep_id, GROUP_CONCAT(id) as all_ids
+      FROM exercises
+      WHERE exercise_id IS NOT NULL AND exercise_id != ''
+      GROUP BY exercise_id
+      HAVING COUNT(*) > 1
+      """,
+    );
+
+    for (final row in duplicateById) {
+      final keepId = row['keep_id'] as int?;
+      final allIdsStr = row['all_ids'] as String?;
+      if (keepId != null && allIdsStr != null) {
+        final ids = (allIdsStr as String)
+            .split(',')
+            .map(int.parse)
+            .where((id) => id != keepId)
+            .toList();
+        for (final id in ids) {
+          await db.delete('exercises', where: 'id = ?', whereArgs: [id]);
+          deletedCount++;
+        }
+      }
+    }
+
+    // 2. 基于 exam_paper 内容去重
+    final duplicateByContent = await db.rawQuery(
+      """
+      SELECT MIN(id) as keep_id, GROUP_CONCAT(id) as all_ids
+      FROM exercises
+      WHERE exam_paper IS NOT NULL AND exam_paper != ''
+      GROUP BY exam_paper
+      HAVING COUNT(*) > 1
+      """,
+    );
+
+    for (final row in duplicateByContent) {
+      final keepId = row['keep_id'] as int?;
+      final allIdsStr = row['all_ids'] as String?;
+      if (keepId != null && allIdsStr != null) {
+        final ids = (allIdsStr as String)
+            .split(',')
+            .map(int.parse)
+            .where((id) => id != keepId)
+            .toList();
+        for (final id in ids) {
+          await db.delete('exercises', where: 'id = ?', whereArgs: [id]);
+          deletedCount++;
+        }
+      }
+    }
+
+    return deletedCount;
+  }
+
+  /// 一键清理：删除数学题 + 去重
+  Future<Map<String, int>> cleanExercises() async {
+    final mathDeleted = await deleteMathExercises();
+    final dupDeleted = await deduplicateExercises();
+    
+    return {
+      'math_deleted': mathDeleted,
+      'duplicate_deleted': dupDeleted,
+    };
   }
 
   Future<int> nextExerciseIdNumber() async {

@@ -5,25 +5,27 @@ import 'inbox_detail_page.dart';
 import '../components/app_title_bar.dart';
 import '../components/ai_reply_bar.dart';
 import '../components/submenu_tabs.dart';
-import '../components/input_area.dart';
 import '../components/chat_bubble_list.dart';
 import '../database/db_helper.dart';
+import '../services/llm_service.dart';
 
 // Top-level key for main_screen.dart to trigger inbox refresh after clipboard save
 final GlobalKey<InboxPageState> inboxPageKey = GlobalKey<InboxPageState>();
 
 class InboxPage extends StatefulWidget {
   final String lang;
-  final List<ChatMessage>? messages;
   final VoidCallback onHomeTap;
   final VoidCallback? onPullDown;
+  
+  /// 统一的消息发送回调（委托给 MainScreen）
+  final void Function(ChatMessage)? onSendMessage;
 
   const InboxPage({
     super.key,
     this.lang = 'cn',
-    this.messages,
     required this.onHomeTap,
     this.onPullDown,
+    this.onSendMessage,
   });
 
   @override
@@ -41,6 +43,33 @@ class InboxPageState extends State<InboxPage> {
 
   // Classification history for AIReplyBar display
   List<Map<String, String>> _classificationHistory = [];
+  
+  /// Loading message for processing status
+  String _loadingMessage = '';
+  
+  /// Text input controller for inbox chat at bottom
+  final TextEditingController _inboxChatController = TextEditingController();
+  
+  @override
+  void dispose() {
+    _inboxChatController.dispose();
+    super.dispose();
+  }
+
+  /// Handle chat message from inbox page (delegates to MainScreen)
+  Future<void> _handleInboxChat(String text) async {
+    if (text.isEmpty || widget.onSendMessage == null) return;
+
+    final userMessage = ChatMessage(
+      sender: '用户',
+      text: text,
+      isAI: false,
+      topic: 'inbox',
+    );
+
+    // 委托给 MainScreen 统一处理
+    widget.onSendMessage!(userMessage);
+  }
 
   String _getItemKey(InboxItem item) {
     return item.filePath.isNotEmpty ? item.filePath : item.id.toString();
@@ -330,6 +359,7 @@ class InboxPageState extends State<InboxPage> {
 
     setState(() {
       _isProcessing = true;
+      _loadingMessage = widget.lang == 'cn'
           ? '开始整理 ${itemsToProcess.length} 个条目...'
           : 'Starting to organize ${itemsToProcess.length} items...';
     });
@@ -337,6 +367,7 @@ class InboxPageState extends State<InboxPage> {
     await _inboxService.processItems(itemsToProcess, onProgress: (current, total, reasoning) {
       if (mounted) {
         setState(() {
+          _loadingMessage = widget.lang == 'cn'
               ? '[$current/$total] 正在处理：$reasoning'
               : '[$current/$total] Processing: $reasoning';
         });
@@ -348,8 +379,7 @@ class InboxPageState extends State<InboxPage> {
     setState(() {
       _selectedItemKeys.clear();
       _isProcessing = false;
-          ? '整理完成！'
-          : 'Organization complete!';
+      _loadingMessage = widget.lang == 'cn' ? '整理完成！' : 'Organization complete!';
     });
 
     if (mounted) {
@@ -459,12 +489,6 @@ class InboxPageState extends State<InboxPage> {
             AppTitleBar(
               title: widget.lang == 'cn' ? '我的AI语言学习助理-收件箱' : 'My AI Language Assistant - Inbox',
             ),
-            AIReplyBar(
-              lang: widget.lang,
-              messages: widget.messages ?? [],
-              onPullDown: widget.onPullDown ?? () {},
-              historyMessages: _classificationHistory.isEmpty ? null : _classificationHistory,
-            ),
             Expanded(
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -549,8 +573,49 @@ class InboxPageState extends State<InboxPage> {
               onHomeTap: widget.onHomeTap,
               lang: widget.lang,
             ),
-            InputArea(
-              lang: widget.lang,
+            Container(
+              height: 60,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border(top: BorderSide(color: Colors.grey.shade300)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _inboxChatController,
+                      decoration: InputDecoration(
+                        hintText: widget.lang == 'cn' ? '输入消息...' : 'Type a message...',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      ),
+                      onSubmitted: _handleInboxChat,
+                      maxLines: 1,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () => _handleInboxChat(_inboxChatController.text.trim()),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF6B9D),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.send,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -573,6 +638,7 @@ class InboxPageState extends State<InboxPage> {
                 item: item,
                 lang: widget.lang,
                 onUpdate: loadItems,
+                onHomeTap: widget.onHomeTap,
               ),
             ),
           );

@@ -4,7 +4,6 @@ import '../components/ai_reply_bar.dart';
 import '../components/menu_grid.dart';
 import '../components/efficiency_section.dart';
 import '../components/input_area.dart';
-import '../services/llm_service.dart';
 import '../components/chat_bubble_list.dart';
 
 class HomePage extends StatefulWidget {
@@ -17,9 +16,10 @@ class HomePage extends StatefulWidget {
   final void Function(int)? onMenuItemTap;
   final VoidCallback? onEfficiencyTap;
   final VoidCallback? onScheduleTap;
-  /// 共享的对话消息列表（与 ChatPage 共用）
-  final List<ChatMessage>? messages;
   final VoidCallback? onPullDown;
+  
+  /// 统一的消息发送回调（委托给 MainScreen）
+  final void Function(ChatMessage)? onSendMessage;
 
   const HomePage({
     super.key,
@@ -32,8 +32,8 @@ class HomePage extends StatefulWidget {
     this.onMenuItemTap,
     this.onEfficiencyTap,
     this.onScheduleTap,
-    this.messages,
     this.onPullDown,
+    this.onSendMessage,
   });
 
   @override
@@ -42,47 +42,21 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final TextEditingController _textController = TextEditingController();
-  final LlmService _llmService = LlmService();
-  bool _isLoading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _llmService.init();
-  }
 
   Future<void> _handleSend() async {
     final text = _textController.text.trim();
-    if (text.isEmpty || _isLoading) return;
+    if (text.isEmpty || widget.onSendMessage == null) return;
 
-    setState(() {
-      _isLoading = true;
-    });
+    final userMessage = ChatMessage(
+      sender: '用户',
+      text: text,
+      isAI: false,
+      topic: 'home',
+    );
 
-    try {
-      final userMessage = ChatMessage(
-        sender: '用户',
-        text: text,
-        isAI: false,
-      );
-      widget.messages!.add(userMessage);
-
-      final response = await _llmService.generateResponse(text);
-      
-      final aiMessage = ChatMessage(
-        sender: 'AI',
-        text: response['response'] ?? (widget.lang == 'cn' ? '收到你的消息！' : 'Received your message!'),
-        reasoningText: response['reasoning'] ?? (widget.lang == 'cn' ? '这是AI推理内容。' : 'This is AI reasoning.'),
-        isAI: true,
-      );
-      widget.messages!.add(aiMessage);
-
-      _textController.clear();
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
+    // 委托给 MainScreen 统一处理
+    widget.onSendMessage!(userMessage);
+    _textController.clear();
   }
 
   @override
@@ -97,7 +71,7 @@ class _HomePageState extends State<HomePage> {
             ),
             AIReplyBar(
               lang: widget.lang,
-              messages: widget.messages ?? [],
+              topic: 'home',
               onPullDown: widget.onExpandChat,
               onAvatarTap: widget.onAvatarTap,
             ),

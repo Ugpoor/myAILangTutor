@@ -11,14 +11,12 @@ import 'skill_detail_page.dart';
 
 class SkillsPageSimple extends StatefulWidget {
   final String lang;
-  final List<ChatMessage>? messages;
   final VoidCallback onHomeTap;
   final VoidCallback? onPullDown;
 
   const SkillsPageSimple({
     super.key,
     this.lang = 'cn',
-    this.messages,
     required this.onHomeTap,
     this.onPullDown,
   });
@@ -283,7 +281,7 @@ class _SkillsPageSimpleState extends State<SkillsPageSimple> {
             ),
             AIReplyBar(
               lang: widget.lang,
-              messages: widget.messages ?? [],
+              topic: 'skills',
               onPullDown: widget.onPullDown ?? () {},
             ),
             Expanded(
@@ -310,7 +308,7 @@ class _SkillsPageSimpleState extends State<SkillsPageSimple> {
             ),
             SubmenuTabs(
               tabs: tabs,
-              selectedTab: tabs[0],
+              selectedTab: '',
               onTabSelected: _handleTabSelected,
               onHomeTap: widget.onHomeTap,
               lang: widget.lang,

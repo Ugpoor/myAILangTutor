@@ -107,7 +107,7 @@ class _EfficiencyRecordAddPageState extends State<EfficiencyRecordAddPage> {
             ),
             AIReplyBar(
               lang: widget.lang,
-              lastAiMessage: '',
+              topic: 'efficiency',
               onPullDown: () {},
             ),
             Expanded(

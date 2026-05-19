@@ -8,17 +8,16 @@ import '../database/db_helper.dart';
 import '../database/models/exercise.dart';
 import '../database/models/error_record.dart';
 import '../services/llm_service.dart';
+import '../services/app_service.dart';
 
 class ExercisesPageSimple extends StatefulWidget {
   final String lang;
-  final List<ChatMessage>? messages;
   final VoidCallback onHomeTap;
   final VoidCallback? onPullDown;
 
   const ExercisesPageSimple({
     super.key,
     this.lang = 'cn',
-    this.messages,
     required this.onHomeTap,
     this.onPullDown,
   });
@@ -35,6 +34,7 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
   String? _filterKnowledgeTag;
   bool _isGrading = false;
   bool _isCorrecting = false;
+  bool _isCleaning = false;
   late ExerciseDao _exerciseDao;
   final LlmService _llmService = LlmService();
 
@@ -77,6 +77,67 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
       await _gradeSelected();
     } else if (tab == (widget.lang == 'cn' ? '订正' : 'Correct')) {
       await _correctSelected();
+    } else if (tab == (widget.lang == 'cn' ? '清理' : 'Clean')) {
+      await _cleanExercises();
+    }
+  }
+
+  /// 清理数学题和重复习题
+  Future<void> _cleanExercises() async {
+    // 显示确认对话框
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(widget.lang == 'cn' ? '确认清理' : 'Confirm Clean'),
+        content: Text(widget.lang == 'cn' 
+            ? '此操作将删除所有包含数学关键词的习题以及重复条目。此操作不可撤销！' 
+            : 'This will delete all exercises containing math keywords and duplicates. This cannot be undone!'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(widget.lang == 'cn' ? '取消' : 'Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF69B4)),
+            child: Text(widget.lang == 'cn' ? '确认清理' : 'Confirm'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isCleaning = true);
+
+    try {
+      final result = await _exerciseDao.cleanExercises();
+      
+      await _loadExercises();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              widget.lang == 'cn' 
+                  ? '清理完成：删除数学题 ${result['math_deleted']} 条，重复习题 ${result['duplicate_deleted']} 条'
+                  : 'Clean complete: deleted ${result['math_deleted']} math exercises and ${result['duplicate_deleted']} duplicates',
+            ),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(widget.lang == 'cn' ? '清理失败: $e' : 'Clean failed: $e'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      setState(() => _isCleaning = false);
     }
   }
 
@@ -264,7 +325,7 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
 
   @override
   Widget build(BuildContext context) {
-    final tabs = widget.lang == 'cn' ? ['筛选', '批阅', '订正'] : ['Filter', 'Grade', 'Correct'];
+    final tabs = widget.lang == 'cn' ? ['筛选', '批阅', '订正', '清理'] : ['Filter', 'Grade', 'Correct', 'Clean'];
 
     return Scaffold(
       backgroundColor: const Color(0xFFFFE4E9),
@@ -276,7 +337,7 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
             ),
             AIReplyBar(
               lang: widget.lang,
-              messages: widget.messages ?? [],
+              topic: 'exercise',
               onPullDown: widget.onPullDown ?? () {},
             ),
             Expanded(
@@ -303,7 +364,7 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
             ),
             SubmenuTabs(
               tabs: tabs,
-              selectedTab: tabs[0],
+              selectedTab: '',
               onTabSelected: _handleTabSelected,
               onHomeTap: widget.onHomeTap,
               lang: widget.lang,
@@ -367,6 +428,12 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
                     Wrap(
                       spacing: 6,
                       children: [
+                        if (exercise.source != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(color: const Color(0xFFDDA0DD), borderRadius: BorderRadius.circular(4)),
+                            child: Text('来源: ${exercise.source}', style: const TextStyle(fontSize: 11)),
+                          ),
                         if (exercise.lessonUnit != null)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),

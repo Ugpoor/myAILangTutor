@@ -3,20 +3,19 @@ import '../components/app_title_bar.dart';
 import '../components/submenu_tabs.dart';
 import '../components/ai_reply_bar.dart';
 import '../components/input_area.dart';
+import '../components/chat_bubble_list.dart';
 import '../database/db_helper.dart';
 import '../database/models/portfolio_item.dart';
 import 'portfolio_detail_page.dart';
 
 class PortfolioPageSimple extends StatefulWidget {
   final String lang;
-  final String messages;
   final VoidCallback onHomeTap;
   final VoidCallback? onPullDown;
 
   const PortfolioPageSimple({
     super.key,
     this.lang = 'cn',
-    required this.messages,
     required this.onHomeTap,
     this.onPullDown,
   });
@@ -201,7 +200,7 @@ class _PortfolioPageSimpleState extends State<PortfolioPageSimple> {
             ),
             AIReplyBar(
               lang: widget.lang,
-              messages: widget.messages ?? [],
+              topic: 'portfolio',
               onPullDown: widget.onPullDown ?? () {},
             ),
             Expanded(
@@ -228,7 +227,7 @@ class _PortfolioPageSimpleState extends State<PortfolioPageSimple> {
             ),
             SubmenuTabs(
               tabs: tabs,
-              selectedTab: tabs[0],
+              selectedTab: '',
               onTabSelected: _handleTabSelected,
               onHomeTap: widget.onHomeTap,
               lang: widget.lang,

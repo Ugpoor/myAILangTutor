@@ -360,17 +360,17 @@ class AppService {
       {
         'type': 'function',
         'function': {
-          'name': 'calculate',
-          'description': '进行数学计算',
+          'name': 'query_dictionary',
+          'description': '查询字词释义、成语解释、古诗文翻译',
           'parameters': {
             'type': 'object',
             'properties': {
-              'expression': {
+              'word': {
                 'type': 'string',
-                'description': '数学表达式',
+                'description': '要查询的字词或成语',
               },
             },
-            'required': ['expression'],
+            'required': ['word'],
           },
         },
       },
@@ -591,6 +591,23 @@ $content
       return {
         'success': false,
         'message': '转换失败: $e',
+      };
+    }
+  }
+
+  Future<Map<String, dynamic>> cleanExercises() async {
+    try {
+      final result = await _exerciseDao.cleanExercises();
+      return {
+        'success': true,
+        'math_deleted': result['math_deleted'],
+        'duplicate_deleted': result['duplicate_deleted'],
+        'message': '清理完成：删除数学题 ${result['math_deleted']} 条，重复习题 ${result['duplicate_deleted']} 条',
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'message': '清理失败: $e',
       };
     }
   }

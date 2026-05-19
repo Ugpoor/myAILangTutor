@@ -93,17 +93,17 @@ Future<void> testToolCall() async {
       {
         'type': 'function',
         'function': {
-          'name': 'calculate',
-          'description': '进行数学计算',
+          'name': 'query_dictionary',
+          'description': '查询字词释义、成语解释',
           'parameters': {
             'type': 'object',
             'properties': {
-              'expression': {
+              'word': {
                 'type': 'string',
-                'description': '数学表达式',
+                'description': '要查询的字词或成语',
               },
             },
-            'required': ['expression'],
+            'required': ['word'],
           },
         },
       },
@@ -116,7 +116,7 @@ Future<void> testToolCall() async {
       },
       {
         'role': 'user',
-        'content': '2+2等于几？',
+        'content': '"杯龙明珠"是什么意思？',
       },
     ];
 

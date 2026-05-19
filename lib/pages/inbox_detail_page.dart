@@ -13,12 +13,14 @@ class InboxDetailPage extends StatefulWidget {
   final InboxItem item;
   final String lang;
   final VoidCallback onUpdate;
+  final VoidCallback onHomeTap;
 
   const InboxDetailPage({
     super.key,
     required this.item,
     this.lang = 'cn',
     required this.onUpdate,
+    required this.onHomeTap,
   });
 
   @override
@@ -222,6 +224,7 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
             ),
             AIReplyBar(
               lang: widget.lang,
+              topic: 'inbox',
               lastAiMessage: currentAiMessage,
               onPullDown: () {},
               historyMessages: _classificationHistory.isEmpty ? null : _classificationHistory,
@@ -286,7 +289,7 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
             ),
             SubmenuTabs(
               tabs: widget.lang == 'cn' ? ['返回', '整理', '删除'] : ['Back', 'Organize', 'Delete'],
-              selectedTab: widget.lang == 'cn' ? '返回' : 'Back',
+              selectedTab: '',
               onTabSelected: (tab) async {
                 if (tab == (widget.lang == 'cn' ? '返回' : 'Back')) {
                   Navigator.of(context).pop();
@@ -296,7 +299,7 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
                   await _deleteItem();
                 }
               },
-              onHomeTap: () => Navigator.of(context).pop(),
+              onHomeTap: widget.onHomeTap,
               lang: widget.lang,
             ),
           ],

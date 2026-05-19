@@ -9,13 +9,11 @@ import 'schedule_add_page.dart';
 
 class SchedulePage extends StatefulWidget {
   final String lang;
-  final List<ChatMessage>? messages;
   final VoidCallback? onHomeTap;
 
   SchedulePage({
     super.key,
     this.lang = 'cn',
-    this.messages,
     this.onHomeTap,
   });
 
@@ -544,7 +542,7 @@ class _SchedulePageState extends State<SchedulePage> {
             ),
             AIReplyBar(
               lang: widget.lang,
-              messages: widget.messages,
+              topic: 'schedule',
               onPullDown: () {},
             ),
             Expanded(

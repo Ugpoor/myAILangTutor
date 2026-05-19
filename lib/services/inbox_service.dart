@@ -11,6 +11,7 @@ import '../database/models/error_record.dart';
 import '../database/models/exercise.dart';
 import '../database/models/portfolio_item.dart';
 import '../database/models/knowledge_point.dart';
+import 'package:sqflite/sqflite.dart';
 import '../database/db_helper.dart' show DatabaseHelper;
 import 'llm_service.dart';
 
@@ -843,7 +844,7 @@ $content
 {
   "content": "错题核心描述（综合题干和错误背景）",
   "correctAnswer": "正确答案/标准答案",
-  "subject": "科目（如'语文''数学''英语'）",
+  "subject": "科目（如'语文''文言文'）",
   "lesson": "课程/课次信息",
   "errorType": "错误类型（如'计算错误''概念混淆''审题不清'）",
   "exerciseTag": "关联的习题编号或标签",
@@ -859,18 +860,32 @@ $content
       
       case '习题集':
         return '''【习题集数据结构】
+注意：一篇文档可能包含多道题目，请将所有题目放入 exercises 数组中。
+
 {
-  "question": "习题题目（不含选项）",
-  "options": "选项内容（如有选择题，格式为'A. 选项A\\nB. 选项B\\nC. 选项C\\nD. 选项D'）",
-  "correctAnswer": "正确答案",
-  "explanation": "详细解析/解题思路",
-  "category": "分类（如'代数''几何''文言文'）",
-  "difficulty": 1,
-  "lessonUnit": "课时单元标识",
-  "knowledgeTag": "关联知识点标签",
-  "examPaper": "所属试卷名称或编号",
-  "answerKey": "参考答案"
-}''';
+  "exercises": [
+    {
+      "question": "习题题目（不含选项）",
+      "options": "选项内容（如有选择题，格式为'A. 选项A\\nB. 选项B\\nC. 选项C\\nD. 选项D'）",
+      "correctAnswer": "正确答案",
+      "explanation": "详细解析/解题思路",
+      "category": "分类（如'文言文''古诗词''现代文阅读'）",
+      "difficulty": 1,
+      "lessonUnit": "课时单元标识",
+      "knowledgeTag": "关联知识点标签",
+      "examPaper": "所属试卷名称或编号",
+      "answerKey": "参考答案"
+    },
+    ...
+  ]
+}
+
+对于每道题目：
+- question 字段是完整的题目描述
+- options 字段对于选择题是 A/B/C/D 选项数组，填空题为 null
+- 如果文档只有1道题，exercises 数组只包含1个对象
+- 如果有多个题目，每个题目都要完整提取
+''';
       
       case '作品集':
         return '''【作品集数据结构】
@@ -967,6 +982,7 @@ $content
       contentPath: item.filePath,
       createdAt: item.createdAt,
       lang: 'cn',
+      source: '收件箱',
     );
 
     await dao.insert(exercise);
@@ -1002,8 +1018,8 @@ $content
       content: (data['content'] as String?)?.substring(0, 500),
       category: data['category'] as String?,
       lessonUnit: data['lessonUnit'] as String?,
-      difficulty: data['difficulty'] as int? ?? 1,
       knowledgeTag: data['knowledgeTag'] as String?,
+      difficulty: data['difficulty'] as int? ?? 1,
       contentPath: item.filePath,
       mastered: false,
       createdAt: item.createdAt,
@@ -1044,6 +1060,7 @@ $content
           progress: '未答题',
           createdAt: item.createdAt,
           lang: 'cn',
+          source: '收件箱',
         ));
         print('[Fallback] 习题集条目已创建（仅标题）: T$nextNum');
         break;

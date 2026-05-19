@@ -172,6 +172,7 @@ class _ScheduleAddPageState extends State<ScheduleAddPage> {
             ),
             AIReplyBar(
               lang: widget.lang,
+              topic: 'schedule',
               lastAiMessage: widget.lastAiMessage ?? '',
               onPullDown: () {},
             ),

@@ -32,6 +32,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   String? _currentPage;
   final List<String> _pageHistory = [];
 
+  // 当前栏目的主题标识
+  String _currentTopic = 'general';
+  
   final List<ChatMessage> _chatMessages = [];
   final LlmService _llmService = LlmService();
   final InboxService _inboxService = InboxService();
@@ -284,6 +287,20 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
     setState(() {
       _isChatMode = !_isChatMode;
+      if (_isChatMode && _currentPage != null) {
+        // 进入聊天模式时，根据当前页面设置对应的topic
+        final topicMapping = {
+          'inbox': 'inbox',
+          'knowledge': 'knowledge',
+          'error': 'error',
+          'exercise': 'exercise',
+          'portfolio': 'portfolio',
+          'skills': 'skills',
+          'efficiency': 'efficiency',
+          'schedule': 'schedule',
+        };
+        _currentTopic = topicMapping[_currentPage] ?? 'general';
+      }
       if (_isChatMode) {
         _currentPage = null;
       } else if (_pageHistory.isNotEmpty) {
@@ -347,6 +364,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 response['reasoning'] ??
                 (_lang == 'cn' ? '这是AI推理内容。' : 'This is AI reasoning.'),
             isAI: true,
+            topic: _currentTopic,
           ),
         );
         _isLoading = false;
@@ -377,55 +395,47 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         return InboxPage(
           key: inboxPageKey,
           lang: _lang,
-          messages: _chatMessages,
           onHomeTap: _goBack,
           onPullDown: _toggleChatMode,
         );
       } else if (_currentPage == 'knowledge') {
         return KnowledgePointPageSimple(
           lang: _lang,
-          messages: _chatMessages,
           onHomeTap: _goBack,
           onPullDown: _toggleChatMode,
         );
       } else if (_currentPage == 'error') {
         return ErrorRecordPageSimple(
           lang: _lang,
-          messages: _chatMessages,
           onHomeTap: _goBack,
           onPullDown: _toggleChatMode,
         );
       } else if (_currentPage == 'exercise') {
         return ExercisesPageSimple(
           lang: _lang,
-          messages: _chatMessages,
           onHomeTap: _goBack,
           onPullDown: _toggleChatMode,
         );
       } else if (_currentPage == 'portfolio') {
         return PortfolioPageSimple(
           lang: _lang,
-          messages: _chatMessages,
           onHomeTap: _goBack,
           onPullDown: _toggleChatMode,
         );
       } else if (_currentPage == 'skills') {
         return SkillsPageSimple(
           lang: _lang,
-          messages: _chatMessages,
           onHomeTap: _goBack,
           onPullDown: _toggleChatMode,
         );
       } else if (_currentPage == 'efficiency') {
         return EfficiencyRecordPage(
           lang: _lang,
-          messages: _chatMessages,
           onHomeTap: _goBack,
         );
       } else if (_currentPage == 'schedule') {
         return SchedulePage(
           lang: _lang,
-          messages: _chatMessages,
           onHomeTap: _goBack,
         );
       }
@@ -456,6 +466,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                     });
                   },
                   messages: _chatMessages,
+                  currentTopic: _currentTopic,
+                  onTopicChanged: (topic) {
+                    setState(() => _currentTopic = topic);
+                  },
                   selectedTab: _selectedTab,
                   onTabSelected: _selectTab,
                   lang: _lang,

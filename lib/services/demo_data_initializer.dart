@@ -56,15 +56,15 @@ class DemoDataInitializer {
 【如何避免】（预防同类错误的措施）
 
 示例：
-输入：小明做了一道题"3/4 + 1/4 = ?"，他写了答案"4/8"。
+输入：小明写了一道成语填空题："杯（龙）明珠"，他写了答案"杯（明）明珠"。
 
 输出：
-【题目】3/4 + 1/4 = ?
-【我的答案】4/8
-【正确答案】1
-【错在哪里】通分后分子直接相加，但忘记了约分；或者没有理解同分母分数加法规则。
-【为什么错】概念混淆——将异分母加法的通分思路误用于同分母加法。同分母分数相加时，分母不变，分子相加即可。3/4 + 1/4 = (3+1)/4 = 4/4 = 1。
-【如何避免】1. 先判断是同分母还是异分母，再选择对应算法；2. 结果一定要约分为最简分数；3. 做完后用逆运算验证：1 - 3/4 = 1/4 ✓
+【题目】杯（龙）明珠
+【我的答案】杯（明）明珠
+【正确答案】杯（龙）明珠
+【错在哪里】将成语"杯龙明珠"中的"龙"字误写为"明"。
+【为什么错】知识遗漏——没有掌握"杯龙明珠"这个成语的正确写法，望文生义地将"杯明"理解成杯子明亮。实际上"杯龙"指酒杯中的龙形倒影，典故出自《晋书》。
+【如何避免】1. 积累常见成语典故；2. 对不确定字的成语要查字典确认；3. 建立个人错题本，定期复习易错成语
 
 请严格按照以上格式整理以下内容：''',
       description: '将AI助手的分析结果按照统一格式整理成错误本条目，方便录入学习系统。复制此提示语，粘贴到豆包/元宝等外部AI中，配合答卷照片或题目内容使用。',
@@ -205,20 +205,8 @@ class DemoDataInitializer {
     ));
 
     await dao.insert(Exercise(
-      question: '分数运算专项练习',
-      exerciseId: 'T2',
-      lessonUnit: '四年级上-第三单元',
-      knowledgeTag: '分数运算,约分,通分',
-      progress: '未答题',
-      category: '专项练习',
-      examPaper: '1. 3/4 + 1/4 = ?\n2. 2/5 + 1/10 = ?\n3. 5/6 - 1/3 = ?\n4. 1/2 + 1/3 = ?\n5. 7/8 - 3/4 = ?',
-      createdAt: DateTime.now().subtract(const Duration(days: 1)),
-      lang: 'cn',
-    ));
-
-    await dao.insert(Exercise(
       question: '阅读理解专项测试',
-      exerciseId: 'T3',
+      exerciseId: 'T2',
       lessonUnit: '五年级上-第一单元',
       knowledgeTag: '阅读理解,主旨归纳,借物喻人',
       progress: '未批阅',
@@ -362,7 +350,6 @@ class DemoDataInitializer {
     final now = DateTime.now();
     final records = [
       {'title': '语文复习', 'unit_count': 3, 'unit_efficiency': 0.85},
-      {'title': '数学练习', 'unit_count': 2, 'unit_efficiency': 0.72},
       {'title': '阅读理解训练', 'unit_count': 4, 'unit_efficiency': 0.90},
       {'title': '作文练习', 'unit_count': 1, 'unit_efficiency': 0.65},
       {'title': '错题订正', 'unit_count': 5, 'unit_efficiency': 0.88},
@@ -388,7 +375,7 @@ class DemoDataInitializer {
     final items = [
       {'schedule_id': 'SC1', 'title': '晨读：古诗词背诵', 'start_time': '07:00', 'end_time': '07:30', 'repeat_type': 'daily', 'completed': 1},
       {'schedule_id': 'SC2', 'title': '语文课后练习', 'start_time': '16:00', 'end_time': '16:45', 'repeat_type': 'weekly', 'repeat_days': '1,3,5', 'completed': 0},
-      {'schedule_id': 'SC3', 'title': '数学错题订正', 'start_time': '17:00', 'end_time': '17:30', 'repeat_type': 'daily', 'completed': 0},
+      {'schedule_id': 'SC3', 'title': '成语积累与仿写', 'start_time': '17:00', 'end_time': '17:30', 'repeat_type': 'daily', 'completed': 0},
       {'schedule_id': 'SC4', 'title': '课外阅读', 'start_time': '20:00', 'end_time': '20:30', 'repeat_type': 'daily', 'completed': 0},
     ];
 

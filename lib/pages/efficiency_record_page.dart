@@ -11,13 +11,11 @@ import 'efficiency_record_add_page.dart';
 
 class EfficiencyRecordPage extends StatefulWidget {
   final String lang;
-  final List<ChatMessage>? messages;
   final VoidCallback? onHomeTap;
 
   const EfficiencyRecordPage({
     super.key,
     this.lang = 'cn',
-    this.messages,
     this.onHomeTap,
   });
 
@@ -191,7 +189,7 @@ class _EfficiencyRecordPageState extends State<EfficiencyRecordPage> {
             ),
             AIReplyBar(
               lang: widget.lang,
-              messages: widget.messages,
+              topic: 'efficiency',
               onPullDown: () {},
             ),
             Expanded(

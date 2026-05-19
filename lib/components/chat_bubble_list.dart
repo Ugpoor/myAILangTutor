@@ -5,12 +5,14 @@ class ChatMessage {
   final String text;
   final String? reasoningText;
   final bool isAI;
+  final String topic;
 
   ChatMessage({
     required this.sender,
     required this.text,
     this.reasoningText,
     this.isAI = false,
+    this.topic = 'general',
   });
 }
 

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import '../components/app_title_bar.dart';
 import '../components/submenu_tabs.dart';
@@ -6,20 +8,24 @@ import '../components/input_area.dart';
 import '../components/chat_bubble_list.dart';
 import '../database/db_helper.dart';
 import '../database/models/knowledge_point.dart';
+import '../database/models/exercise.dart';
 import '../services/llm_service.dart';
+import 'knowledge_outline_page.dart';
 
 class KnowledgePointPageSimple extends StatefulWidget {
   final String lang;
-  final List<ChatMessage>? messages;
   final VoidCallback onHomeTap;
   final VoidCallback? onPullDown;
+  
+  /// 统一的消息发送回调（委托给 MainScreen）
+  final void Function(ChatMessage)? onSendMessage;
 
   const KnowledgePointPageSimple({
     super.key,
     this.lang = 'cn',
-    this.messages,
     required this.onHomeTap,
     this.onPullDown,
+    this.onSendMessage,
   });
 
   @override
@@ -29,11 +35,13 @@ class KnowledgePointPageSimple extends StatefulWidget {
 class _KnowledgePointPageSimpleState extends State<KnowledgePointPageSimple> {
   List<KnowledgePoint> _allPoints = [];
   List<KnowledgePoint> _displayPoints = [];
+  final Set<int> _selectedIds = {};
   String? _filterCategory;
   String? _filterLessonUnit;
-  String _outlineContent = '';
   late KnowledgePointDao _knowledgePointDao;
+  late ExerciseDao _exerciseDao;
   final LlmService _llmService = LlmService();
+  bool _isGenerating = false;
 
   @override
   void initState() {
@@ -44,8 +52,15 @@ class _KnowledgePointPageSimpleState extends State<KnowledgePointPageSimple> {
   Future<void> _initDao() async {
     final db = await DatabaseHelper().database;
     _knowledgePointDao = KnowledgePointDao(db);
+    _exerciseDao = ExerciseDao(db);
     await _llmService.init();
     await _loadPoints();
+  }
+
+  @override
+  void dispose() {
+    // LlmService is singleton and has no dispose method
+    super.dispose();
   }
 
   Future<void> _loadPoints() async {
@@ -73,7 +88,176 @@ class _KnowledgePointPageSimpleState extends State<KnowledgePointPageSimple> {
     } else if (tab == (widget.lang == 'cn' ? '知识谱' : 'Spectrum')) {
       _showSpectrumDialog();
     } else if (tab == (widget.lang == 'cn' ? '大纲' : 'Outline')) {
-      await _showOutlineDialog();
+      // 直接导航到知识点大纲页面（替代原来的对话框方式）
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => KnowledgeOutlinePage(
+            lang: widget.lang,
+            onHomeTap: widget.onHomeTap,
+          ),
+        ),
+      );
+      // 从大纲页面返回后重新加载数据
+      await _loadPoints();
+    } else if (tab == (widget.lang == 'cn' ? '练习' : 'Practice')) {
+      await _generateExercisesFromKnowledgePoint();
+    }
+  }
+
+  /// 根据选中的知识点条目，使用LLM生成练习题
+  Future<void> _generateExercisesFromKnowledgePoint() async {
+    // 获取所有选中的知识点
+    List<KnowledgePoint> selectedPoints = [];
+    
+    if (_selectedIds.isNotEmpty) {
+      selectedPoints = _displayPoints.where((p) => _selectedIds.contains(p.id)).toList();
+    } else if (_displayPoints.isNotEmpty) {
+      // 如果没有选中，使用第一条作为默认
+      selectedPoints = [_displayPoints.first];
+    }
+
+    if (selectedPoints.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(widget.lang == 'cn' ? '暂无知识点，无法生成练习' : 'No knowledge points available')),
+      );
+      return;
+    }
+
+    if (_isGenerating) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(widget.lang == 'cn' ? '练习生成进行中...' : 'Exercise generation in progress')),
+      );
+      return;
+    }
+
+    setState(() => _isGenerating = true);
+
+    try {
+      // 合并所有选中知识点的内容
+      StringBuffer combinedContent = StringBuffer();
+      for (final point in selectedPoints) {
+        combinedContent.writeln('【${point.title}】');
+        if (point.category != null) combinedContent.writeln('分类：${point.category}');
+        if (point.lessonUnit != null) combinedContent.writeln('课时单元：${point.lessonUnit}');
+        if (point.cid != null) combinedContent.writeln('CID: ${point.cid}');
+        final content = point.content ?? '';
+        combinedContent.writeln('内容：$content');
+        combinedContent.writeln('');
+      }
+
+      final subjectLabel = widget.lang == 'cn' ? '科目' : 'Subject';
+      final prompt = '''你是一位教育专家。请根据以下主题知识点内容，出一组综合练习题。
+
+主题知识点（共${selectedPoints.length}个）：
+${combinedContent.toString()}
+
+要求：
+1. 出填空题2题（针对核心概念）
+2. 出选择题5题（每题A/B/C/D四个选项）
+3. 题目要覆盖所有选中知识点的关键内容
+4. 只出与当前知识点相关的语文题目，不要涉及数学等其他学科
+
+请以如下JSON数组格式回复（只回复JSON，不要其他文字）：
+[
+  {
+    "type": "fill_blank" 或 "multiple_choice",
+    "question": "题目内容",
+    "options": null 或 ["A. 选项1", "B. 选项2", "C. 选项3", "D. 选项4"],
+    "correctAnswer": "答案",
+    "explanation": "解析",
+    "knowledgeTag": "所属知识点标题"
+  },
+  ...
+]
+
+注意：
+- question 字段是完整的题目描述
+- options 字段对于选择题是 A/B/C/D 选项数组，填空题为 null
+- correctAnswer 是简短的答案
+- explanation 是详细的解题思路
+- knowledgeTag 标识该题目属于哪个知识点
+- 请严格按照格式输出7道题目的JSON数组
+''';
+
+      final response = await _llmService.generateResponse(prompt);
+      
+      if (response['success'] != true || response['response'] == null) {
+        throw Exception('LLM响应失败');
+      }
+
+      final jsonResponse = response['response'] as String;
+      
+      // 解析JSON
+      final jsonMatch = RegExp(r'\[[\s\S]*\]').firstMatch(jsonResponse);
+      if (jsonMatch == null) {
+        throw Exception('未找到JSON数组');
+      }
+
+      final List<dynamic> exercisesJson = json.decode(jsonMatch.group(0)!);
+
+      // 批量插入习题集
+      int createdCount = 0;
+
+      for (final exData in exercisesJson) {
+        final nextNum = await _exerciseDao.nextExerciseIdNumber();
+        
+        // 根据 knowledgeTag 匹配对应的知识点（如果有）
+        KnowledgePoint pointForExercise = selectedPoints[0];
+        if (exData['knowledgeTag'] != null) {
+          final matched = selectedPoints.firstWhere(
+            (p) => p.title == exData['knowledgeTag'],
+            orElse: () => selectedPoints[0],
+          );
+          pointForExercise = matched;
+        }
+        
+        final exercise = Exercise(
+          question: exData['question'] ?? '',
+          options: exData['options'] != null 
+              ? (exData['options'] as List).join('\n') 
+              : null,
+          correctAnswer: exData['correctAnswer'] as String?,
+          explanation: exData['explanation'] as String?,
+          category: pointForExercise.category ?? '练习题',
+          difficulty: 1,
+          lessonUnit: pointForExercise.lessonUnit,
+          knowledgeTag: pointForExercise.title,
+          progress: '未答题',
+          source: '知识点',
+          exerciseId: 'T$nextNum',
+          contentPath: pointForExercise.contentPath,
+          createdAt: DateTime.now(),
+          lang: widget.lang,
+        );
+
+        await _exerciseDao.insert(exercise);
+        createdCount++;
+      }
+
+      final cnSubjectLabel = widget.lang == 'cn' ? '个知识点' : 'knowledge points';
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(
+            widget.lang == 'cn' 
+                ? '已从${selectedPoints.length}$cnSubjectLabel生成$createdCount道练习题并添加到习题集'
+                : 'Generated $createdCount exercises from ${selectedPoints.length}$cnSubjectLabel and added to exercise set',
+          )),
+        );
+      }
+      
+      await _loadPoints();
+    } catch (e) {
+      print('[GenerateExercises] 生成失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(
+            widget.lang == 'cn' ? '生成练习失败: ${e.toString()}' : 'Failed to generate exercises: ${e.toString()}',
+          )),
+        );
+      }
+    } finally {
+      setState(() => _isGenerating = false);
     }
   }
 
@@ -83,53 +267,11 @@ class _KnowledgePointPageSimpleState extends State<KnowledgePointPageSimple> {
     await _loadPoints();
   }
 
-  Future<void> _showOutlineDialog() async {
-    // 生成大纲内容
-
-    try {
-      final allContent = _allPoints.map((p) => '${p.category ?? ""} - ${p.title}: ${p.content ?? ""}').join('\n');
-      final prompt = '请根据以下知识点内容，生成一个层次分明的知识大纲（用缩进表示层级）：\n$allContent';
-      final response = await _llmService.generateResponse(prompt);
-      _outlineContent = response['response'] ?? '';
-    } catch (e) {
-      _outlineContent = _allPoints.map((p) {
-        var line = '${p.category ?? "未分类"} - ${p.title}';
-        if (p.lessonUnit != null) line += ' (${p.lessonUnit})';
-        return line;
-      }).join('\n');
-    }
-
-    if (!mounted) return;
-
-    final controller = TextEditingController(text: _outlineContent);
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(widget.lang == 'cn' ? '知识大纲' : 'Knowledge Outline'),
-        content: SizedBox(
-          width: 400,
-          height: 400,
-          child: TextField(
-            controller: controller,
-            maxLines: null,
-            expands: true,
-            decoration: const InputDecoration(border: InputBorder.none),
-            onChanged: (text) => _outlineContent = text,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(widget.lang == 'cn' ? '关闭' : 'Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
   List<KnowledgePoint> _rootPoints = [];
   KnowledgePoint? _currentParentPoint;
   List<KnowledgePoint> _childrenPoints = [];
+  List<KnowledgePoint> _spectrumResults = []; // 知识谱筛选结果
+  bool _showSpectrumMode = false; // 是否处于知识谱筛选模式
 
   Future<void> _loadRootNodes() async {
     final db = await DatabaseHelper().database;
@@ -139,6 +281,8 @@ class _KnowledgePointPageSimpleState extends State<KnowledgePointPageSimple> {
       _rootPoints = rootNodes;
       _currentParentPoint = null;
       _childrenPoints = [];
+      _showSpectrumMode = false;
+      _spectrumResults = [];
     });
   }
 
@@ -152,17 +296,54 @@ class _KnowledgePointPageSimpleState extends State<KnowledgePointPageSimple> {
     });
   }
 
+  /// 执行知识谱筛选：根据选中的知识点，获取父类、自身、子类
+  Future<void> _executeSpectrumFilter(KnowledgePoint selectedPoint) async {
+    final db = await DatabaseHelper().database;
+    final dao = KnowledgePointDao(db);
+    
+    final Set<int> resultIds = {};
+    final List<KnowledgePoint> results = [];
+
+    // 1. 添加自身
+    results.add(selectedPoint);
+    resultIds.add(selectedPoint.id!);
+
+    // 2. 获取父类（基于 fatherId）
+    if (selectedPoint.fatherId != null) {
+      final parentList = await dao.getByFatherId(selectedPoint.fatherId!, lang: widget.lang);
+      for (final parent in parentList) {
+        if (!resultIds.contains(parent.id!)) {
+          results.add(parent);
+          resultIds.add(parent.id!);
+        }
+      }
+    }
+
+    // 3. 获取所有子类（基于 fatherId）
+    final children = await dao.getAllChildrenByFatherId(selectedPoint.id!, lang: widget.lang);
+    for (final child in children) {
+      if (!resultIds.contains(child.id!)) {
+        results.add(child);
+        resultIds.add(child.id!);
+      }
+    }
+
+    setState(() {
+      _spectrumResults = results;
+      _showSpectrumMode = true;
+      _displayPoints = results;
+    });
+
+    Navigator.pop(context); // 关闭弹窗
+  }
+
   void _showSpectrumDialog() {
     showDialog(
       context: context,
-      builder: (context) => _SpectrumDialog(
+      builder: (context) => _SpectrumSearchDialog(
         lang: widget.lang,
-        rootPoints: _rootPoints.isNotEmpty ? _rootPoints : _allPoints.where((p) => p.parentId == null).toList(),
-        currentParent: _currentParentPoint,
-        childrenPoints: _childrenPoints,
         allPoints: _allPoints,
-        onLoadChildren: _loadChildrenOf,
-        onBackToRoot: _loadRootNodes,
+        onPointSelected: _executeSpectrumFilter,
       ),
     );
   }
@@ -237,8 +418,8 @@ class _KnowledgePointPageSimpleState extends State<KnowledgePointPageSimple> {
   @override
   Widget build(BuildContext context) {
     final tabs = widget.lang == 'cn'
-        ? ['筛选', '知识谱', '大纲']
-        : ['Filter', 'Spectrum', 'Outline'];
+        ? ['筛选', '知识谱', '大纲', '练习']
+        : ['Filter', 'Spectrum', 'Outline', 'Practice'];
 
     return Scaffold(
       backgroundColor: const Color(0xFFFFE4E9),
@@ -250,7 +431,8 @@ class _KnowledgePointPageSimpleState extends State<KnowledgePointPageSimple> {
             ),
             AIReplyBar(
               lang: widget.lang,
-              messages: widget.messages ?? [],
+              messages: widget.onSendMessage != null ? [] : null,
+              topic: 'knowledge',
               onPullDown: widget.onPullDown ?? () {},
             ),
             Expanded(
@@ -277,7 +459,7 @@ class _KnowledgePointPageSimpleState extends State<KnowledgePointPageSimple> {
             ),
             SubmenuTabs(
               tabs: tabs,
-              selectedTab: tabs[0],
+              selectedTab: '',
               onTabSelected: _handleTabSelected,
               onHomeTap: widget.onHomeTap,
               lang: widget.lang,
@@ -292,6 +474,8 @@ class _KnowledgePointPageSimpleState extends State<KnowledgePointPageSimple> {
   }
 
   Widget _buildKnowledgePointItem(KnowledgePoint point) {
+    final isSelected = _selectedIds.contains(point.id);
+    
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
       child: InkWell(
@@ -303,53 +487,92 @@ class _KnowledgePointPageSimpleState extends State<KnowledgePointPageSimple> {
             children: [
               Row(
                 children: [
+                  // 左侧方框多选
+                  Checkbox(
+                    value: isSelected,
+                    onChanged: (value) {
+                      setState(() {
+                        if (value == true) {
+                          _selectedIds.add(point.id!);
+                        } else {
+                          _selectedIds.remove(point.id!);
+                        }
+                      });
+                    },
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      point.title,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(
-                      point.mastered ? Icons.check_circle : Icons.circle_outlined,
-                      color: point.mastered ? Colors.green : Colors.grey,
-                      size: 20,
-                    ),
-                    onPressed: () => _toggleMastered(point),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Wrap(
-                spacing: 6,
-                children: [
-                  if (point.lessonUnit != null)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(color: const Color(0xFFFFE4E9), borderRadius: BorderRadius.circular(4)),
-                      child: Text('课内: ${point.lessonUnit}', style: const TextStyle(fontSize: 11)),
-                    ),
-                  if (point.category != null)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(color: const Color(0xFF87CEEB), borderRadius: BorderRadius.circular(4)),
-                      child: Text(point.category!, style: const TextStyle(fontSize: 11)),
-                    ),
-                  if (point.errorType != null)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(color: const Color(0xFFFFA07A), borderRadius: BorderRadius.circular(4)),
-                      child: Text('错类: ${point.errorType}', style: const TextStyle(fontSize: 11, color: Colors.deepOrange)),
-                    ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: point.mastered ? const Color(0xFF90EE90) : const Color(0xFFD3D3D3),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      point.mastered ? (widget.lang == 'cn' ? '已掌握' : 'Mastered') : (widget.lang == 'cn' ? '未掌握' : 'Not Mastered'),
-                      style: const TextStyle(fontSize: 11),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            // CID 标识
+                            if (point.cid != null && point.cid!.isNotEmpty)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFD700),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text('CID: ${point.cid}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                              ),
+                            const SizedBox(width: 8),
+                            // FatherID 标识
+                            if (point.fatherId != null)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFDDA0DD),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text('父:${point.fatherId}', style: const TextStyle(fontSize: 10)),
+                              ),
+                            const SizedBox(width: 8),
+                            // 标题
+                            Text(
+                              point.title,
+                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        // 掌握状态（移动到标签区域）
+                        Wrap(
+                          spacing: 6,
+                          children: [
+                            if (point.lessonUnit != null)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(color: const Color(0xFFFFE4E9), borderRadius: BorderRadius.circular(4)),
+                                child: Text('课内: ${point.lessonUnit}', style: const TextStyle(fontSize: 11)),
+                              ),
+                            if (point.category != null)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(color: const Color(0xFF87CEEB), borderRadius: BorderRadius.circular(4)),
+                                child: Text(point.category!, style: const TextStyle(fontSize: 11)),
+                              ),
+                            if (point.errorType != null)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(color: const Color(0xFFFFA07A), borderRadius: BorderRadius.circular(4)),
+                                child: Text('错类: ${point.errorType}', style: const TextStyle(fontSize: 11, color: Colors.deepOrange)),
+                              ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: point.mastered ? const Color(0xFF90EE90) : const Color(0xFFD3D3D3),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                point.mastered ? (widget.lang == 'cn' ? '已掌握' : 'Mastered') : (widget.lang == 'cn' ? '未掌握' : 'Not Mastered'),
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -396,184 +619,175 @@ class _KnowledgePointPageSimpleState extends State<KnowledgePointPageSimple> {
   }
 }
 
-/// 知识谱对话框组件 - 支持父子层级导航
-class _SpectrumDialog extends StatefulWidget {
+/// 知识谱搜索对话框 - 支持 cid/关键词模糊匹配
+class _SpectrumSearchDialog extends StatefulWidget {
   final String lang;
-  final List<KnowledgePoint> rootPoints;
-  final KnowledgePoint? currentParent;
-  final List<KnowledgePoint> childrenPoints;
   final List<KnowledgePoint> allPoints;
-  final Future<void> Function(KnowledgePoint) onLoadChildren;
-  final Future<void> Function() onBackToRoot;
+  final Future<void> Function(KnowledgePoint) onPointSelected;
 
-  const _SpectrumDialog({
+  const _SpectrumSearchDialog({
     required this.lang,
-    required this.rootPoints,
-    required this.currentParent,
-    required this.childrenPoints,
     required this.allPoints,
-    required this.onLoadChildren,
-    required this.onBackToRoot,
+    required this.onPointSelected,
   });
 
   @override
-  State<_SpectrumDialog> createState() => _SpectrumDialogState();
+  State<_SpectrumSearchDialog> createState() => _SpectrumSearchDialogState();
 }
 
-class _SpectrumDialogState extends State<_SpectrumDialog> {
-  Map<String, List<KnowledgePoint>> _categories = {};
+class _SpectrumSearchDialogState extends State<_SpectrumSearchDialog> {
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  List<KnowledgePoint> _searchResults = [];
+  bool _isSearching = false;
 
   @override
   void initState() {
     super.initState();
-    _groupByCategory();
+    _searchController.addListener(_onSearchChanged);
   }
 
   @override
-  void didUpdateWidget(_SpectrumDialog oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.currentParent != oldWidget.currentParent ||
-        widget.childrenPoints.length != oldWidget.childrenPoints.length) {
-      _groupByCategory();
-    }
+  void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
   }
 
-  void _groupByCategory() {
-    final points = widget.currentParent != null ? widget.childrenPoints : widget.rootPoints;
-    _categories = <String, List<KnowledgePoint>>{};
-    for (final p in points) {
-      final cat = p.category ?? (widget.lang == 'cn' ? '未分类' : 'Uncategorized');
-      _categories.putIfAbsent(cat, () => []).add(p);
+  void _onSearchChanged() {
+    final query = _searchController.text.trim();
+    if (query.isEmpty) {
+      setState(() {
+        _searchResults = [];
+      });
+      return;
     }
+
+    setState(() {
+      _isSearching = true;
+    });
+
+    // 延迟执行搜索，避免频繁查询
+    Future.delayed(const Duration(milliseconds: 300), () async {
+      final db = await DatabaseHelper().database;
+      final dao = KnowledgePointDao(db);
+      
+      // 根据 cid 或 title 模糊匹配
+      final results = await dao.searchByCidOrTitle(query, lang: widget.lang);
+      
+      setState(() {
+        _searchResults = results;
+        _isSearching = false;
+      });
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final titleText = widget.currentParent != null
-        ? '${widget.currentParent!.title} - ${widget.lang == 'cn' ? '子知识点' : 'Sub-points'}'
-        : (widget.lang == 'cn' ? '知识谱' : 'Knowledge Spectrum');
+    final confirmText = widget.lang == 'cn' ? '确定' : 'Confirm';
+    final cancelText = widget.lang == 'cn' ? '取消' : 'Cancel';
+    final placeholderText = widget.lang == 'cn' 
+        ? '输入 CID（如 1.1）或关键词...' 
+        : 'Enter CID (e.g., 1.1) or keyword...';
 
     return AlertDialog(
-      title: Text(titleText),
-      content: SizedBox(
-        width: 500,
-        height: 400,
+      title: Text(widget.lang == 'cn' ? '知识谱搜索' : 'Knowledge Spectrum Search'),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 500, maxHeight: 400),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 返回按钮
-            if (widget.currentParent != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: TextButton.icon(
-                  onPressed: () => widget.onBackToRoot(),
-                  icon: const Icon(Icons.arrow_back, size: 16),
-                  label: Text(widget.lang == 'cn' ? '返回根节点' : 'Back to Root'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFFFF69B4),
-                  ),
-                ),
+            // 搜索输入框
+            TextField(
+              controller: _searchController,
+              focusNode: _searchFocusNode,
+              decoration: InputDecoration(
+                hintText: placeholderText,
+                prefixIcon: const Icon(Icons.search),
+                border: const OutlineInputBorder(),
+                suffixIcon: _isSearching
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : null,
               ),
-            // 知识点列表
-            Expanded(
-              child: _categories.isEmpty
-                  ? Center(
-                      child: Text(
-                        widget.lang == 'cn' ? '暂无子知识点' : 'No sub-points',
-                        style: TextStyle(color: Colors.grey[600]),
-                      ),
-                    )
-                  : SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: _categories.entries.map((entry) {
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8, bottom: 4),
-                                child: Text(
-                                  entry.key,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                    color: Color(0xFFFF69B4),
-                                  ),
+              onSubmitted: (value) {
+                if (value.trim().isNotEmpty && _searchResults.isNotEmpty) {
+                  widget.onPointSelected(_searchResults.first);
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+            // 搜索结果下拉列表
+            Flexible(
+              child: Container(
+                constraints: const BoxConstraints(maxHeight: 200),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: _searchResults.isEmpty
+                    ? const Center(
+                        child: Text('暂无结果', style: TextStyle(color: Colors.grey)),
+                      )
+                    : SingleChildScrollView(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: _searchResults.map((point) {
+                            return InkWell(
+                              onTap: () {
+                                widget.onPointSelected(point);
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                child: Row(
+                                  children: [
+                                    // CID 标签
+                                    if (point.cid != null && point.cid!.isNotEmpty)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFFFD700),
+                                          borderRadius: BorderRadius.circular(3),
+                                        ),
+                                        child: Text(
+                                          point.cid!,
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    if (point.cid != null && point.cid!.isNotEmpty)
+                                      const SizedBox(width: 8),
+                                    // 标题
+                                    Expanded(
+                                      child: Text(
+                                        point.title,
+                                        style: const TextStyle(fontSize: 13),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              ...entry.value.map((p) {
-                                final hasChildren = widget.allPoints
-                                    .where((point) => point.parentId == p.id)
-                                    .isNotEmpty;
-                                return Padding(
-                                  padding: const EdgeInsets.only(left: 16, bottom: 6),
-                                  child: InkWell(
-                                    onTap: hasChildren
-                                        ? () => widget.onLoadChildren(p)
-                                        : null,
-                                    child: Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Icon(
-                                          p.mastered
-                                              ? Icons.check_circle
-                                              : Icons.circle_outlined,
-                                          size: 16,
-                                          color: p.mastered
-                                              ? Colors.green
-                                              : Colors.grey,
-                                        ),
-                                        const SizedBox(width: 6),
-                                        if (hasChildren)
-                                          Container(
-                                            margin:
-                                                const EdgeInsets.only(right: 6),
-                                            child: const Icon(
-                                              Icons.child_care,
-                                              size: 14,
-                                              color: Colors.orange,
-                                            ),
-                                          ),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                p.title,
-                                                style: TextStyle(
-                                                  fontSize: 13,
-                                                  fontWeight: hasChildren
-                                                      ? FontWeight.w600
-                                                      : FontWeight.normal,
-                                                  color: hasChildren
-                                                      ? const Color(0xFF4169E1)
-                                                      : Colors.black87,
-                                                ),
-                                              ),
-                                              if (p.lessonUnit != null)
-                                                Text(
-                                                  '(${p.lessonUnit})',
-                                                  style: TextStyle(
-                                                    color: Colors.grey[600],
-                                                    fontSize: 11,
-                                                  ),
-                                                ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              }),
-                              const Divider(height: 16),
-                            ],
-                          );
-                        }).toList(),
+                            );
+                          }).toList(),
+                        ),
                       ),
-                    ),
+              ),
             ),
           ],
         ),
@@ -581,7 +795,16 @@ class _SpectrumDialogState extends State<_SpectrumDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: Text(widget.lang == 'cn' ? '关闭' : 'Close'),
+          child: Text(cancelText),
+        ),
+        ElevatedButton(
+          onPressed: _searchResults.isNotEmpty
+              ? () => widget.onPointSelected(_searchResults.first)
+              : null,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFFF69B4),
+          ),
+          child: Text(confirmText),
         ),
       ],
     );

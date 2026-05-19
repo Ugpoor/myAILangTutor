@@ -6,15 +6,18 @@ import 'chat_bubble_list.dart';
 /// 用途：显示在各模块页面（首页、知识点、错题本等）底部，展示 AI 对话状态。
 /// 
 /// 功能特性：
-/// 1. 折叠模式：显示最近一条 AI 消息的摘要（70px 高度）
-/// 2. 展开模式：显示完整对话历史列表（复用 ChatBubbleList 组件）
-/// 3. 支持通过 onPullDown 切换到全屏聊天模式
-/// 4. 兼容旧版本 lastAiMessage 参数（用于 inbox classification 等特殊场景）
+/// 1. 显示最近一条 AI 消息的摘要
+/// 2. 支持通过 onPullDown 切换到全屏聊天模式
+/// 3. 对话历史按 topic 过滤，通过 ChatPage 的主题下拉控件切换栏目
+
 class AIReplyBar extends StatefulWidget {
   final String lang;
   
   /// 共享的对话消息列表（与 ChatPage 共用同一份数据）
   final List<ChatMessage>? messages;
+  
+  /// 当前栏目的主题标识，用于过滤只显示该栏目相关的消息
+  final String topic;
   
   /// 旧版参数：单条 AI 消息文本（当 messages 为空或未提供时使用）
   final String lastAiMessage;
@@ -30,6 +33,7 @@ class AIReplyBar extends StatefulWidget {
     super.key,
     this.lang = 'cn',
     this.messages,
+    this.topic = 'general',
     this.lastAiMessage = '',
     required this.onPullDown,
     this.onAvatarTap,
@@ -41,35 +45,16 @@ class AIReplyBar extends StatefulWidget {
   State<AIReplyBar> createState() => _AIReplyBarState();
 }
 
-class _AIReplyBarState extends State<AIReplyBar> with SingleTickerProviderStateMixin {
-  bool _expanded = false;
-  late AnimationController _animationController;
-  late Animation<double> _animation;
-
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    );
-    _animation = CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeInOut,
-    );
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
-  }
-
+class _AIReplyBarState extends State<AIReplyBar> {
   /// 获取最新一条 AI 消息文本（用于折叠模式显示）
   String _getLatestAiSummary() {
-    // 优先使用 messages 列表
+    // 优先使用 messages 列表，按 topic 过滤
     if (widget.messages != null && widget.messages!.isNotEmpty) {
-      for (final msg in widget.messages!.reversed) {
+      final filteredMessages = widget.messages!
+          .where((msg) => msg.topic == widget.topic)
+          .toList();
+      
+      for (final msg in filteredMessages.reversed) {
         if (msg.isAI && msg.text.isNotEmpty) {
           return msg.text;
         }
@@ -103,131 +88,65 @@ class _AIReplyBarState extends State<AIReplyBar> with SingleTickerProviderStateM
       ),
       child: Column(
         children: [
-          // ========== 展开模式：显示完整对话历史 ==========
-          AnimatedBuilder(
-            animation: _animation,
-            builder: (context, child) {
-              if (!_expanded || widget.messages == null || widget.messages!.isEmpty) {
-                return const SizedBox.shrink();
-              }
-              return SizeTransition(
-                sizeFactor: _animation,
-                axisAlignment: -1,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(context).size.height * 0.45,
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                    child: ChatBubbleList(
-                      messages: widget.messages!,
-                      lang: widget.lang,
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-          
           // ========== 折叠模式：显示最新消息摘要 ==========
-          if (_expanded == false) ...[
-            Container(
-              height: 70,
-              padding: const EdgeInsets.all(8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Container(
-                      height: double.infinity,
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF90EE90),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          _getLatestAiSummary(),
-                          style: const TextStyle(
-                            color: Colors.black87,
-                            fontSize: 13,
-                          ),
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
+          Container(
+            height: 70,
+            padding: const EdgeInsets.all(8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Container(
+                    height: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF90EE90),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        _getLatestAiSummary(),
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontSize: 13,
                         ),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: widget.onAvatarTap,
-                    child: SizedBox(
-                      width: 50,
-                      height: 60,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.asset(
-                          widget.lang == 'cn'
-                              ? 'assets/images/chinese_msg.png'
-                              : 'assets/images/english_msg.png',
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              color: const Color(0xFFFFE4E9),
-                              child: const Icon(
-                                Icons.chat_bubble,
-                                color: Color(0xFFFF69B4),
-                                size: 24,
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-              ),
-            ),
-          ],
-          
-          // ========== 切换按钮（折叠/展开）==========
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                _expanded = !_expanded;
-                if (_expanded) {
-                  _animationController.forward();
-                } else {
-                  _animationController.reverse();
-                }
-              });
-            },
-            child: Container(
-              height: 28,
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Center(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      _expanded ? Icons.expand_less : Icons.expand_more,
-                      color: const Color(0xFFFF69B4),
-                      size: 20,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      _expanded
-                          ? (widget.lang == 'cn' ? '收起' : 'Collapse')
-                          : (widget.lang == 'cn' ? '查看对话历史' : 'View History'),
-                      style: const TextStyle(fontSize: 12, color: Color(0xFFFF69B4)),
-                    ),
-                  ],
                 ),
-              ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: widget.onAvatarTap,
+                  child: SizedBox(
+                    width: 50,
+                    height: 60,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.asset(
+                        widget.lang == 'cn'
+                            ? 'assets/images/chinese_msg.png'
+                            : 'assets/images/english_msg.png',
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: const Color(0xFFFFE4E9),
+                            child: const Icon(
+                              Icons.chat_bubble,
+                              color: Color(0xFFFF69B4),
+                              size: 24,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
             ),
           ),
           

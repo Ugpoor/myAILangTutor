@@ -349,7 +349,7 @@ class _SkillDetailPageState extends State<SkillDetailPage> {
             ),
             SubmenuTabs(
               tabs: tabs,
-              selectedTab: tabs[0],
+              selectedTab: '',
               onTabSelected: (tab) {
                 final cnCancel = widget.lang == 'cn' ? '取消' : 'Cancel';
                 final cnSave = widget.lang == 'cn' ? '保存' : 'Save';

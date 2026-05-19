@@ -175,7 +175,7 @@ class _TimerPageState extends State<TimerPage> {
             ),
             AIReplyBar(
               lang: widget.lang,
-              lastAiMessage: '',
+              topic: 'timer',
               onPullDown: () {},
             ),
             Expanded(
