@@ -211,7 +211,6 @@ class SkillSchema {
     'parameters': 'TEXT',
     'return_type': 'TEXT',
     'description': 'TEXT',
-    'content_path': 'TEXT',
   };
 
   // 技能分类枚举
