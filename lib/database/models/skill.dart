@@ -3,9 +3,6 @@ import 'package:sqflite/sqflite.dart';
 class Skill {
   final int? id;
   final String name;
-  final int level;
-  final double progress;
-  final DateTime? lastPracticed;
   final DateTime? createdAt;
   final String lang;
   final String? skillId;
@@ -16,14 +13,10 @@ class Skill {
   final String? parameters;
   final String? returnType;
   final String? description;
-  final String? contentPath; // 关联内容文件路径（H5阅读预览）
 
   Skill({
     this.id,
     required this.name,
-    this.level = 1,
-    this.progress = 0,
-    this.lastPracticed,
     this.createdAt,
     this.lang = 'cn',
     this.skillId,
@@ -34,16 +27,12 @@ class Skill {
     this.parameters,
     this.returnType,
     this.description,
-    this.contentPath,
   });
 
   Map<String, dynamic> toMap() {
     return {
       'id': id,
       'name': name,
-      'level': level,
-      'progress': progress,
-      'last_practiced': lastPracticed?.toIso8601String(),
       'created_at': createdAt?.toIso8601String(),
       'lang': lang,
       'skill_id': skillId,
@@ -54,7 +43,6 @@ class Skill {
       'parameters': parameters,
       'return_type': returnType,
       'description': description,
-      'content_path': contentPath,
     };
   }
 
@@ -62,11 +50,6 @@ class Skill {
     return Skill(
       id: map['id'] as int?,
       name: map['name'] as String,
-      level: map['level'] as int? ?? 1,
-      progress: (map['progress'] as num?)?.toDouble() ?? 0,
-      lastPracticed: map['last_practiced'] != null
-          ? DateTime.parse(map['last_practiced'] as String)
-          : null,
       createdAt: map['created_at'] != null
           ? DateTime.parse(map['created_at'] as String)
           : null,
@@ -79,16 +62,12 @@ class Skill {
       parameters: map['parameters'] as String?,
       returnType: map['return_type'] as String?,
       description: map['description'] as String?,
-      contentPath: map['content_path'] as String?,
     );
   }
 
   Skill copyWith({
     int? id,
     String? name,
-    int? level,
-    double? progress,
-    DateTime? lastPracticed,
     DateTime? createdAt,
     String? lang,
     String? skillId,
@@ -99,14 +78,10 @@ class Skill {
     String? parameters,
     String? returnType,
     String? description,
-    String? contentPath,
   }) {
     return Skill(
       id: id ?? this.id,
       name: name ?? this.name,
-      level: level ?? this.level,
-      progress: progress ?? this.progress,
-      lastPracticed: lastPracticed ?? this.lastPracticed,
       createdAt: createdAt ?? this.createdAt,
       lang: lang ?? this.lang,
       skillId: skillId ?? this.skillId,
@@ -117,7 +92,6 @@ class Skill {
       parameters: parameters ?? this.parameters,
       returnType: returnType ?? this.returnType,
       description: description ?? this.description,
-      contentPath: contentPath ?? this.contentPath,
     );
   }
 }
@@ -191,7 +165,7 @@ class SkillDao {
       'skills',
       where: 'prerequisite = ?',
       whereArgs: [skillId],
-      orderBy: 'level ASC, created_at ASC',
+      orderBy: 'created_at ASC',
     );
     return maps.map((map) => Skill.fromMap(map)).toList();
   }

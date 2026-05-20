@@ -2,113 +2,114 @@ import 'package:sqflite/sqflite.dart';
 
 class KnowledgePoint {
   final int? id;
+  final String? kid;
   final String title;
-  final String? content;
-  final String? category;
-  final String? lessonUnit;
-  final String? errorType;
-  final int? parentId;
-  final String? cid;      // 类 ID（知识谱分类标识）
-  final int? fatherId;    // 父节点 ID（大纲层级中的父亲节点）
-  final int difficulty;
-  final bool mastered;
+  final String? unitNumber;
+  final String? lessonNumber;
+  final String cid;
   final DateTime? createdAt;
   final String lang;
-  final String? contentPath;
+  final String contentPath;
   final String? knowledgeTag;
+  final int testTimes;
+  final int errorTimes;
+  final String? testRecs;
+  final String? errorRecs;
+  final String? brief;
 
   KnowledgePoint({
     this.id,
+    this.kid,
     required this.title,
-    this.content,
-    this.category,
-    this.lessonUnit,
-    this.errorType,
-    this.parentId,
-    this.cid,
-    this.fatherId,
-    this.difficulty = 1,
-    this.mastered = false,
+    this.unitNumber,
+    this.lessonNumber,
+    required this.cid,
     this.createdAt,
     this.lang = 'cn',
-    this.contentPath,
+    required this.contentPath,
     this.knowledgeTag,
+    this.testTimes = 0,
+    this.errorTimes = 0,
+    this.testRecs,
+    this.errorRecs,
+    this.brief,
   });
 
   Map<String, dynamic> toMap() {
     return {
       'id': id,
+      'kid': kid,
       'title': title,
-      'content': content,
-      'category': category,
-      'lesson_unit': lessonUnit,
-      'error_type': errorType,
-      'difficulty': difficulty,
-      'mastered': mastered ? 1 : 0,
+      'unit_number': unitNumber,
+      'lesson_number': lessonNumber,
+      'cid': cid,
       'created_at': createdAt?.toIso8601String(),
       'lang': lang,
       'content_path': contentPath,
       'knowledge_tag': knowledgeTag,
-      'cid': cid,
-      'father_id': fatherId,
+      'test_times': testTimes,
+      'error_times': errorTimes,
+      'test_recs': testRecs,
+      'error_recs': errorRecs,
+      'brief': brief,
     };
   }
 
   static KnowledgePoint fromMap(Map<String, dynamic> map) {
     return KnowledgePoint(
       id: map['id'] as int?,
+      kid: map['kid'] as String?,
       title: map['title'] as String,
-      content: map['content'] as String?,
-      category: map['category'] as String?,
-      lessonUnit: map['lesson_unit'] as String?,
-      errorType: map['error_type'] as String?,
-      parentId: map['parent_id'] as int?,
-      cid: map['cid'] as String?,
-      fatherId: map['father_id'] as int?,
-      difficulty: map['difficulty'] as int? ?? 1,
-      mastered: (map['mastered'] as int?) == 1,
+      unitNumber: map['unit_number'] as String?,
+      lessonNumber: map['lesson_number'] as String?,
+      cid: map['cid'] as String,
       createdAt: map['created_at'] != null 
           ? DateTime.parse(map['created_at'] as String) 
           : null,
       lang: map['lang'] as String? ?? 'cn',
-      contentPath: map['content_path'] as String?,
+      contentPath: map['content_path'] as String,
       knowledgeTag: map['knowledge_tag'] as String?,
+      testTimes: map['test_times'] as int? ?? 0,
+      errorTimes: map['error_times'] as int? ?? 0,
+      testRecs: map['test_recs'] as String?,
+      errorRecs: map['error_recs'] as String?,
+      brief: map['brief'] as String?,
     );
   }
 
   KnowledgePoint copyWith({
     int? id,
+    String? kid,
     String? title,
-    String? content,
-    String? category,
-    String? lessonUnit,
-    String? errorType,
-    int? parentId,
+    String? unitNumber,
+    String? lessonNumber,
     String? cid,
-    int? fatherId,
-    int? difficulty,
-    bool? mastered,
     DateTime? createdAt,
     String? lang,
     String? contentPath,
     String? knowledgeTag,
+    int? testTimes,
+    int? errorTimes,
+    String? testRecs,
+    String? errorRecs,
+    String? brief,
   }) {
     return KnowledgePoint(
       id: id ?? this.id,
+      kid: kid ?? this.kid,
       title: title ?? this.title,
-      content: content ?? this.content,
-      category: category ?? this.category,
-      lessonUnit: lessonUnit ?? this.lessonUnit,
-      errorType: errorType ?? this.errorType,
-      parentId: parentId ?? this.parentId,
+      unitNumber: unitNumber ?? this.unitNumber,
+      lessonNumber: lessonNumber ?? this.lessonNumber,
       cid: cid ?? this.cid,
-      fatherId: fatherId ?? this.fatherId,
-      difficulty: difficulty ?? this.difficulty,
-      mastered: mastered ?? this.mastered,
       createdAt: createdAt ?? this.createdAt,
       lang: lang ?? this.lang,
       contentPath: contentPath ?? this.contentPath,
       knowledgeTag: knowledgeTag ?? this.knowledgeTag,
+      testTimes: testTimes ?? this.testTimes,
+      errorTimes: errorTimes ?? this.errorTimes,
+      testRecs: testRecs ?? this.testRecs,
+      errorRecs: errorRecs ?? this.errorRecs,
+      brief: brief ?? this.brief,
     );
   }
 }
@@ -119,16 +120,26 @@ class KnowledgePointDao {
   KnowledgePointDao(this.db);
 
   Future<int> insert(KnowledgePoint point) async {
-    return await db.insert('knowledge_points', point.toMap());
+    final id = await db.insert('knowledge_points', point.toMap());
+    if (id > 0) {
+      final kid = 'K$id';
+      await db.update(
+        'knowledge_points',
+        {'kid': kid},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    }
+    return id;
   }
 
   Future<List<KnowledgePoint>> getAll({
     String? lang, 
-    String? category,
-    String? lessonUnit,
-    String? errorType,
+    String? unitNumber,
+    String? lessonNumber,
     List<String>? tags,
     String? keyword,
+    String? cid,
   }) async {
     List<String> conditions = [];
     List<dynamic> args = [];
@@ -137,20 +148,20 @@ class KnowledgePointDao {
       conditions.add('lang = ?');
       args.add(lang);
     }
-    if (category != null) {
-      conditions.add('category = ?');
-      args.add(category);
+    if (unitNumber != null) {
+      conditions.add('unit_number = ?');
+      args.add(unitNumber);
     }
-    if (lessonUnit != null) {
-      conditions.add('lesson_unit LIKE ?');
-      args.add('%$lessonUnit%');
+    if (lessonNumber != null) {
+      conditions.add('lesson_number = ?');
+      args.add(lessonNumber);
     }
-    if (errorType != null) {
-      conditions.add('error_type LIKE ?');
-      args.add('%$errorType%');
+    if (cid != null) {
+      conditions.add('cid = ?');
+      args.add(cid);
     }
     if (keyword != null) {
-      conditions.add('(title LIKE ? OR content LIKE ?)');
+      conditions.add('(title LIKE ? OR brief LIKE ?)');
       args.add('%$keyword%');
       args.add('%$keyword%');
     }
@@ -159,7 +170,7 @@ class KnowledgePointDao {
       'knowledge_points',
       where: conditions.isNotEmpty ? conditions.join(' AND ') : null,
       whereArgs: args.isNotEmpty ? args : null,
-      orderBy: 'id ASC',
+      orderBy: 'created_at DESC',
     );
     return maps.map((map) => KnowledgePoint.fromMap(map)).toList();
   }
@@ -171,6 +182,53 @@ class KnowledgePointDao {
       whereArgs: [id],
     );
     return maps.isNotEmpty ? KnowledgePoint.fromMap(maps.first) : null;
+  }
+
+  Future<KnowledgePoint?> getByPid(String kid) async {
+    final maps = await db.query(
+      'knowledge_points',
+      where: 'kid = ?',
+      whereArgs: [kid],
+    );
+    return maps.isNotEmpty ? KnowledgePoint.fromMap(maps.first) : null;
+  }
+
+  Future<List<KnowledgePoint>> getByCid(String cid, {String? lang}) async {
+    List<String> conditions = ['cid = ?'];
+    List<dynamic> args = [cid];
+    
+    if (lang != null) {
+      conditions.add('lang = ?');
+      args.add(lang);
+    }
+
+    final maps = await db.query(
+      'knowledge_points',
+      where: conditions.join(' AND '),
+      whereArgs: args,
+      orderBy: 'created_at DESC',
+    );
+    return maps.map((map) => KnowledgePoint.fromMap(map)).toList();
+  }
+
+  Future<List<KnowledgePoint>> getByCids(List<String> cids, {String? lang}) async {
+    if (cids.isEmpty) return [];
+    
+    List<String> conditions = ['cid IN (${cids.map((_) => '?').join(',')})'];
+    List<dynamic> args = List.from(cids);
+    
+    if (lang != null) {
+      conditions.add('lang = ?');
+      args.add(lang);
+    }
+
+    final maps = await db.query(
+      'knowledge_points',
+      where: conditions.join(' AND '),
+      whereArgs: args,
+      orderBy: 'created_at DESC',
+    );
+    return maps.map((map) => KnowledgePoint.fromMap(map)).toList();
   }
 
   Future<int> update(KnowledgePoint point) async {
@@ -190,7 +248,7 @@ class KnowledgePointDao {
     );
   }
 
-  Future<int> count({String? lang, String? category}) async {
+  Future<int> count({String? lang, String? cid}) async {
     List<String> conditions = [];
     List<dynamic> args = [];
 
@@ -198,9 +256,9 @@ class KnowledgePointDao {
       conditions.add('lang = ?');
       args.add(lang);
     }
-    if (category != null) {
-      conditions.add('category = ?');
-      args.add(category);
+    if (cid != null) {
+      conditions.add('cid = ?');
+      args.add(cid);
     }
 
     final result = await db.rawQuery(
@@ -210,100 +268,18 @@ class KnowledgePointDao {
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
-  Future<List<String>> getAllCategories() async {
-    final result = await db.rawQuery('SELECT DISTINCT category FROM knowledge_points WHERE category IS NOT NULL');
-    return result.map((map) => map['category'] as String).toList();
+  Future<List<String>> getAllUnitNumbers() async {
+    final result = await db.rawQuery('SELECT DISTINCT unit_number FROM knowledge_points WHERE unit_number IS NOT NULL');
+    return result.map((map) => map['unit_number'] as String).toList();
   }
 
-  Future<List<String>> getAllLessonUnits() async {
-    final result = await db.rawQuery('SELECT DISTINCT lesson_unit FROM knowledge_points WHERE lesson_unit IS NOT NULL');
-    return result.map((map) => map['lesson_unit'] as String).toList();
+  Future<List<String>> getAllCids() async {
+    final result = await db.rawQuery('SELECT DISTINCT cid FROM knowledge_points WHERE cid IS NOT NULL');
+    return result.map((map) => map['cid'] as String).toList();
   }
 
-  Future<List<String>> getAllErrorTypes() async {
-    final result = await db.rawQuery('SELECT DISTINCT error_type FROM knowledge_points WHERE error_type IS NOT NULL');
-    return result.map((map) => map['error_type'] as String).toList();
-  }
-
-  /// 获取指定父级 ID 下的子知识点
-  Future<List<KnowledgePoint>> getByParentId(int parentId, {String? lang}) async {
-    List<String> conditions = ['parent_id = ?'];
-    List<dynamic> args = [parentId];
-    
-    if (lang != null) {
-      conditions.add('lang = ?');
-      args.add(lang);
-    }
-
-    final maps = await db.query(
-      'knowledge_points',
-      where: conditions.join(' AND '),
-      whereArgs: args,
-      orderBy: 'id ASC',
-    );
-    return maps.map((map) => KnowledgePoint.fromMap(map)).toList();
-  }
-
-  /// 获取所有根节点（无父级的知识点）
-  Future<List<KnowledgePoint>> getRootNodes({String? lang}) async {
-    List<String> conditions = ['parent_id IS NULL'];
-    List<dynamic> args = [];
-    
-    if (lang != null) {
-      conditions.add('lang = ?');
-      args.add(lang);
-    }
-
-    final maps = await db.query(
-      'knowledge_points',
-      where: conditions.join(' AND '),
-      whereArgs: args.isNotEmpty ? args : null,
-      orderBy: 'id ASC',
-    );
-    return maps.map((map) => KnowledgePoint.fromMap(map)).toList();
-  }
-
-  /// 根据 cid 查找知识点
-  Future<List<KnowledgePoint>> getByCid(String cid, {String? lang}) async {
-    List<String> conditions = ['cid = ?'];
-    List<dynamic> args = [cid];
-    
-    if (lang != null) {
-      conditions.add('lang = ?');
-      args.add(lang);
-    }
-
-    final maps = await db.query(
-      'knowledge_points',
-      where: conditions.join(' AND '),
-      whereArgs: args,
-      orderBy: 'id ASC',
-    );
-    return maps.map((map) => KnowledgePoint.fromMap(map)).toList();
-  }
-
-  /// 根据 fatherId 查找子知识点
-  Future<List<KnowledgePoint>> getByFatherId(int fatherId, {String? lang}) async {
-    List<String> conditions = ['father_id = ?'];
-    List<dynamic> args = [fatherId];
-    
-    if (lang != null) {
-      conditions.add('lang = ?');
-      args.add(lang);
-    }
-
-    final maps = await db.query(
-      'knowledge_points',
-      where: conditions.join(' AND '),
-      whereArgs: args,
-      orderBy: 'id ASC',
-    );
-    return maps.map((map) => KnowledgePoint.fromMap(map)).toList();
-  }
-
-  /// 根据 cid 模糊匹配搜索知识点
-  Future<List<KnowledgePoint>> searchByCidOrTitle(String query, {String? lang}) async {
-    List<String> conditions = ['(cid LIKE ? OR title LIKE ?)'];
+  Future<List<KnowledgePoint>> searchByTitleOrBrief(String query, {String? lang}) async {
+    List<String> conditions = ['(title LIKE ? OR brief LIKE ?)'];
     List<dynamic> args = ['%$query%', '%$query%'];
     
     if (lang != null) {
@@ -315,32 +291,63 @@ class KnowledgePointDao {
       'knowledge_points',
       where: conditions.join(' AND '),
       whereArgs: args,
-      orderBy: 'id ASC',
+      orderBy: 'created_at DESC',
       limit: 20,
     );
     return maps.map((map) => KnowledgePoint.fromMap(map)).toList();
   }
 
-  /// 获取指定知识点的父类知识点（基于 fatherId）
-  Future<KnowledgePoint?> getParentByFatherId(int childId, {String? lang}) async {
-    final point = await getById(childId);
-    if (point?.fatherId == null) return null;
-    
-    return await getByFatherId(point!.fatherId!, lang: lang).then(
-      (list) => list.isNotEmpty ? list.first : null,
+  Future<int> incrementTestTimes(int id) async {
+    return await db.rawUpdate(
+      'UPDATE knowledge_points SET test_times = test_times + 1 WHERE id = ?',
+      [id],
     );
   }
 
-  /// 获取指定知识点的所有子类知识点（基于 fatherId）
-  Future<List<KnowledgePoint>> getAllChildrenByFatherId(int fatherId, {String? lang}) async {
-    return getByFatherId(fatherId, lang: lang);
+  Future<int> incrementErrorTimes(int id) async {
+    return await db.rawUpdate(
+      'UPDATE knowledge_points SET error_times = error_times + 1 WHERE id = ?',
+      [id],
+    );
   }
 
-  // ========== 知识点清理方法 ==========
+  Future<int> addTestRec(int id, String testId) async {
+    final point = await getById(id);
+    if (point == null) return 0;
+    
+    List<String> recs = point.testRecs != null 
+        ? (point.testRecs!.isEmpty ? [] : point.testRecs!.split(','))
+        : [];
+    
+    if (!recs.contains(testId)) {
+      recs.add(testId);
+      return await db.rawUpdate(
+        'UPDATE knowledge_points SET test_recs = ? WHERE id = ?',
+        [recs.join(','), id],
+      );
+    }
+    return 0;
+  }
 
-  /// 删除包含明显数学知识的知识点（只删除明确是数学知识点的记录）
+  Future<int> addErrorRec(int id, String errorId) async {
+    final point = await getById(id);
+    if (point == null) return 0;
+    
+    List<String> recs = point.errorRecs != null 
+        ? (point.errorRecs!.isEmpty ? [] : point.errorRecs!.split(','))
+        : [];
+    
+    if (!recs.contains(errorId)) {
+      recs.add(errorId);
+      return await db.rawUpdate(
+        'UPDATE knowledge_points SET error_recs = ? WHERE id = ?',
+        [recs.join(','), id],
+      );
+    }
+    return 0;
+  }
+
   Future<int> deleteMathKnowledgePoints() async {
-    // 只匹配明确的数学符号和公式，避免误删语文中的通用词汇
     const mathKeywords = [
       'π=', 'π值', '勾股定理', '二次方程', '一元二次方程', 'x²=', 'x^2=',
       '∑', '∫', 'sin(', 'cos(', 'tan(', 'log(', 'ln(',
@@ -353,8 +360,8 @@ class KnowledgePointDao {
     for (final keyword in mathKeywords) {
       final result = await db.rawDelete(
         "DELETE FROM knowledge_points WHERE "
-        "(title LIKE ? OR content LIKE ? OR category LIKE ? OR knowledge_tag LIKE ?)",
-        ['%$keyword%', '%$keyword%', '%$keyword%', '%$keyword%'],
+        "(title LIKE ? OR brief LIKE ? OR knowledge_tag LIKE ?)",
+        ['%$keyword%', '%$keyword%', '%$keyword%'],
       );
       deletedCount += result;
     }

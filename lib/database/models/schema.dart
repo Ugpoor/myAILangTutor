@@ -23,17 +23,20 @@ class KnowledgePointSchema {
   
   static const Map<String, String> columns = {
     'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
+    'kid': 'TEXT UNIQUE',
     'title': 'TEXT NOT NULL',
-    'content': 'TEXT',
-    'category': 'TEXT',
-    'lesson_unit': 'TEXT',
-    'error_type': 'TEXT',
-    'parent_id': 'INTEGER',
-    'difficulty': 'INTEGER DEFAULT 1',
-    'mastered': 'INTEGER DEFAULT 0',
-    'content_path': 'TEXT',
+    'unit_number': 'TEXT',
+    'lesson_number': 'TEXT',
+    'cid': 'TEXT NOT NULL',
+    'content_path': 'TEXT NOT NULL',
     'created_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
     'lang': "TEXT DEFAULT 'cn'",
+    'knowledge_tag': 'TEXT',
+    'test_times': 'INTEGER DEFAULT 0',
+    'error_times': 'INTEGER DEFAULT 0',
+    'test_recs': 'TEXT',
+    'error_recs': 'TEXT',
+    'brief': 'TEXT',
   };
 }
 
@@ -48,16 +51,11 @@ class ErrorRecordSchema {
     'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
     'content': 'TEXT NOT NULL',
     'correct_answer': 'TEXT',
-    'subject': 'TEXT',
-    'lesson': 'TEXT',
     'created_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
-    'reviewed': 'INTEGER DEFAULT 0',
     'lang': "TEXT DEFAULT 'cn'",
     'content_path': 'TEXT',
     'error_id': 'TEXT',
     'error_type': 'TEXT',
-    'exercise_tag': 'TEXT',
-    'knowledge_tag': 'TEXT',
     'progress': "TEXT DEFAULT '待订正'",
     'question': 'TEXT',
     'wrong_answer': 'TEXT',
@@ -66,6 +64,14 @@ class ErrorRecordSchema {
     'how_prevent': 'TEXT',
     'notes': 'TEXT',
     'images': 'TEXT',
+    'tid': 'TEXT',
+    'qid': 'TEXT',
+    'grade_memo': 'TEXT',
+    'correction': 'TEXT',
+    'kid': 'TEXT',
+    'unit_number': 'TEXT',
+    'lesson_number': 'TEXT',
+    'cid': 'TEXT',
   };
 
   // 进度状态枚举
@@ -83,6 +89,36 @@ class ErrorRecordSchema {
     '审题不清',
     '知识遗漏',
     '推理错误',
+  ];
+}
+
+// ============================================================
+// 试卷模块 (Test Paper)
+// ============================================================
+
+class TestPaperSchema {
+  static const String tableName = 'test_papers';
+  
+  static const Map<String, String> columns = {
+    'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
+    'tid': 'TEXT UNIQUE',
+    'test_title': 'TEXT NOT NULL',
+    'images': 'TEXT',
+    'question_list': 'TEXT',
+    'content_path': 'TEXT NOT NULL',
+    'unit_number': 'TEXT',
+    'lesson_number': 'TEXT',
+    'source': 'TEXT',
+    'created_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+    'lang': "TEXT DEFAULT 'cn'",
+  };
+
+  // 来源枚举
+  static const List<String> sources = [
+    '收件箱',
+    '错题本',
+    '知识点',
+    '作品集',
   ];
 }
 
@@ -105,15 +141,12 @@ class ExerciseSchema {
     'content_path': 'TEXT',
     'created_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
     'lang': "TEXT DEFAULT 'cn'",
-    'exercise_id': 'TEXT',
-    'paper_id': 'TEXT', // 关联试卷ID（E开头，如 E1, E2）
-    'lesson_unit': 'TEXT',
-    'knowledge_tag': 'TEXT',
     'progress': "TEXT DEFAULT '未答题'",
     'exam_paper': 'TEXT',
     'answer_sheet': 'TEXT',
     'answer_key': 'TEXT',
     'grading': 'TEXT',
+    'source': 'TEXT',
   };
 
   // 答题进度状态枚举
@@ -122,6 +155,14 @@ class ExerciseSchema {
     '已答题',
     '已批阅',
     '已订正',
+  ];
+
+  // 来源枚举
+  static const List<String> sources = [
+    '收件箱',
+    '错题本',
+    '知识点',
+    '作品集',
   ];
 }
 
@@ -134,29 +175,19 @@ class PortfolioItemSchema {
   
   static const Map<String, String> columns = {
     'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
+    'wid': 'TEXT UNIQUE',
     'title': 'TEXT NOT NULL',
-    'type': 'TEXT',
     'content_path': 'TEXT',
     'thumbnail_path': 'TEXT',
-    'content': 'TEXT', // 文章内容正文
     'created_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
     'lang': "TEXT DEFAULT 'cn'",
-    'portfolio_id': 'TEXT',
     'is_original': 'INTEGER DEFAULT 0',
-    'knowledge_tag': 'TEXT',
-    'lesson_unit': 'TEXT',
     'ai_review': 'TEXT',
+    'brief': 'TEXT',
+    'kid': 'TEXT',
+    'unit_number': 'TEXT',
+    'lesson_number': 'TEXT',
   };
-
-  // 作品类型枚举
-  static const List<String> itemTypes = [
-    '课文赏析',
-    '习作',
-    '名篇赏析',
-    '阅读笔记',
-    '作文',
-    '其他',
-  ];
 }
 
 // ============================================================

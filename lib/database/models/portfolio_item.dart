@@ -2,102 +2,102 @@ import 'package:sqflite/sqflite.dart';
 
 class PortfolioItem {
   final int? id;
+  final String? wid;
   final String title;
-  final String? type;
   final String? contentPath;
   final String? thumbnailPath;
   final DateTime? createdAt;
   final String lang;
-  final String? portfolioId;
   final bool isOriginal;
-  final String? knowledgeTag;
-  final String? lessonUnit;
   final String? aiReview;
-  final String? content; // 文章内容正文
+  final String? brief;
+  final String? kid;
+  final String? unitNumber;
+  final String? lessonNumber;
 
   PortfolioItem({
     this.id,
+    this.wid,
     required this.title,
-    this.type,
     this.contentPath,
     this.thumbnailPath,
     this.createdAt,
     this.lang = 'cn',
-    this.portfolioId,
     this.isOriginal = false,
-    this.knowledgeTag,
-    this.lessonUnit,
     this.aiReview,
-    this.content,
+    this.brief,
+    this.kid,
+    this.unitNumber,
+    this.lessonNumber,
   });
 
   Map<String, dynamic> toMap() {
     return {
       'id': id,
+      'wid': wid,
       'title': title,
-      'type': type,
       'content_path': contentPath,
       'thumbnail_path': thumbnailPath,
       'created_at': createdAt?.toIso8601String(),
       'lang': lang,
-      'portfolio_id': portfolioId,
       'is_original': isOriginal ? 1 : 0,
-      'knowledge_tag': knowledgeTag,
-      'lesson_unit': lessonUnit,
       'ai_review': aiReview,
-      'content': content,
+      'brief': brief,
+      'kid': kid,
+      'unit_number': unitNumber,
+      'lesson_number': lessonNumber,
     };
   }
 
   static PortfolioItem fromMap(Map<String, dynamic> map) {
     return PortfolioItem(
       id: map['id'] as int?,
+      wid: map['wid'] as String?,
       title: map['title'] as String,
-      type: map['type'] as String?,
       contentPath: map['content_path'] as String?,
       thumbnailPath: map['thumbnail_path'] as String?,
       createdAt: map['created_at'] != null
           ? DateTime.parse(map['created_at'] as String)
           : null,
       lang: map['lang'] as String? ?? 'cn',
-      portfolioId: map['portfolio_id'] as String?,
       isOriginal: (map['is_original'] as int?) == 1,
-      knowledgeTag: map['knowledge_tag'] as String?,
-      lessonUnit: map['lesson_unit'] as String?,
       aiReview: map['ai_review'] as String?,
-      content: map['content'] as String?,
+      brief: map['brief'] as String?,
+      kid: map['kid'] as String?,
+      unitNumber: map['unit_number'] as String?,
+      lessonNumber: map['lesson_number'] as String?,
     );
   }
 
   PortfolioItem copyWith({
     int? id,
+    String? wid,
     String? title,
-    String? type,
     String? contentPath,
     String? thumbnailPath,
     DateTime? createdAt,
     String? lang,
-    String? portfolioId,
     bool? isOriginal,
-    String? knowledgeTag,
-    String? lessonUnit,
     String? aiReview,
-    String? content,
+    String? brief,
+    String? kid,
+    String? unitNumber,
+    String? lessonNumber,
   }) {
     return PortfolioItem(
       id: id ?? this.id,
+      wid: wid ?? this.wid,
       title: title ?? this.title,
-      type: type ?? this.type,
       contentPath: contentPath ?? this.contentPath,
       thumbnailPath: thumbnailPath ?? this.thumbnailPath,
       createdAt: createdAt ?? this.createdAt,
       lang: lang ?? this.lang,
-      portfolioId: portfolioId ?? this.portfolioId,
       isOriginal: isOriginal ?? this.isOriginal,
-      knowledgeTag: knowledgeTag ?? this.knowledgeTag,
-      lessonUnit: lessonUnit ?? this.lessonUnit,
       aiReview: aiReview ?? this.aiReview,
-      content: content ?? this.content,
+      brief: brief ?? this.brief,
+      kid: kid ?? this.kid,
+      unitNumber: unitNumber ?? this.unitNumber,
+      lessonNumber: lessonNumber ?? this.lessonNumber,
     );
   }
 }
@@ -108,15 +108,25 @@ class PortfolioDao {
   PortfolioDao(this.db);
 
   Future<int> insert(PortfolioItem item) async {
-    return await db.insert('portfolio_items', item.toMap());
+    final id = await db.insert('portfolio_items', item.toMap());
+    if (id > 0 && item.wid == null) {
+      final wid = 'W$id';
+      await db.update(
+        'portfolio_items',
+        {'wid': wid},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    }
+    return id;
   }
 
   Future<List<PortfolioItem>> getAll({
     String? lang,
-    String? type,
     bool? isOriginal,
-    String? knowledgeTag,
-    String? lessonUnit,
+    String? kid,
+    String? unitNumber,
+    String? lessonNumber,
     String? keyword,
   }) async {
     List<String> conditions = [];
@@ -126,24 +136,25 @@ class PortfolioDao {
       conditions.add('lang = ?');
       args.add(lang);
     }
-    if (type != null) {
-      conditions.add('type = ?');
-      args.add(type);
-    }
     if (isOriginal != null) {
       conditions.add('is_original = ?');
       args.add(isOriginal ? 1 : 0);
     }
-    if (knowledgeTag != null) {
-      conditions.add('knowledge_tag LIKE ?');
-      args.add('%$knowledgeTag%');
+    if (kid != null) {
+      conditions.add('kid = ?');
+      args.add(kid);
     }
-    if (lessonUnit != null) {
-      conditions.add('lesson_unit = ?');
-      args.add(lessonUnit);
+    if (unitNumber != null) {
+      conditions.add('unit_number = ?');
+      args.add(unitNumber);
+    }
+    if (lessonNumber != null) {
+      conditions.add('lesson_number = ?');
+      args.add(lessonNumber);
     }
     if (keyword != null && keyword.isNotEmpty) {
-      conditions.add('(title LIKE ? OR portfolio_id LIKE ?)');
+      conditions.add('(title LIKE ? OR wid LIKE ? OR brief LIKE ?)');
+      args.add('%$keyword%');
       args.add('%$keyword%');
       args.add('%$keyword%');
     }
@@ -166,6 +177,15 @@ class PortfolioDao {
     return maps.isNotEmpty ? PortfolioItem.fromMap(maps.first) : null;
   }
 
+  Future<PortfolioItem?> getByWid(String wid) async {
+    final maps = await db.query(
+      'portfolio_items',
+      where: 'wid = ?',
+      whereArgs: [wid],
+    );
+    return maps.isNotEmpty ? PortfolioItem.fromMap(maps.first) : null;
+  }
+
   Future<int> update(PortfolioItem item) async {
     return await db.update(
       'portfolio_items',
@@ -183,9 +203,7 @@ class PortfolioDao {
     );
   }
 
-  /// 删除所有作品集条目
   Future<int> deleteAll() async {
-    // 先计算总数用于返回
     final count = await this.count();
     if (count > 0) {
       await db.delete('portfolio_items');
@@ -194,17 +212,13 @@ class PortfolioDao {
     return 0;
   }
 
-  Future<int> count({String? lang, String? type, bool? isOriginal}) async {
+  Future<int> count({String? lang, bool? isOriginal}) async {
     List<String> conditions = [];
     List<dynamic> args = [];
 
     if (lang != null) {
       conditions.add('lang = ?');
       args.add(lang);
-    }
-    if (type != null) {
-      conditions.add('type = ?');
-      args.add(type);
     }
     if (isOriginal != null) {
       conditions.add('is_original = ?');
@@ -218,15 +232,13 @@ class PortfolioDao {
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
-  Future<int> nextPortfolioIdNumber() async {
-    final result = await db.rawQuery(
-      "SELECT portfolio_id FROM portfolio_items WHERE portfolio_id LIKE 'W%' ORDER BY id DESC LIMIT 1",
-    );
-    if (result.isEmpty) return 1;
-    final lastId = result.first['portfolio_id'] as String?;
-    if (lastId == null) return 1;
-    final match = RegExp(r'W(\d+)').firstMatch(lastId);
-    if (match != null) return int.parse(match.group(1)!) + 1;
-    return 1;
+  Future<List<String>> getAllKids() async {
+    final result = await db.rawQuery('SELECT DISTINCT kid FROM portfolio_items WHERE kid IS NOT NULL');
+    return result.map((map) => map['kid'] as String).toList();
+  }
+
+  Future<List<String>> getAllUnitNumbers() async {
+    final result = await db.rawQuery('SELECT DISTINCT unit_number FROM portfolio_items WHERE unit_number IS NOT NULL');
+    return result.map((map) => map['unit_number'] as String).toList();
   }
 }
