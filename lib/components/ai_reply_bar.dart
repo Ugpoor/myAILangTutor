@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'chat_bubble_list.dart';
+import '../database/db_helper.dart';
+import '../database/models/chat_message.dart' as db_model;
+import '../services/app_service.dart';
 
 /// 统一的 AI 回复栏
 /// 
@@ -25,9 +28,12 @@ class AIReplyBar extends StatefulWidget {
   final VoidCallback onPullDown;
   final VoidCallback? onAvatarTap;
   
-  // Optional: history messages for inbox classification conversations (deprecated, keep for backward compat)
+  /// Optional: history messages for inbox classification conversations (deprecated, keep for backward compat)
   final List<Map<String, String>>? historyMessages;
   final void Function({required String user, required String ai})? onAddMessage;
+  
+  /// 用于强制刷新最新消息的键（每次变化都会触发重新加载）
+  final Object? refreshKey;
 
   const AIReplyBar({
     super.key,
@@ -39,6 +45,7 @@ class AIReplyBar extends StatefulWidget {
     this.onAvatarTap,
     this.historyMessages,
     this.onAddMessage,
+    this.refreshKey,
   });
 
   @override
@@ -46,19 +53,74 @@ class AIReplyBar extends StatefulWidget {
 }
 
 class _AIReplyBarState extends State<AIReplyBar> {
-  /// 获取最新一条 AI 消息文本（用于折叠模式显示）
-  String _getLatestAiSummary() {
-    // 优先使用 messages 列表，按 topic 过滤
-    if (widget.messages != null && widget.messages!.isNotEmpty) {
-      final filteredMessages = widget.messages!
-          .where((msg) => msg.topic == widget.topic)
-          .toList();
+  String? _latestAiContent;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLatestAiMessage();
+  }
+
+  @override
+  void didUpdateWidget(covariant AIReplyBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 当 topic 变化时重新加载
+    if (oldWidget.topic != widget.topic) {
+      _loadLatestAiMessage();
+    }
+    // 当 refreshKey 变化时强制重新加载
+    if (oldWidget.refreshKey != widget.refreshKey) {
+      _loadLatestAiMessage();
+    }
+  }
+
+  /// 手动刷新最新消息（供父组件调用）
+  void refresh() {
+    _loadLatestAiMessage();
+  }
+
+  /// 从数据库加载最新一条 AI 消息
+  Future<void> _loadLatestAiMessage() async {
+    setState(() {
+      _isLoading = true;
+      _latestAiContent = null;
+    });
+
+    try {
+      final appService = AppService();
+      final messages = await appService.getChatMessages(lang: widget.lang);
       
-      for (final msg in filteredMessages.reversed) {
-        if (msg.isAI && msg.text.isNotEmpty) {
-          return msg.text;
+      // 查找最新一条 AI 消息
+      String? latestContent;
+      for (final msg in messages.reversed) {
+        if (!msg.isUser && msg.content.isNotEmpty) {
+          latestContent = msg.content;
+          break;
         }
       }
+
+      if (mounted) {
+        setState(() {
+          _latestAiContent = latestContent;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('[AIReplyBar] 加载消息失败: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  /// 获取最新一条 AI 消息文本（用于折叠模式显示）
+  String _getLatestAiSummary() {
+    // 优先使用从数据库加载的消息
+    if (_latestAiContent != null && _latestAiContent!.isNotEmpty) {
+      return _latestAiContent!;
     }
     
     // 降级使用 lastAiMessage
@@ -104,18 +166,28 @@ class _AIReplyBarState extends State<AIReplyBar> {
                       color: const Color(0xFF90EE90),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        _getLatestAiSummary(),
-                        style: const TextStyle(
-                          color: Colors.black87,
-                          fontSize: 13,
-                        ),
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
+                    child: _isLoading
+                        ? const Center(
+                            child: Text(
+                              '加载中...',
+                              style: TextStyle(
+                                color: Colors.black87,
+                                fontSize: 13,
+                              ),
+                            ),
+                          )
+                        : Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              _getLatestAiSummary(),
+                              style: const TextStyle(
+                                color: Colors.black87,
+                                fontSize: 13,
+                              ),
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                   ),
                 ),
                 const SizedBox(width: 8),

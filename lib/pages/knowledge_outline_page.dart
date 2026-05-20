@@ -116,7 +116,24 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      _renderOutlineTree(_outlineController.text),
+                      // 可编辑的大纲文本框
+                      TextField(
+                        controller: _outlineController,
+                        maxLines: null,
+                        keyboardType: TextInputType.multiline,
+                        decoration: InputDecoration(
+                          hintText: widget.lang == 'cn' 
+                              ? '输入知识点大纲（使用缩进表示层级）' 
+                              : 'Enter knowledge outline (use indentation for hierarchy)',
+                          border: const OutlineInputBorder(),
+                          contentPadding: const EdgeInsets.all(16),
+                          isDense: false,
+                        ),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -151,66 +168,6 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
           ],
         ),
       ),
-    );
-  }
-
-  /// 将 YAML 大纲文本渲染为分层树形组件
-  Widget _renderOutlineTree(String content) {
-    final lines = content.split('\n');
-    final widgets = <Widget>[];
-
-    for (int i = 0; i < lines.length; i++) {
-      final line = lines[i];
-      
-      // 跳过空行
-      if (line.trim().isEmpty) continue;
-
-      // 计算缩进级别（每2个空格为一级）
-      final trimmedLine = line.trimLeft();
-      final indentSpaces = line.length - trimmedLine.length;
-      final indentLevel = indentSpaces ~/ 2;
-      
-      // 跳过注释行
-      if (trimmedLine.startsWith('#')) continue;
-
-      widgets.add(
-        Padding(
-          padding: EdgeInsets.only(
-            left: indentLevel * 20.0,
-            top: 4,
-            bottom: 4,
-            right: 8,
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 6,
-                height: 6,
-                margin: const EdgeInsets.only(top: 6, right: 8),
-                decoration: const BoxDecoration(
-                  color: Color(0xFFFF69B4),
-                  shape: BoxShape.circle,
-                ),
-              ),
-              Expanded(
-                child: Text(
-                  trimmedLine,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    height: 1.4,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: widgets,
     );
   }
 }

@@ -164,6 +164,7 @@ class ErrorRecordDao {
     bool? reviewed,
     String? errorType,
     String? knowledgeTag,
+    List<String>? knowledgeTags,
     String? progress,
     String? keyword,
   }) async {
@@ -182,9 +183,14 @@ class ErrorRecordDao {
       conditions.add('error_type = ?');
       args.add(errorType);
     }
-    if (knowledgeTag != null) {
+    if (knowledgeTag != null && knowledgeTags == null) {
       conditions.add('knowledge_tag LIKE ?');
       args.add('%$knowledgeTag%');
+    }
+    if (knowledgeTags != null && knowledgeTags.isNotEmpty) {
+      final placeholders = knowledgeTags.map((_) => '?').join(', ');
+      conditions.add('(knowledge_tag IN ($placeholders) OR knowledge_tag IS NULL)');
+      args.addAll(knowledgeTags);
     }
     if (progress != null) {
       conditions.add('progress = ?');
@@ -262,5 +268,90 @@ class ErrorRecordDao {
     final match = RegExp(r'T(\d+)').firstMatch(lastId);
     if (match != null) return int.parse(match.group(1)!) + 1;
     return 1;
+  }
+
+  /// 删除所有错误记录
+  Future<int> deleteAll() async {
+    final count = await this.count();
+    if (count > 0) {
+      await db.delete('error_records');
+      return count;
+    }
+    return 0;
+  }
+
+  /// 删除包含明显数学内容的错误记录（只删除明确是数学题的记录）
+  Future<int> deleteMathErrors() async {
+    // 只匹配明确的数学术语和公式，不包含单字符运算符（避免误删中文文本）
+    const mathKeywords = [
+      'π=', 'π值', '勾股定理', '二次方程', '一元二次方程', 'x²=', 'x^2=',
+      '∑', '∫', 'sin(', 'cos(', 'tan(', 'log(', 'ln(',
+      'matrix', 'determinant', '微积分', '导数',
+      '面积公式', '周长公式', '体积公式',
+      '计算题', '求解', '方程式',
+    ];
+
+    List<String> conditions = [];
+    List<dynamic> args = [];
+
+    for (final keyword in mathKeywords) {
+      conditions.add('(content LIKE ? OR question LIKE ? OR knowledge_tag LIKE ? OR error_type LIKE ?)');
+      args.addAll(['%$keyword%', '%$keyword%', '%$keyword%', '%$keyword%']);
+    }
+
+    if (conditions.isEmpty) return 0;
+
+    final maps = await db.query(
+      'error_records',
+      where: conditions.join(' OR '),
+      whereArgs: args,
+    );
+
+    if (maps.isEmpty) return 0;
+
+    final ids = maps.map((m) => m['id'] as int).toList();
+    return await db.delete(
+      'error_records',
+      where: 'id IN (${ids.map((_) => '?').join(',')})',
+      whereArgs: ids,
+    );
+  }
+
+  /// 按exerciseTag删除错误记录（用于清理特定练习题的错误）
+  Future<int> deleteByExerciseTag(String exerciseTag) async {
+    final maps = await db.query(
+      'error_records',
+      where: 'exercise_tag = ?',
+      whereArgs: [exerciseTag],
+    );
+
+    if (maps.isEmpty) return 0;
+
+    final ids = maps.map((m) => m['id'] as int).toList();
+    return await db.delete(
+      'error_records',
+      where: 'id IN (${ids.map((_) => '?').join(',')})',
+      whereArgs: ids,
+    );
+  }
+
+  /// 批量按exerciseTag删除错误记录
+  Future<int> deleteByExerciseTags(List<String> exerciseTags) async {
+    if (exerciseTags.isEmpty) return 0;
+
+    final maps = await db.query(
+      'error_records',
+      where: 'exercise_tag IN (${exerciseTags.map((_) => '?').join(',')})',
+      whereArgs: exerciseTags,
+    );
+
+    if (maps.isEmpty) return 0;
+
+    final ids = maps.map((m) => m['id'] as int).toList();
+    return await db.delete(
+      'error_records',
+      where: 'id IN (${ids.map((_) => '?').join(',')})',
+      whereArgs: ids,
+    );
   }
 }

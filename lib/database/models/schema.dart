@@ -35,16 +35,6 @@ class KnowledgePointSchema {
     'created_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
     'lang': "TEXT DEFAULT 'cn'",
   };
-
-  // 筛选条件类型
-  class KpFilters {
-    static const String? lang;
-    static const String? category;
-    static const String? lessonUnit;
-    static const String? errorType;
-    static const String? keyword;
-    static const int? parentId;
-  }
 }
 
 // ============================================================
@@ -116,6 +106,7 @@ class ExerciseSchema {
     'created_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
     'lang': "TEXT DEFAULT 'cn'",
     'exercise_id': 'TEXT',
+    'paper_id': 'TEXT', // 关联试卷ID（E开头，如 E1, E2）
     'lesson_unit': 'TEXT',
     'knowledge_tag': 'TEXT',
     'progress': "TEXT DEFAULT '未答题'",
@@ -147,6 +138,7 @@ class PortfolioItemSchema {
     'type': 'TEXT',
     'content_path': 'TEXT',
     'thumbnail_path': 'TEXT',
+    'content': 'TEXT', // 文章内容正文
     'created_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
     'lang': "TEXT DEFAULT 'cn'",
     'portfolio_id': 'TEXT',
@@ -188,6 +180,7 @@ class SkillSchema {
     'parameters': 'TEXT',
     'return_type': 'TEXT',
     'description': 'TEXT',
+    'content_path': 'TEXT',
   };
 
   // 技能分类枚举

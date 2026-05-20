@@ -49,6 +49,8 @@ class KnowledgePoint {
       'lang': lang,
       'content_path': contentPath,
       'knowledge_tag': knowledgeTag,
+      'cid': cid,
+      'father_id': fatherId,
     };
   }
 
@@ -125,6 +127,7 @@ class KnowledgePointDao {
     String? category,
     String? lessonUnit,
     String? errorType,
+    List<String>? tags,
     String? keyword,
   }) async {
     List<String> conditions = [];
@@ -331,5 +334,31 @@ class KnowledgePointDao {
   /// 获取指定知识点的所有子类知识点（基于 fatherId）
   Future<List<KnowledgePoint>> getAllChildrenByFatherId(int fatherId, {String? lang}) async {
     return getByFatherId(fatherId, lang: lang);
+  }
+
+  // ========== 知识点清理方法 ==========
+
+  /// 删除包含明显数学知识的知识点（只删除明确是数学知识点的记录）
+  Future<int> deleteMathKnowledgePoints() async {
+    // 只匹配明确的数学符号和公式，避免误删语文中的通用词汇
+    const mathKeywords = [
+      'π=', 'π值', '勾股定理', '二次方程', '一元二次方程', 'x²=', 'x^2=',
+      '∑', '∫', 'sin(', 'cos(', 'tan(', 'log(', 'ln(',
+      'matrix', 'determinant', '微积分', '导数', '积分',
+      '面积公式', '周长公式', '体积公式',
+    ];
+
+    int deletedCount = 0;
+    
+    for (final keyword in mathKeywords) {
+      final result = await db.rawDelete(
+        "DELETE FROM knowledge_points WHERE "
+        "(title LIKE ? OR content LIKE ? OR category LIKE ? OR knowledge_tag LIKE ?)",
+        ['%$keyword%', '%$keyword%', '%$keyword%', '%$keyword%'],
+      );
+      deletedCount += result;
+    }
+
+    return deletedCount;
   }
 }

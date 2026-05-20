@@ -1,0 +1,87 @@
+# 四年级下册课内单元标签体系
+grade: "四年级下册"
+language: "cn"
+
+units:
+  - unitNumber: 1
+    unitName: "田园风光"
+    lessons:
+      - lessonId: "g4x-u1-l1"
+        lessonName: "古诗词三首"
+        keywords: ["乡村生活", "古诗意境", "自然之美"]
+      - lessonId: "g4x-u1-l2"
+        lessonName: "乡下人家"
+        keywords: ["农家生活", "情景交融", "时间顺序"]
+      - lessonId: "g4x-u1-l3"
+        lessonName: "四季之美"
+        keywords: ["季节变化", "动态描写", "审美情趣"]
+
+  - unitNumber: 2
+    unitName: "小小动物园"
+    lessons:
+      - lessonId: "g4x-u2-l1"
+        lessonName: "琥珀"
+        keywords: ["科学想象", "推测", "自然科学"]
+      - lessonId: "g4x-u2-l2"
+        lessonName: "黄河象"
+        keywords: ["化石", "古生物", "想象推理"]
+
+  - unitNumber: 3
+    unitName: "轻叩诗歌大门"
+    lessons:
+      - lessonId: "g4x-u3-l1"
+        lessonName: "短诗三首"
+        keywords: ["儿童诗", "情感表达", "自由创作"]
+      - lessonId: "g4x-u3-l2"
+        lessonName: "繁星·春水"
+        keywords: ["冰心", "母爱", "童真"]
+
+  - unitNumber: 4
+    unitName: "神话故事新编"
+    lessons:
+      - lessonId: "g4x-u4-l1"
+        lessonName: "叶公好龙"
+        keywords: ["古代寓言", "名不副实", "讽刺"]
+      - lessonId: "g4x-u4-l2"
+        lessonName: "嫦娥奔月"
+        keywords: ["民间传说", "思念", "飞天"]
+
+  - unitNumber: 5
+    unitName: "动物朋友"
+    lessons:
+      - lessonId: "g4x-u5-l1"
+        lessonName: "白鹅"
+        keywords: ["动物描写", "拟人", "高傲性格"]
+      - lessonId: "g4x-u5-l2"
+        lessonName: "母鸡"
+        keywords: ["情感变化", "母爱伟大", "观察细致"]
+
+  - unitNumber: 6
+    unitName: "历史故事"
+    lessons:
+      - lessonId: "g4x-u6-l1"
+        lessonName: "将相和"
+        keywords: ["历史典故", "国家大义", "智勇双全"]
+      - lessonId: "g4x-u6-l2"
+        lessonName: "草船借箭"
+        keywords: ["三国", "智慧", "谋略"]
+
+  - unitNumber: 7
+    unitName: "人物描写"
+    lessons:
+      - lessonId: "g4x-u7-l1"
+        lessonName: "小英雄雨来"
+        keywords: ["抗日故事", "勇敢机智", "爱国主义"]
+      - lessonId: "g4x-u7-l2"
+        lessonName: "童年的发现"
+        keywords: ["探索发现", "幽默", "成长体验"]
+
+  - unitNumber: 8
+    unitName: "幽默风趣"
+    lessons:
+      - lessonId: "g4x-u8-l1"
+        lessonName: "自相矛盾"
+        keywords: ["逻辑悖论", "言行一致", "讽喻"]
+      - lessonId: "g4x-u8-l2"
+        lessonName: "田忌赛马"
+        keywords: ["策略思维", "转败为胜", "孙膑"]

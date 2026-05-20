@@ -1,9 +1,16 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import '../components/app_title_bar.dart';
 import '../components/submenu_tabs.dart';
+import '../components/colored_label.dart';
+import '../components/html_preview.dart';
+import '../components/wysiwyg_editor.dart';
 import '../database/db_helper.dart';
 import '../database/models/portfolio_item.dart';
 import '../database/models/exercise.dart';
+import '../database/models/knowledge_point.dart';
 import '../services/llm_service.dart';
 
 class PortfolioDetailPage extends StatefulWidget {
@@ -27,39 +34,173 @@ class PortfolioDetailPage extends StatefulWidget {
 class _PortfolioDetailPageState extends State<PortfolioDetailPage> {
   late PortfolioItem _item;
   late TextEditingController _titleController;
+  late TextEditingController _articleContentController;
+  late TextEditingController _unitNoController; // 单元号
+  late TextEditingController _lessonNoController; // 课号
   String? _knowledgeTag;
   String? _lessonUnit;
-  bool _isOriginal = false;
+  String? _exerciseTag;
+  String? _errorTypeTag;
   bool _isAiAnalyzing = false;
   String? _aiReview;
   final LlmService _llmService = LlmService();
+  
+  // 知识标签列表（带ID前缀）
+  List<String> _knowledgeTags = [];
+  // 知识标签映射：displayValue -> rawValue
+  Map<String, String> _knowledgeTagMap = {};
+  // 习题目标 - 只读显示关联的习题ID（每条作品只关联一条相关习题）
+  List<String> _exerciseTags = [];
+  // 错类标签列表（带ID前缀）
+  List<String> _errorTypeTags = [];
+  // 错类标签映射：displayValue -> rawValue
+  Map<String, String> _errorTypeTagMap = {};
+  bool _isLoadingOptions = true;
 
   @override
   void initState() {
     super.initState();
     _item = widget.item;
     _titleController = TextEditingController(text: _item.title);
+    _articleContentController = TextEditingController(text: _getInitialArticleContent());
+    
+    // 解析课内单元（格式：第X单元第Y课 -> 两个数字）
+    final lessonUnit = _item.lessonUnit ?? '';
+    _unitNoController = TextEditingController(text: _parseUnitNo(lessonUnit));
+    _lessonNoController = TextEditingController(text: _parseLessonNo(lessonUnit));
+    
     _knowledgeTag = _item.knowledgeTag;
-    _lessonUnit = _item.lessonUnit;
-    _isOriginal = _item.isOriginal;
+    _lessonUnit = lessonUnit;
+    _exerciseTag = null;
+    _errorTypeTag = null;
     _aiReview = _item.aiReview;
     _llmService.init();
+    _loadOptions().then((_) {
+      // 如果还没有评析，自动生成
+      if (_aiReview == null && mounted) {
+        _autoGenerateReview();
+      }
+    });
+  }
+  
+  /// 从课内单元字符串提取单元号（如"五年级上-第一单元第3课" -> "3"）
+  String _parseUnitNo(String lessonUnit) {
+    final match = RegExp(r'第(\d+)单').firstMatch(lessonUnit);
+    return match?.group(1) ?? '';
+  }
+  
+  /// 从课内单元字符串提取课号（如"五年级上-第一单元第3课" -> "3"）
+  String _parseLessonNo(String lessonUnit) {
+    final match = RegExp(r'第(\d+)课$').firstMatch(lessonUnit);
+    return match?.group(1) ?? '';
+  }
+  
+  /// 生成课内单元字符串（如"3" + "5" -> "第一单元第5课"）
+  String _buildLessonUnit() {
+    final unitNo = _unitNoController.text.trim();
+    final lessonNo = _lessonNoController.text.trim();
+    if (unitNo.isEmpty && lessonNo.isEmpty) return '';
+    final unitText = unitNo.isEmpty ? '' : '第${unitNo}单元';
+    final lessonText = lessonNo.isEmpty ? '' : '第${lessonNo}课';
+    return '$unitText$lessonText'.trim();
   }
 
   @override
   void dispose() {
     _titleController.dispose();
+    _articleContentController.dispose();
+    _unitNoController.dispose();
+    _lessonNoController.dispose();
     super.dispose();
   }
 
+  // Store article content for saving
+  String _articleContent = '';
+
+  String _getInitialArticleContent() {
+    if (_item.contentPath != null) {
+      final filePath = '${_item.contentPath}/index.html';
+      final file = File(filePath);
+      if (file.existsSync()) {
+        try {
+          return file.readAsStringSync(encoding: utf8);
+        } catch (e) {
+          print('[PortfolioDetail] 读取文章失败: $e');
+        }
+      }
+    }
+    return '';
+  }
+
+  Future<void> _loadOptions() async {
+    try {
+      final db = await DatabaseHelper().database;
+      final kpDao = KnowledgePointDao(db);
+      
+      // 加载知识标签（带ID前缀，如"1. 细节描写"）
+      final knowledgePoints = await kpDao.getAll(lang: widget.lang);
+      final kTags = <String>[];
+      final kTagMap = <String, String>{};
+      for (var i = 0; i < knowledgePoints.length; i++) {
+        final p = knowledgePoints[i];
+        final display = '${p.id ?? "?"}. ${p.title}';
+        kTags.add(display);
+        kTagMap[display] = p.title;
+      }
+      
+      // 加载习题标签（从习题集提取ID，只读显示）
+      final exerciseDao = ExerciseDao(db);
+      final exercises = await exerciseDao.getAll(lang: widget.lang);
+      final exTags = exercises.map((e) => e.exerciseId).whereType<String>().toSet().toList();
+      
+      // 加载错类标签（带ID前缀）
+      final errorTypesRaw = await kpDao.getAllErrorTypes();
+      final errorTypes = <String>[];
+      final errorTypeMap = <String, String>{};
+      for (var i = 0; i < errorTypesRaw.length; i++) {
+        final raw = errorTypesRaw[i];
+        final display = '${i + 1}. $raw';
+        errorTypes.add(display);
+        errorTypeMap[display] = raw;
+      }
+      
+      setState(() {
+        _knowledgeTags = kTags;
+        _knowledgeTagMap = kTagMap;
+        _exerciseTags = exTags;
+        _errorTypeTags = errorTypes;
+        _errorTypeTagMap = errorTypeMap;
+        _isLoadingOptions = false;
+      });
+    } catch (e) {
+      print('[PortfolioDetail] 加载选项失败: $e');
+      setState(() => _isLoadingOptions = false);
+    }
+  }
+
   Future<void> _saveItem() async {
+    // 先保存文章内容到文件
+    if (_item.contentPath != null) {
+      final dir = Directory(_item.contentPath!);
+      if (await dir.exists()) {
+        final indexFile = File('${dir.path}/index.html');
+        await indexFile.writeAsString(
+          _articleContent.isEmpty ? '<p>暂无内容</p>' : _articleContent,
+          encoding: utf8,
+        );
+      }
+    }
+
     final updated = _item.copyWith(
       title: _titleController.text.trim(),
       knowledgeTag: _knowledgeTag,
-      lessonUnit: _lessonUnit,
-      isOriginal: _isOriginal,
+      lessonUnit: _buildLessonUnit().isEmpty ? null : _buildLessonUnit(),
       aiReview: _aiReview,
     );
+    
+    setState(() {
+      _lessonUnit = _buildLessonUnit();
+    });
     await widget.portfolioDao.update(updated);
     if (mounted) {
       Navigator.of(context).pop(true);
@@ -96,20 +237,50 @@ class _PortfolioDetailPageState extends State<PortfolioDetailPage> {
     }
   }
 
-  Future<void> _aiAnalyze() async {
-    if (_isAiAnalyzing) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.lang == 'cn' ? '评析正在进行中' : 'Analysis in progress')),
-      );
-      return;
-    }
-
+  /// AI自动生成评析
+  Future<void> _autoGenerateReview() async {
+    if (_isAiAnalyzing || _aiReview != null) return;
+    
     setState(() => _isAiAnalyzing = true);
 
     try {
-      final prompt = _isOriginal
-          ? '请对以下学生作文进行点评，从内容、结构、语言三个方面给出详细修改建议：\n标题：${_item.title}'
-          : '请对以下作品进行赏析，包括写作手法、语言特色和情感表达：\n标题：${_item.title}';
+      if (_item.isOriginal) {
+        await _aiAnalyzeOriginal();
+      } else {
+        await _aiAnalyzeNonOriginal();
+      }
+    } catch (e) {
+      setState(() => _isAiAnalyzing = false);
+    }
+  }
+
+  /// AI评析 - 针对原创内容
+  Future<void> _aiAnalyzeOriginal() async {
+    if (_isAiAnalyzing) return;
+    
+    setState(() => _isAiAnalyzing = true);
+
+    try {
+      // 获取文章内容
+      String articleContent = '';
+      if (_item.contentPath != null) {
+        final filePath = '${_item.contentPath}/index.html';
+        final file = File(filePath);
+        if (await file.exists()) {
+          articleContent = await file.readAsString(encoding: utf8);
+          // 去除HTML标签只保留文本
+          articleContent = articleContent
+              .replaceAll(RegExp(r'<[^>]*>'), ' ')
+              .replaceAll(RegExp(r'\s+'), ' ')
+              .trim();
+        }
+      }
+
+      if (articleContent.isEmpty) {
+        articleContent = '(无内容)';
+      }
+
+      final prompt = '请从"立意"、"文章布局"、"文学表达手法"、"可参考的其他名人名著中片段"对以下原创作文"{文章}"进行评述，中肯客观，不仅描述优点，也描述缺点。\n\n${articleContent.substring(0, articleContent.length > 500 ? 500 : articleContent.length)}...';
 
       final response = await _llmService.generateResponse(prompt);
       final review = response['response'] ?? '';
@@ -127,32 +298,40 @@ class _PortfolioDetailPageState extends State<PortfolioDetailPage> {
       setState(() => _isAiAnalyzing = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(widget.lang == 'cn' ? '评析失败' : 'Analysis failed')),
+          SnackBar(content: Text(widget.lang == 'cn' ? '评析失败: ${e.toString()}' : 'Analysis failed: ${e.toString()}')),
         );
       }
     }
   }
 
-  Future<void> _generateExercise() async {
-    final db = await DatabaseHelper().database;
-    final exerciseDao = ExerciseDao(db);
-    final nextNum = await exerciseDao.nextExerciseIdNumber();
+  /// AI评析 - 非原创作品
+  Future<void> _aiAnalyzeNonOriginal() async {
+    if (_isAiAnalyzing) return;
+    
+    setState(() => _isAiAnalyzing = true);
 
-    await exerciseDao.insert(Exercise(
-      question: '${_item.title} - 专项测试',
-      exerciseId: 'T$nextNum',
-      knowledgeTag: _item.knowledgeTag,
-      lessonUnit: _item.lessonUnit,
-      progress: '未答题',
-      category: '专项练习',
-      createdAt: DateTime.now(),
-      lang: widget.lang,
-    ));
+    try {
+      final prompt = '请对以下作品进行赏析，包括写作手法、语言特色和情感表达：\n标题：${_item.title}';
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.lang == 'cn' ? '习题已添加到习题集' : 'Exercise added')),
-      );
+      final response = await _llmService.generateResponse(prompt);
+      final review = response['response'] ?? '';
+
+      setState(() {
+        _aiReview = review;
+        _isAiAnalyzing = false;
+      });
+
+      // 自动保存评析结果
+      final updated = _item.copyWith(aiReview: review);
+      await widget.portfolioDao.update(updated);
+      _item = updated;
+    } catch (e) {
+      setState(() => _isAiAnalyzing = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(widget.lang == 'cn' ? '评析失败: ${e.toString()}' : 'Analysis failed: ${e.toString()}')),
+        );
+      }
     }
   }
 
@@ -171,7 +350,6 @@ class _PortfolioDetailPageState extends State<PortfolioDetailPage> {
           children: [
             AppTitleBar(
               title: widget.lang == 'cn' ? '作品详情' : 'Portfolio Detail',
-              onHomeTap: widget.onHomeTap,
             ),
             Expanded(
               child: Container(
@@ -204,89 +382,127 @@ class _PortfolioDetailPageState extends State<PortfolioDetailPage> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      // 标签区域
-                      Row(
-                        children: [
-                          Text(widget.lang == 'cn' ? '课内标签：' : 'Lesson: ',
-                              style: const TextStyle(fontWeight: FontWeight.bold)),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: TextField(
-                              controller: TextEditingController(text: _lessonUnit ?? ''),
-                              decoration: InputDecoration(
-                                hintText: widget.lang == 'cn' ? '如：四年级上' : 'e.g. Grade 4',
-                                border: const OutlineInputBorder(),
-                                isDense: true,
-                              ),
-                              onChanged: (v) => _lessonUnit = v.isEmpty ? null : v,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Text(widget.lang == 'cn' ? '知识标签：' : 'Knowledge: ',
-                              style: const TextStyle(fontWeight: FontWeight.bold)),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: TextField(
-                              controller: TextEditingController(text: _knowledgeTag ?? ''),
-                              decoration: InputDecoration(
-                                hintText: widget.lang == 'cn' ? '如：借物喻人' : 'e.g. Metaphor',
-                                border: const OutlineInputBorder(),
-                                isDense: true,
-                              ),
-                              onChanged: (v) => _knowledgeTag = v.isEmpty ? null : v,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      // 是否原创
-                      Row(
-                        children: [
-                          Text(widget.lang == 'cn' ? '原创：' : 'Original: ',
-                              style: const TextStyle(fontWeight: FontWeight.bold)),
-                          Switch(
-                            value: _isOriginal,
-                            onChanged: (v) => setState(() => _isOriginal = v),
-                          ),
-                          if (_isOriginal)
-                            Chip(
-                              label: Text(widget.lang == 'cn' ? '原创' : 'Original'),
-                              backgroundColor: const Color(0xFFDDA0DD),
-                              labelStyle: const TextStyle(fontSize: 12),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      // 内容预览区
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[100],
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey[300]!),
+                      
+                      // ========== 紧凑标签区域 ==========
+                      if (_isLoadingOptions)
+                        const Center(child: CircularProgressIndicator()),
+                      ...[
+                        // 知识点标签下拉（带ID前缀）
+                        _buildLabelDropdown(
+                          label: widget.lang == 'cn' ? '知识点标签' : 'Knowledge:',
+                          value: _knowledgeTag,
+                          items: _knowledgeTags,
+                          onChanged: (v) => setState(() => _knowledgeTag = _knowledgeTagMap[v] ?? v),
+                          type: 'knowledge',
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        const SizedBox(height: 4),
+                        
+                        // 课内单元 - 手动输入（非年级，格式：第X单元第X课）
+                        Row(
                           children: [
-                            Text(
-                              widget.lang == 'cn' ? '内容区域' : 'Content Area',
-                              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey[600]),
+                            SizedBox(
+                              width: 70,
+                              child: Text(
+                                widget.lang == 'cn' ? '课内标签' : 'Lesson:',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                              ),
                             ),
-                            const SizedBox(height: 8),
-                            Text(
-                              widget.lang == 'cn' ? '（富媒体编辑器预留区域）' : '(Rich media editor placeholder)',
-                              style: TextStyle(color: Colors.grey[400]),
+                            const SizedBox(width: 8),
+                            
+                            // 单元号输入框
+                            SizedBox(
+                              width: 60,
+                              child: TextField(
+                                controller: _unitNoController,
+                                keyboardType: TextInputType.number,
+                                decoration: InputDecoration(
+                                  hintText: widget.lang == 'cn' ? '单元' : 'Unit',
+                                  border: const OutlineInputBorder(),
+                                  isDense: true,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  helperText: widget.lang == 'cn' ? '如：1' : 'e.g. 1',
+                                  helperStyle: const TextStyle(fontSize: 10),
+                                ),
+                                onChanged: (value) => setState(() {}),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            
+                            // 课号输入框
+                            SizedBox(
+                              width: 60,
+                              child: TextField(
+                                controller: _lessonNoController,
+                                keyboardType: TextInputType.number,
+                                decoration: InputDecoration(
+                                  hintText: widget.lang == 'cn' ? '课号' : 'Lesson',
+                                  border: const OutlineInputBorder(),
+                                  isDense: true,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  helperText: widget.lang == 'cn' ? '如：3' : 'e.g. 3',
+                                  helperStyle: const TextStyle(fontSize: 10),
+                                ),
+                                onChanged: (value) => setState(() {}),
+                              ),
+                            ),
+                            
+                            const SizedBox(width: 8),
+                            
+                            // 预览完整格式
+                            Expanded(
+                              child: Text(
+                                _buildLessonUnit().isEmpty 
+                                    ? (widget.lang == 'cn' ? '请输入单元号和课号' : 'Enter unit and lesson no.')
+                                    : _buildLessonUnit(),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
                             ),
                           ],
                         ),
+                        const SizedBox(height: 4),
+                        
+                        // 习题标签 - 只读显示系统自动生成的练习ID
+                        _buildExerciseTagDisplay(),
+                        const SizedBox(height: 4),
+                        
+                        // 错类标签下拉（带ID前缀）
+                        _buildLabelDropdown(
+                          label: widget.lang == 'cn' ? '错类标签' : 'Error Type:',
+                          value: _errorTypeTag,
+                          items: _errorTypeTags,
+                          onChanged: (v) => setState(() => _errorTypeTag = _errorTypeTagMap[v] ?? v),
+                          type: 'errorType',
+                        ),
+                      ],
+                      
+                      const SizedBox(height: 20),
+                      
+                      // ========== 富媒体编辑器（H1-H3，图片，视频） ==========
+                      Text(
+                        widget.lang == 'cn' ? '文章内容' : 'Article Content',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                       ),
-                      const SizedBox(height: 16),
-                      // AI评析区域
+                      const SizedBox(height: 8),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 300, maxHeight: 500),
+                        child: WysiwygEditor(
+                          initialContent: _getInitialArticleContent(),
+                          lang: widget.lang,
+                          onContentChanged: (html) {
+                            setState(() {
+                              _articleContent = html;
+                            });
+                          },
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 20),
+                      
+                      // ========== AI 评析（直接展示，非按钮） ==========
                       Row(
                         children: [
                           Text(
@@ -294,19 +510,19 @@ class _PortfolioDetailPageState extends State<PortfolioDetailPage> {
                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                           ),
                           const Spacer(),
-                          ElevatedButton.icon(
-                            onPressed: _isAiAnalyzing ? null : _aiAnalyze,
-                            icon: _isAiAnalyzing
-                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                                : const Icon(Icons.auto_awesome, size: 18),
-                            label: Text(_isAiAnalyzing
-                                ? (widget.lang == 'cn' ? '评析中...' : 'Analyzing...')
-                                : (widget.lang == 'cn' ? '开始评析' : 'Analyze')),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF651FFF),
-                              foregroundColor: Colors.white,
+                          if (_aiReview == null)
+                            OutlinedButton.icon(
+                              onPressed: _isAiAnalyzing ? null : (_item.isOriginal ? _aiAnalyzeOriginal : _aiAnalyzeNonOriginal),
+                              icon: _isAiAnalyzing
+                                  ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                                  : const Icon(Icons.auto_awesome, size: 16),
+                              label: Text(_isAiAnalyzing
+                                  ? (widget.lang == 'cn' ? '评析中...' : 'Analyzing...')
+                                  : (widget.lang == 'cn' ? '生成评析' : 'Generate Review')),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: const Color(0xFF651FFF),
+                              ),
                             ),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -321,24 +537,13 @@ class _PortfolioDetailPageState extends State<PortfolioDetailPage> {
                           ),
                         ),
                         child: Text(
-                          _aiReview ?? (widget.lang == 'cn' ? '尚未进行评析，点击"开始评析"按钮' : 'No review yet. Click "Analyze"'),
+                          _aiReview ?? (widget.lang == 'cn' ? '尚未进行评析，点击"生成评析"按钮' : 'No review yet. Click "Generate Review"'),
                           style: TextStyle(
                             fontSize: 14,
                             color: _aiReview != null ? Colors.black87 : Colors.grey[500],
                           ),
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      // 生成练习按钮
-                      if (!_isOriginal)
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: _generateExercise,
-                            icon: const Icon(Icons.quiz),
-                            label: Text(widget.lang == 'cn' ? '生成练习题' : 'Generate Exercise'),
-                          ),
-                        ),
                     ],
                   ),
                 ),
@@ -366,6 +571,120 @@ class _PortfolioDetailPageState extends State<PortfolioDetailPage> {
           ],
         ),
       ),
+    );
+  }
+
+  /// 构建习目标只读显示（系统自动生成的练习ID）
+  Widget _buildExerciseTagDisplay() {
+    return Row(
+      children: [
+        SizedBox(
+          width: 70,
+          child: Text(
+            widget.lang == 'cn' ? '习题标签' : 'Exercises:',
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: Colors.grey[300]!),
+            ),
+            child: Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: [
+                if (_exerciseTags.isEmpty)
+                  Text(
+                    widget.lang == 'cn' ? '暂无练习' : 'No exercises generated',
+                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                  ),
+                ..._exerciseTags.map((tag) => Chip(
+                  label: Text(tag, style: const TextStyle(fontSize: 10)),
+                  visualDensity: VisualDensity.compact,
+                  labelPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                  padding: EdgeInsets.zero,
+                  backgroundColor: Colors.blue[50],
+                )),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 构建下拉标签选择器
+  Widget _buildLabelDropdown({
+    required String label,
+    required String? value,
+    required List<String> items,
+    required ValueChanged<String?> onChanged,
+    required String type, // knowledge, lesson, exercise, errorType
+  }) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 70,
+          child: Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: DropdownButtonFormField<String>(
+            value: items.contains(value) ? value : null,
+            decoration: InputDecoration(
+              hintText: widget.lang == 'cn' ? '请选择' : 'Select',
+              border: const OutlineInputBorder(),
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              constraints: const BoxConstraints(maxHeight: 32),
+            ),
+            items: items.map((item) => DropdownMenuItem(value: item, child: Text(item, style: const TextStyle(fontSize: 11)))).toList(),
+            onChanged: onChanged,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 构建 HTML 预览区（不可编辑）
+  Widget _buildHtmlPreview() {
+    if (_item.contentPath == null) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.grey[100],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey[300]!),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.lang == 'cn' ? '内容区域' : 'Content Area',
+              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              widget.lang == 'cn' ? '（暂无内容）' : '(No content)',
+              style: TextStyle(color: Colors.grey[400]),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return HtmlPreview(
+      filePath: _item.contentPath,
+      showAppBar: false,
     );
   }
 }

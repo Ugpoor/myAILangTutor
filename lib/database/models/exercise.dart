@@ -13,6 +13,7 @@ class Exercise {
   final String lang;
   final String? contentPath;
   final String? exerciseId;
+  final String? paperId; // 关联试卷ID（E开头，如 E1, E2）
   final String? lessonUnit;
   final String? knowledgeTag;
   final String progress;
@@ -35,6 +36,7 @@ class Exercise {
     this.lang = 'cn',
     this.contentPath,
     this.exerciseId,
+    this.paperId,
     this.lessonUnit,
     this.knowledgeTag,
     this.progress = '未答题',
@@ -59,6 +61,7 @@ class Exercise {
       'lang': lang,
       'content_path': contentPath,
       'exercise_id': exerciseId,
+      'paper_id': paperId,
       'lesson_unit': lessonUnit,
       'knowledge_tag': knowledgeTag,
       'progress': progress,
@@ -160,7 +163,11 @@ class ExerciseDao {
     String? lessonUnit,
     String? knowledgeTag,
     String? progress,
+    String? source,
+    List<String>? knowledgeTags,
+    List<String>? sources,
     String? keyword,
+    String? paperId, // 按试卷 ID 筛选
   }) async {
     List<String> conditions = [];
     List<dynamic> args = [];
@@ -178,16 +185,34 @@ class ExerciseDao {
       args.add(completed ? 1 : 0);
     }
     if (lessonUnit != null) {
-      conditions.add('lesson_unit = ?');
-      args.add(lessonUnit);
+      conditions.add('lesson_unit LIKE ?');
+      args.add('%$lessonUnit%');
     }
-    if (knowledgeTag != null) {
+    if (knowledgeTag != null && knowledgeTags == null) {
       conditions.add('knowledge_tag LIKE ?');
       args.add('%$knowledgeTag%');
+    }
+    if (knowledgeTags != null && knowledgeTags.isNotEmpty) {
+      final placeholders = knowledgeTags.map((_) => '?').join(', ');
+      conditions.add('(knowledge_tag IN ($placeholders) OR knowledge_tag IS NULL)');
+      args.addAll(knowledgeTags);
     }
     if (progress != null) {
       conditions.add('progress = ?');
       args.add(progress);
+    }
+    if (source != null) {
+      conditions.add('source = ?');
+      args.add(source);
+    }
+    if (sources != null && sources.isNotEmpty) {
+      final placeholders = sources.map((_) => '?').join(', ');
+      conditions.add('(source IN ($placeholders) OR source IS NULL)');
+      args.addAll(sources);
+    }
+    if (paperId != null) {
+      conditions.add('paper_id = ?');
+      args.add(paperId);
     }
     if (keyword != null && keyword.isNotEmpty) {
       conditions.add('(question LIKE ? OR exercise_id LIKE ?)');
@@ -202,6 +227,27 @@ class ExerciseDao {
       orderBy: 'created_at DESC',
     );
     return maps.map((map) => Exercise.fromMap(map)).toList();
+  }
+
+  /// 根据试卷 ID 获取该试卷下的所有试题
+  Future<List<Exercise>> getExercisesByPaperId(String paperId) async {
+    final maps = await db.query(
+      'exercises',
+      where: 'paper_id = ?',
+      whereArgs: [paperId],
+      orderBy: 'exercise_id ASC',
+    );
+    return maps.map((map) => Exercise.fromMap(map)).toList();
+  }
+
+  /// 根据试题 ID（如 E2T3）获取单个试题
+  Future<Exercise?> getByExerciseId(String exerciseId) async {
+    final maps = await db.query(
+      'exercises',
+      where: 'exercise_id = ?',
+      whereArgs: [exerciseId],
+    );
+    return maps.isNotEmpty ? Exercise.fromMap(maps.first) : null;
   }
 
   Future<Exercise?> getById(int id) async {
@@ -260,13 +306,13 @@ class ExerciseDao {
 
   // ========== 习题集清理方法 ==========
 
-  /// 删除包含数学内容的习题
+  /// 删除包含明显数学内容的习题（只删除明确是数学题的记录）
   Future<int> deleteMathExercises() async {
+    // 只匹配明确的数学符号和公式，避免误删语文中的通用词汇
     const mathKeywords = [
-      '分数', '计算', '运算', '加减', '乘除', '方程', '几何', '代数',
-      '函数', '三角', '面积', '周长', '整数', '小数', '百分', 'π',
-      '勾股', '二次', 'x²', '√', 'math', 'calculate', '算术', '算数',
-      '3/4', '1/4', '2/5', '5/6', '1/2', '7/8',
+      'π=', 'π值', '勾股', '二次方程', '一元二次', 'x²=', 'x^2',
+      '√', '∑', '∫', 'sin(', 'cos(', 'tan(', 'log(', 'ln(',
+      'matrix', 'determinant', '微积分', '导数', '积分',
     ];
 
     int deletedCount = 0;
@@ -344,13 +390,11 @@ class ExerciseDao {
     return deletedCount;
   }
 
-  /// 一键清理：删除数学题 + 去重
+  /// 一键清理：去重
   Future<Map<String, int>> cleanExercises() async {
-    final mathDeleted = await deleteMathExercises();
     final dupDeleted = await deduplicateExercises();
     
     return {
-      'math_deleted': mathDeleted,
       'duplicate_deleted': dupDeleted,
     };
   }
@@ -365,5 +409,10 @@ class ExerciseDao {
     final match = RegExp(r'T(\d+)').firstMatch(lastId);
     if (match != null) return int.parse(match.group(1)!) + 1;
     return 1;
+  }
+
+  /// 删除所有习题
+  Future<int> deleteAll() async {
+    return await db.rawDelete('DELETE FROM exercises');
   }
 }

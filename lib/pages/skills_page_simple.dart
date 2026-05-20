@@ -1,5 +1,9 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 import '../components/app_title_bar.dart';
 import '../components/submenu_tabs.dart';
 import '../components/ai_reply_bar.dart';
@@ -326,131 +330,290 @@ class _SkillsPageSimpleState extends State<SkillsPageSimple> {
     final isSelected = _selectedIds.contains(skill.id);
     final categoryColor = skill.category == '内部' ? const Color(0xFF87CEEB) : const Color(0xFF98FB98);
     final isExternal = skill.category == '外部';
+    final hasContent = skill.contentPath != null && skill.contentPath!.isNotEmpty;
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
-      child: InkWell(
-        onTap: () => _navigateToDetail(skill),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: () => _navigateToDetail(skill),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Checkbox(
-                    value: isSelected,
-                    onChanged: (value) {
-                      setState(() {
-                        if (value == true) {
-                          _selectedIds.add(skill.id!);
-                        } else {
-                          _selectedIds.remove(skill.id!);
-                        }
-                      });
-                    },
-                  ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+                  Row(
+                    children: [
+                      Checkbox(
+                        value: isSelected,
+                        onChanged: (value) {
+                          setState(() {
+                            if (value == true) {
+                              _selectedIds.add(skill.id!);
+                            } else {
+                              _selectedIds.remove(skill.id!);
+                            }
+                          });
+                        },
+                      ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              '${skill.skillId ?? ""} ',
-                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            Row(
+                              children: [
+                                Text(
+                                  '${skill.skillId ?? ""} ',
+                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                                Expanded(child: Text(skill.name)),
+                                const SizedBox(width: 8),
+                                if (skill.category != null)
+                                  Chip(
+                                    label: Text(skill.category!, style: const TextStyle(fontSize: 10)),
+                                    backgroundColor: categoryColor,
+                                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                                    labelStyle: const TextStyle(fontSize: 10),
+                                  ),
+                                if (skill.prerequisite != null) ...[
+                                  const SizedBox(width: 4),
+                                  Chip(
+                                    label: Text('前置:${skill.prerequisite}', style: const TextStyle(fontSize: 9)),
+                                    backgroundColor: Colors.orange[100],
+                                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                                  ),
+                                ],
+                              ],
                             ),
-                            Expanded(child: Text(skill.name)),
-                            const SizedBox(width: 8),
-                            if (skill.category != null)
-                              Chip(
-                                label: Text(skill.category!, style: const TextStyle(fontSize: 10)),
-                                backgroundColor: categoryColor,
-                                padding: const EdgeInsets.symmetric(horizontal: 6),
-                                labelStyle: const TextStyle(fontSize: 10),
+                            const SizedBox(height: 4),
+                            if (skill.description != null && skill.description!.isNotEmpty)
+                              Text(
+                                skill.description!,
+                                style: TextStyle(color: Colors.grey[600], fontSize: 12),
                               ),
-                            if (skill.prerequisite != null) ...[
-                              const SizedBox(width: 4),
-                              Chip(
-                                label: Text('前置:${skill.prerequisite}', style: const TextStyle(fontSize: 9)),
-                                backgroundColor: Colors.orange[100],
-                                padding: const EdgeInsets.symmetric(horizontal: 4),
-                              ),
-                            ],
                           ],
                         ),
-                        const SizedBox(height: 4),
-                        if (skill.description != null && skill.description!.isNotEmpty)
-                          Text(
-                            skill.description!,
-                            style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                          ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
+                  if (isExternal && skill.promptText != null && skill.promptText!.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF5F5F5),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.grey[200]!),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              skill.promptText!,
+                              style: const TextStyle(fontSize: 13, fontStyle: FontStyle.italic),
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          ElevatedButton(
+                            onPressed: () => _copyToClipboard(skill.promptText!),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF651FFF),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            ),
+                            child: Text(
+                              widget.lang == 'cn' ? '复制' : 'Copy',
+                              style: const TextStyle(fontSize: 12, color: Colors.white),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  if (!isExternal && skill.internalFunction != null) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[50],
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.blue[200]!),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.settings, size: 16, color: Colors.blue),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${widget.lang == 'cn' ? "内部函数" : "Internal"}: ${skill.internalFunction}',
+                            style: TextStyle(fontSize: 13, color: Colors.blue[700]),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
-              if (isExternal && skill.promptText != null && skill.promptText!.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF5F5F5),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: Colors.grey[200]!),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          skill.promptText!,
-                          style: const TextStyle(fontSize: 13, fontStyle: FontStyle.italic),
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: () => _copyToClipboard(skill.promptText!),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF651FFF),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        ),
-                        child: Text(
-                          widget.lang == 'cn' ? '复制' : 'Copy',
-                          style: const TextStyle(fontSize: 12, color: Colors.white),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              if (!isExternal && skill.internalFunction != null) ...[
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.blue[50],
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: Colors.blue[200]!),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.settings, size: 16, color: Colors.blue),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${widget.lang == 'cn' ? "内部函数" : "Internal"}: ${skill.internalFunction}',
-                        style: TextStyle(fontSize: 13, color: Colors.blue[700]),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
+            ),
           ),
+          // 内容指示和预览按钮（如果有关联内容）
+          if (hasContent)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: OutlinedButton.icon(
+                onPressed: () => _previewContent(skill.contentPath!),
+                icon: const Icon(Icons.html, size: 16),
+                label: Text(widget.lang == 'cn' ? '在线阅读' : 'Read Online'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF651FFF),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 预览技能关联的HTML内容
+  Future<void> _previewContent(String contentPath) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => HtmlPreviewPage(
+          lang: widget.lang,
+          filePath: contentPath,
         ),
       ),
     );
+  }
+}
+
+/// HTML预览页面 - 用于显示技能关联的网页内容
+class HtmlPreviewPage extends StatefulWidget {
+  final String lang;
+  final String filePath;
+
+  const HtmlPreviewPage({
+    super.key,
+    required this.lang,
+    required this.filePath,
+  });
+
+  @override
+  State<HtmlPreviewPage> createState() => _HtmlPreviewPageState();
+}
+
+class _HtmlPreviewPageState extends State<HtmlPreviewPage> {
+  late final WebViewController _controller;
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _initController();
+  }
+
+  Future<void> _initController() async {
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(Colors.white)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageStarted: (url) {
+            setState(() => _isLoading = true);
+          },
+          onPageFinished: (url) {
+            setState(() => _isLoading = false);
+          },
+          onWebResourceError: (error) {
+            setState(() {
+              _isLoading = false;
+              _errorMessage = error.description;
+            });
+          },
+        ),
+      );
+
+    await _loadContent();
+  }
+
+  Future<void> _loadContent() async {
+    try {
+      final indexPath = '${widget.filePath}/index.html';
+      final file = File(indexPath);
+      if (await file.exists()) {
+        final content = await file.readAsString(encoding: utf8);
+        await _controller.loadHtmlString(content);
+      } else {
+        throw Exception('File not found: $indexPath');
+      }
+    } catch (e) {
+      setState(() => _errorMessage = e.toString());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.lang == 'cn' ? '在线阅读' : 'Read Online'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_errorMessage != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 64, color: Colors.red),
+              const SizedBox(height: 16),
+              Text(
+                '加载失败',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _errorMessage!,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _loadContent,
+                child: const Text('重试'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_isLoading) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('正在加载...'),
+          ],
+        ),
+      );
+    }
+
+    return WebViewWidget(controller: _controller);
   }
 }

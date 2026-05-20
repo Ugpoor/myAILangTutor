@@ -13,6 +13,7 @@ class PortfolioItem {
   final String? knowledgeTag;
   final String? lessonUnit;
   final String? aiReview;
+  final String? content; // 文章内容正文
 
   PortfolioItem({
     this.id,
@@ -27,6 +28,7 @@ class PortfolioItem {
     this.knowledgeTag,
     this.lessonUnit,
     this.aiReview,
+    this.content,
   });
 
   Map<String, dynamic> toMap() {
@@ -43,6 +45,7 @@ class PortfolioItem {
       'knowledge_tag': knowledgeTag,
       'lesson_unit': lessonUnit,
       'ai_review': aiReview,
+      'content': content,
     };
   }
 
@@ -62,6 +65,7 @@ class PortfolioItem {
       knowledgeTag: map['knowledge_tag'] as String?,
       lessonUnit: map['lesson_unit'] as String?,
       aiReview: map['ai_review'] as String?,
+      content: map['content'] as String?,
     );
   }
 
@@ -78,6 +82,7 @@ class PortfolioItem {
     String? knowledgeTag,
     String? lessonUnit,
     String? aiReview,
+    String? content,
   }) {
     return PortfolioItem(
       id: id ?? this.id,
@@ -92,6 +97,7 @@ class PortfolioItem {
       knowledgeTag: knowledgeTag ?? this.knowledgeTag,
       lessonUnit: lessonUnit ?? this.lessonUnit,
       aiReview: aiReview ?? this.aiReview,
+      content: content ?? this.content,
     );
   }
 }
@@ -175,6 +181,17 @@ class PortfolioDao {
       where: 'id = ?',
       whereArgs: [id],
     );
+  }
+
+  /// 删除所有作品集条目
+  Future<int> deleteAll() async {
+    // 先计算总数用于返回
+    final count = await this.count();
+    if (count > 0) {
+      await db.delete('portfolio_items');
+      return count;
+    }
+    return 0;
   }
 
   Future<int> count({String? lang, String? type, bool? isOriginal}) async {

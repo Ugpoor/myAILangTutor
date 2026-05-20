@@ -1,0 +1,99 @@
+# 四年级上册课内单元标签体系
+grade: "四年级上册"
+language: "cn"
+
+units:
+  - unitNumber: 1
+    unitName: "自然奇观"
+    lessons:
+      - lessonId: "g4s-u1-l1"
+        lessonName: "观潮"
+        keywords: ["描写景物", "按顺序观察", "感官体验"]
+      - lessonId: "g4s-u1-l2"
+        lessonName: "走月亮"
+        keywords: ["抒情散文", "月光下", "亲情"]
+      - lessonId: "g4s-u1-l3"
+        lessonName: "现代诗二首"
+        keywords: ["现代诗", "想象", "意象"]
+      - lessonId: "g4s-u1-l4"
+        lessonName: "繁星"
+        keywords: ["回忆", "星空", "情感"]
+
+  - unitNumber: 2
+    unitName: "提问策略"
+    lessons:
+      - lessonId: "g4s-u2-l1"
+        lessonName: "陀螺"
+        keywords: ["叙事", "人生哲理", "童年往事"]
+      - lessonId: "g4s-u2-l2"
+        lessonName: "一只窝囊的大老虎"
+        keywords: ["表演", "童真", "心理描写"]
+      - lessonId: "g4s-u2-l3"
+        lessonName: "一匹出色的马"
+        keywords: ["家庭成员", "自然美景", "亲子时光"]
+
+  - unitNumber: 3
+    unitName: "连续观察"
+    lessons:
+      - lessonId: "g4s-u3-l1"
+        lessonName: "蟋蟀的住宅"
+        keywords: ["观察记录", "拟人手法", "动物习性"]
+      - lessonId: "g4s-u3-l2"
+        lessonName: "世界地图引出的发现"
+        keywords: ["科学探索", "发现问题", "推理"]
+
+  - unitNumber: 4
+    unitName: "神话故事"
+    lessons:
+      - lessonId: "g4s-u4-l1"
+        lessonName: "盘古开天地"
+        keywords: ["创世神话", "想象丰富", "英雄主义"]
+      - lessonId: "g4s-u4-l2"
+        lessonName: "精卫填海"
+        keywords: ["古代神话", "坚持不懈", "悲剧精神"]
+      - lessonId: "g4s-u4-l3"
+        lessonName: "普罗米修斯"
+        keywords: ["希腊神话", "勇敢无畏", "牺牲"]
+      - lessonId: "g4s-u4-l4"
+        lessonName: "女娲补天"
+        keywords: ["上古神话", "救世", "神勇"]
+
+  - unitNumber: 5
+    unitName: "观察与发现"
+    lessons:
+      - lessonId: "g4s-u5-l1"
+        lessonName: "美就到家了"
+        keywords: ["生活观察", "细节描写"]
+      - lessonId: "g4s-u5-l2"
+        lessonName: "搭石"
+        keywords: ["乡村生活", "互助友爱", "平凡之美"]
+
+  - unitNumber: 6
+    unitName: "成长故事"
+    lessons:
+      - lessonId: "g4s-u6-l1"
+        lessonName: "为中华之崛起而读书"
+        keywords: ["志向", "爱国主义", "少年责任"]
+      - lessonId: "g4s-u6-l2"
+        lessonName: "那片绿绿的爬山虎"
+        keywords: ["修改文章", "师长教诲", "成长"]
+
+  - unitNumber: 7
+    unitName: "风景文化"
+    lessons:
+      - lessonId: "g4s-u7-l1"
+        lessonName: "海上日出"
+        keywords: ["日出景象", "时间顺序", "壮观"]
+      - lessonId: "g4s-u7-l2"
+        lessonName: "记金华的双龙洞"
+        keywords: ["游记", "移步换景", "溶洞奇观"]
+
+  - unitNumber: 8
+    unitName: "历史智慧"
+    lessons:
+      - lessonId: "g4s-u8-l1"
+        lessonName: "寓言二则"
+        keywords: ["亡羊补牢", "南辕北辙", "道理启示"]
+      - lessonId: "g4s-u8-l2"
+        lessonName: "画杨桃"
+        keywords: ["实事求是", "多角度观察", "教育意义"]

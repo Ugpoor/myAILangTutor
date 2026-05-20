@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../components/app_title_bar.dart';
 import '../components/submenu_tabs.dart';
 import '../database/models/skill.dart';
+import '../services/inbox_service.dart';
 
 class SkillDetailPage extends StatefulWidget {
   final String lang;
@@ -31,6 +32,7 @@ class _SkillDetailPageState extends State<SkillDetailPage> {
   String _category = '外部';
   String? _prerequisite;
   String? _internalFunction;
+  String? _contentPath; // 关联内容文件路径
   bool _isDirty = false;
 
   final List<String> _internalFunctions = [
@@ -53,6 +55,7 @@ class _SkillDetailPageState extends State<SkillDetailPage> {
     _category = widget.skill?.category ?? '外部';
     _prerequisite = widget.skill?.prerequisite;
     _internalFunction = widget.skill?.internalFunction;
+    _contentPath = widget.skill?.contentPath;
   }
 
   @override
@@ -101,6 +104,7 @@ class _SkillDetailPageState extends State<SkillDetailPage> {
         parameters: _category == '内部' ? _parametersController.text.trim() : null,
         returnType: _category == '内部' ? _returnTypeController.text.trim() : null,
         description: _descriptionController.text.trim(),
+        contentPath: _contentPath,
       );
       await widget.skillDao.update(updated);
     }
@@ -151,6 +155,84 @@ class _SkillDetailPageState extends State<SkillDetailPage> {
     );
   }
 
+  /// 选择关联内容路径（从收件箱或资源目录）
+  Future<void> _pickContentPath() async {
+    try {
+      final inboxService = InboxService();
+      
+      final inboxItems = await inboxService.getAllInboxItems();
+      
+      final availablePaths = inboxItems
+          .where((item) => item.filePath != null && item.filePath!.isNotEmpty)
+          .map((item) => {
+                'path': item.filePath!,
+                'title': item.title ?? item.filePath!,
+                'source': item.source,
+              })
+          .toList();
+      
+      if (availablePaths.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(widget.lang == 'cn' ? '收件箱中暂无内容，请先导入网页或文章' : 'No content in inbox, please import web pages or articles first')),
+          );
+        }
+        return;
+      }
+      
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(widget.lang == 'cn' ? '选择关联内容' : 'Select Content'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: availablePaths.length,
+              itemBuilder: (context, index) {
+                final path = availablePaths[index]['path'] as String;
+                final title = availablePaths[index]['title'] as String;
+                final source = availablePaths[index]['source'] as String;
+                
+                return ListTile(
+                  leading: const Icon(Icons.html, color: Color(0xFF651FFF)),
+                  title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: Text('$source', style: const TextStyle(fontSize: 11)),
+                  selected: _contentPath == path,
+                  onTap: () {
+                    setState(() => _contentPath = path);
+                    Navigator.pop(context);
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                setState(() => _contentPath = null);
+                Navigator.pop(context);
+              },
+              child: Text(widget.lang == 'cn' ? '清除关联' : 'Clear'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF69B4)),
+              child: Text(widget.lang == 'cn' ? '确定' : 'OK'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      print('[SkillDetail] 加载收件箱失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(widget.lang == 'cn' ? '加载收件箱失败: ${e.toString()}' : 'Failed to load inbox: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isExternal = _category == '外部';
@@ -167,7 +249,6 @@ class _SkillDetailPageState extends State<SkillDetailPage> {
               title: widget.lang == 'cn'
                   ? '技能${widget.skill != null ? "编辑" : "新增"}'
                   : '${widget.skill != null ? "Edit" : "New"} Skill',
-              onHomeTap: widget.onHomeTap,
             ),
             Expanded(
               child: Container(
@@ -267,6 +348,54 @@ class _SkillDetailPageState extends State<SkillDetailPage> {
                             },
                           );
                         },
+                      ),
+                      const SizedBox(height: 16),
+                      // 关联内容路径选择按钮
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              widget.lang == 'cn' ? '关联内容：' : 'Content:',
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            flex: 2,
+                            child: _contentPath != null
+                                ? InkWell(
+                                    onTap: _pickContentPath,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                      decoration: BoxDecoration(
+                                        border: Border.all(color: Colors.green),
+                                        borderRadius: BorderRadius.circular(4),
+                                        color: Colors.green[50],
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          const Icon(Icons.html, size: 16, color: Colors.green),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              _contentPath!.split('/').last,
+                                              style: const TextStyle(fontSize: 12, color: Colors.green),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  )
+                                : OutlinedButton.icon(
+                                    onPressed: _pickContentPath,
+                                    icon: const Icon(Icons.add, size: 16),
+                                    label: Text(widget.lang == 'cn' ? '选择内容' : 'Select', style: const TextStyle(fontSize: 12)),
+                                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 10)),
+                                  ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 16),
                       // 内部/外部区分内容

@@ -17,7 +17,7 @@ class DatabaseHelper {
   Future<Database> _initDatabase() async {
     return await openDatabase(
       'myAILangTutor.db',
-      version: 12,
+      version: 15,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -154,7 +154,8 @@ class DatabaseHelper {
         internal_function TEXT,
         parameters TEXT,
         return_type TEXT,
-        description TEXT
+        description TEXT,
+        content_path TEXT
       )
     ''');
 
@@ -355,13 +356,51 @@ class DatabaseHelper {
       } catch (e) { /* 列已存在，忽略 */ }
     }
     if (oldVersion < 13) {
-      // v13: knowledge_points 表添加 cid 和 father_id 字段
+      // v13: skills 表添加 content_path 字段（关联内容文件路径）
+      try {
+        await db.execute("ALTER TABLE skills ADD COLUMN content_path TEXT DEFAULT ''");
+      } catch (e) { /* 列已存在，忽略 */ }
+      
+      // knowledge_points 表添加 cid 和 father_id 字段
       try {
         await db.execute("ALTER TABLE knowledge_points ADD COLUMN cid TEXT DEFAULT ''");
       } catch (e) { /* 列已存在，忽略 */ }
       
       try {
         await db.execute("ALTER TABLE knowledge_points ADD COLUMN father_id INTEGER DEFAULT NULL");
+      } catch (e) { /* 列已存在，忽略 */ }
+    }
+    if (oldVersion < 14) {
+      // v14: portfolio_items 表添加 content 字段（文章内容正文）
+      try {
+        await db.execute("ALTER TABLE portfolio_items ADD COLUMN content TEXT");
+      } catch (e) { /* 列已存在，忽略 */ }
+    }
+    if (oldVersion < 15) {
+      // v15: 习题集两层结构重构
+      // 1. exam_papers 表新建
+      try {
+        await db.execute('''
+          CREATE TABLE exam_papers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            paper_id TEXT NOT NULL UNIQUE,
+            title TEXT NOT NULL,
+            subject TEXT,
+            lesson_unit TEXT,
+            knowledge_tag TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            exam_date TIMESTAMP,
+            lang TEXT DEFAULT 'cn',
+            total_score INTEGER,
+            duration INTEGER,
+            status TEXT DEFAULT '未开始'
+          )
+        ''');
+      } catch (e) { /* 表已存在，忽略 */ }
+      
+      // 2. exercises 表添加 paper_id 字段（关联试卷）
+      try {
+        await db.execute("ALTER TABLE exercises ADD COLUMN paper_id TEXT");
       } catch (e) { /* 列已存在，忽略 */ }
     }
   }
@@ -422,16 +461,16 @@ class DatabaseHelper {
 
   // ========== Exercises 清理方法 ==========
 
-  /// 删除包含数学内容的习题
+  /// 删除包含明显数学内容的习题（只删除明确是数学题的记录）
   Future<int> deleteMathExercises() async {
     final db = await database;
     
-    // 数学相关关键词（中文 + 英文）
+    // 只匹配明确的数学符号和公式，避免误删语文中的通用词汇
     const mathKeywords = [
-      '分数', '计算', '运算', '加减', '乘除', '方程', '几何', '代数',
-      '函数', '三角', '面积', '周长', '整数', '小数', '百分', 'π',
-      '勾股', '二次', 'x²', '√', 'math', 'calculate', '算术', '算数',
-      '3/4', '1/4', '2/5', '5/6', '1/2', '7/8',
+      'π=', 'π值', '勾股定理', '二次方程', '一元二次方程', 'x²=', 'x^2=',
+      '∑', '∫', 'sin(', 'cos(', 'tan(', 'log(', 'ln(',
+      'matrix', 'determinant', '微积分', '导数', '积分',
+      '面积公式', '周长公式', '体积公式',
     ];
 
     int deletedCount = 0;
@@ -506,13 +545,11 @@ class DatabaseHelper {
     return deletedCount;
   }
 
-  /// 一键清理：删除数学题 + 去重
+  /// 一键清理：去重
   Future<Map<String, int>> cleanExercises() async {
-    final mathDeleted = await deleteMathExercises();
     final dupDeleted = await deduplicateExercises();
     
     return {
-      'math_deleted': mathDeleted,
       'duplicate_deleted': dupDeleted,
     };
   }

@@ -5,11 +5,17 @@ import '../components/app_title_bar.dart';
 import '../components/submenu_tabs.dart';
 import '../components/ai_reply_bar.dart';
 import '../components/input_area.dart';
+import '../components/dynamic_tag_selector.dart';
 import '../database/db_helper.dart';
 import '../database/models/error_record.dart';
 import '../database/models/exercise.dart';
+import '../database/models/chat_message.dart';
+import '../database/models/portfolio_item.dart';
 import '../services/llm_service.dart';
+import '../services/app_service.dart';
 import 'error_detail_page.dart';
+import 'error_record_grouped_view.dart';
+import 'hierarchical_error_view.dart';
 
 class ErrorRecordPageSimple extends StatefulWidget {
   final String lang;
@@ -32,8 +38,13 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
   List<ErrorRecord> _displayRecords = [];
   final Set<int> _selectedIds = {};
   String? _filterErrorType;
-  String? _filterKnowledgeTag;
-  String? _filterProgress;
+  Set<String> _filterKnowledgeTags = {};
+  Set<String> _filterProgressSet = {};
+  
+  Set<String> get _allErrorTypes => {
+        ..._allRecords.map((r) => r.errorType).whereType<String>(),
+        '审题不清', '概念混淆', '计算失误', '知识遗漏', '推理错误', '表达不当',
+      };
   
   String _errorTypeOutline = '''1. 审题
   1.1 关键词忽略
@@ -50,6 +61,7 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
   
   // ===== 视图排序相关 =====
   int _viewMode = 0;
+  bool _inGroupedView = false;
   late ErrorRecordDao _errorRecordDao;
 
   @override
@@ -66,8 +78,28 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
 
   Future<void> _loadRecords() async {
     final records = await _errorRecordDao.getAll(lang: widget.lang);
+    
+    // 自动标记已订正：除备注外，其他关键字段都有内容则标记为"已订正"
+    for (final record in records) {
+      if (record.progress == '待订正') {
+        final hasAllContent = 
+            (record.question != null && record.question!.isNotEmpty) &&
+            (record.wrongAnswer != null && record.wrongAnswer!.isNotEmpty) &&
+            (record.wrongWhere != null && record.wrongWhere!.isNotEmpty) &&
+            (record.whyWrong != null && record.whyWrong!.isNotEmpty) &&
+            (record.howPrevent != null && record.howPrevent!.isNotEmpty) &&
+            (record.correctAnswer != null && record.correctAnswer!.isNotEmpty);
+        
+        if (hasAllContent) {
+          final updated = record.copyWith(progress: '已订正');
+          await _errorRecordDao.update(updated);
+        }
+      }
+    }
+    
+    final updatedRecords = await _errorRecordDao.getAll(lang: widget.lang);
     setState(() {
-      _allRecords = records;
+      _allRecords = updatedRecords;
       _applyFilter();
     });
   }
@@ -75,11 +107,8 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
   void _applyFilter() {
     List<ErrorRecord> filtered = _allRecords.where((r) {
       if (_filterErrorType != null && r.errorType != _filterErrorType) return false;
-      if (_filterKnowledgeTag != null &&
-          (r.knowledgeTag == null || !r.knowledgeTag!.contains(_filterKnowledgeTag!))) {
-        return false;
-      }
-      if (_filterProgress != null && r.progress != _filterProgress) return false;
+      if (_filterKnowledgeTags.isNotEmpty && !_filterKnowledgeTags.any((tag) => r.knowledgeTag?.contains(tag) ?? false)) return false;
+      if (_filterProgressSet.isNotEmpty && !_filterProgressSet.contains(r.progress)) return false;
       return true;
     }).toList();
     
@@ -137,14 +166,14 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
     if (tab == (widget.lang == 'cn' ? '筛选' : 'Filter')) {
       _showFilterDialog();
     } else if (tab == (widget.lang == 'cn' ? '视图' : 'View')) {
-      _showViewDialog();
+      _showHierarchicalView();
     } else if (tab == (widget.lang == 'cn' ? '练习' : 'Practice')) {
       await _generateExercisesForSelectedWithLLM();
     } else if (tab == (widget.lang == 'cn' ? '错类' : 'Error Type')) {
       _showOutlineDialog();
     }
   }
-
+  /// 重置错误本：清空所有数据并重新插入6条语文学科示例数据
   Future<void> navigateToDetail(ErrorRecord record) async {
     final result = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
@@ -159,6 +188,33 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
     if (result == true) {
       await _loadRecords();
     }
+  }
+
+  void _showHierarchicalView() {
+    // 按错类和知识点分组
+    Map<String, Map<String, List<ErrorRecord>>> grouped = {};
+    for (final record in _allRecords) {
+      final errorType = record.errorType ?? '未分类';
+      final knowledgeTag = record.knowledgeTag ?? '未分类';
+      
+      grouped.putIfAbsent(errorType, () => {});
+      grouped[errorType]![knowledgeTag] = 
+          (grouped[errorType]![knowledgeTag] ?? []) + [record];
+    }
+    
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => HierarchicalErrorView(
+          lang: widget.lang,
+          groupedData: grouped,
+          allRecords: _allRecords,
+          dao: _errorRecordDao,
+          onHomeTap: widget.onHomeTap,
+          onUpdate: () => _loadRecords(),
+        ),
+      ),
+    );
   }
 
   void _showViewDialog() {
@@ -206,27 +262,61 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
       return;
     }
 
+    // 显示加载弹窗
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('习题生成中...', style: TextStyle(fontSize: 15)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
     final db = await DatabaseHelper().database;
-    final exerciseDao = ExerciseDao(db);
-    final llmService = LlmService();
-    await llmService.init();
-
-    final selectedRecords = _allRecords.where((r) => _selectedIds.contains(r.id)).toList();
-    final errorContent = selectedRecords.map((r) {
-      return '${r.errorId} ${r.question ?? r.content}\n错因：${r.whyWrong ?? ''}\n预防：${r.howPrevent ?? ''}';
-    }).join('\n\n');
-
+    
+    // 声明在外层，以便在 catch 块中也能访问
+    late int loadingMsgId;
+    
     try {
-      final prompt = '''你是一位教育专家。请根据以下错误记录内容，出一组针对性的练习题来帮助学生巩固薄弱知识点。
+      // 插入"习题生成中"的AI消息（直接使用数据库，不依赖 AppService）
+      final chatMsgDao = ChatMessageDao(db);
+      loadingMsgId = await chatMsgDao.insert(ChatMessage(
+        content: widget.lang == 'cn' ? '习题生成中...' : 'Generating exercises...',
+        isUser: false,
+        createdAt: DateTime.now(),
+        lang: widget.lang,
+      ));
+
+      final exerciseDao = ExerciseDao(db);
+      final llmService = LlmService();
+      await llmService.init();
+
+      final selectedRecords = _allRecords.where((r) => _selectedIds.contains(r.id)).toList();
+      final errorContent = selectedRecords.map((r) {
+        return '${r.errorId} ${r.question ?? r.content}\n错因：${r.whyWrong ?? ''}\n预防：${r.howPrevent ?? ''}';
+      }).join('\n\n');
+
+      final prompt = '''你是一位语文教育专家。请根据以下错误记录内容，出一组针对性的练习题来帮助学生巩固薄弱知识点。
 
 错误案例分析：
 $errorContent
 
 要求：
-1. 出填空题2题（针对薄弱知识点）
-2. 出选择题5题（每题A/B/C/D四个选项）
+1. 出填空题2题（针对薄弱知识点，如字词书写、成语使用、古诗文默写等）
+2. 出选择题5题（每题A/B/C/D四个选项，考查语文基础知识）
 3. 题目要针对错误原因设计，帮助学生避免同类错误
-4. 只出与当前错误记录相关的语文题目，不要涉及数学等其他学科
+4. 只出语文学科题目，不要涉及数学、物理、化学等其他学科
 
 请以如下JSON数组格式回复（只回复JSON，不要其他文字）：
 [
@@ -241,9 +331,9 @@ $errorContent
 ]
 
 注意：
-- question 字段是完整的题目描述
+- question 字段是完整的题目描述（如：填写正确的汉字、补充完整诗句、选择正确成语等）
 - options 字段对于选择题是 A/B/C/D 选项数组，填空题为 null
-- correctAnswer 是简短的答案
+- correctAnswer 是简短的答案（如：正确的字、成语、诗句等）
 - explanation 是详细的解题思路
 - 请严格按照格式输出7道题目的JSON数组
 ''';
@@ -289,7 +379,23 @@ $errorContent
         createdCount++;
       }
 
+      // 更新AI消息为"已完成习题生成"并关闭弹窗
       if (mounted) {
+        // 关闭加载弹窗
+        Navigator.of(context).pop();
+        
+        final chatMsgDao = ChatMessageDao(db);
+        final completedMsg = ChatMessage(
+          id: loadingMsgId,
+          content: widget.lang == 'cn' 
+              ? '已完成习题生成！已从${selectedRecords.length}条错误记录生成$createdCount道练习题并添加到习题集'
+              : 'Exercise generation complete! Generated $createdCount exercises from ${selectedRecords.length} error records.',
+          isUser: false,
+          createdAt: DateTime.now(),
+          lang: widget.lang,
+        );
+        await chatMsgDao.update(completedMsg);
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(
             widget.lang == 'cn' 
@@ -300,7 +406,28 @@ $errorContent
       }
     } catch (e) {
       print('[GenerateExercises] 生成失败: $e');
+      // 关闭弹窗并显示错误信息
       if (mounted) {
+        try {
+          Navigator.of(context).pop();
+        } catch (_) {}
+        
+        try {
+          final errorChatMsgDao = ChatMessageDao(db);
+          final errorMsg = ChatMessage(
+            id: loadingMsgId,
+            content: widget.lang == 'cn' 
+                ? '生成练习失败: ${e.toString()}'
+                : 'Failed to generate exercises: ${e.toString()}',
+            isUser: false,
+            createdAt: DateTime.now(),
+            lang: widget.lang,
+          );
+          await errorChatMsgDao.update(errorMsg);
+        } catch (_) {
+          // 忽略更新失败（可能 loadingMsgId 无效）
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(
             widget.lang == 'cn' ? '生成练习失败: ${e.toString()}' : 'Failed to generate exercises: ${e.toString()}',
@@ -313,72 +440,110 @@ $errorContent
   }
 
   void _showFilterDialog() {
-    showDialog(
+    Set<String> selectedKnowledgeTags = Set<String>.from(_filterKnowledgeTags);
+    Set<String> selectedProgresses = Set<String>.from(_filterProgressSet);
+    String? tempErrorType = _filterErrorType;
+    
+    // 获取所有可用的知识点标签和进度选项
+    final allKnowledgeTags = _allRecords.map((r) => r.knowledgeTag).whereType<String>().toSet();
+    final allProgresses = {'待订正', '已订正'};
+
+    showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(widget.lang == 'cn' ? '筛选错误记录' : 'Filter Error Records'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(widget.lang == 'cn' ? '按错类筛选：' : 'By error type:',
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                children: ['审题不清', '概念混淆', '计算失误', '知识遗漏', '推理错误', '表达不当']
-                    .map((t) => ChoiceChip(
-                          label: Text(t, style: const TextStyle(fontSize: 12)),
-                          selected: _filterErrorType == t,
-                          onSelected: (_) {
-                            setState(() {
-                              _filterErrorType = _filterErrorType == t ? null : t;
-                              _applyFilter();
-                            });
-                            Navigator.pop(context);
-                          },
-                        ))
-                    .toList(),
-              ),
-              const SizedBox(height: 16),
-              Text(widget.lang == 'cn' ? '按进度筛选：' : 'By progress:',
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Row(
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text(widget.lang == 'cn' ? '筛选错误记录' : 'Filter Error Records'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ElevatedButton(
-                    onPressed: () {
-                      setState(() { _filterProgress = '待订正'; _applyFilter(); });
-                      Navigator.pop(context);
-                    },
-                    child: Text(widget.lang == 'cn' ? '待订正' : 'Pending'),
+                  // 错类筛选（下拉选择）
+                  Text(widget.lang == 'cn' ? '按错类：' : 'By error type:',
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: DropdownButtonFormField<String?>(
+                      value: tempErrorType,
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('全部 / All'),
+                        ),
+                        ..._allErrorTypes.map((type) => DropdownMenuItem<String>(
+                          value: type,
+                          child: Text(type),
+                        )),
+                      ],
+                      onChanged: (value) {
+                        setState(() => tempErrorType = value);
+                      },
+                    ),
                   ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: () {
-                      setState(() { _filterProgress = '已订正'; _applyFilter(); });
-                      Navigator.pop(context);
+                  const SizedBox(height: 16),
+                  // 知识点标签筛选（使用动态标签选择器）
+                  DynamicTagSelector(
+                    label: widget.lang == 'cn' ? '知识点标签' : 'Knowledge tags',
+                    currentTags: selectedKnowledgeTags,
+                    availableOptions: allKnowledgeTags,
+                    onTagsChanged: (newTags) {
+                      setState(() => selectedKnowledgeTags = newTags);
                     },
-                    child: Text(widget.lang == 'cn' ? '已订正' : 'Corrected'),
+                    accentColor: const Color(0xFF2196F3),
                   ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        _filterErrorType = null;
-                        _filterKnowledgeTag = null;
-                        _filterProgress = null;
-                        _applyFilter();
-                      });
-                      Navigator.pop(context);
+                  const SizedBox(height: 16),
+                  // 进度筛选（使用动态标签选择器）
+                  DynamicTagSelector(
+                    label: widget.lang == 'cn' ? '进度' : 'Progress',
+                    currentTags: selectedProgresses,
+                    availableOptions: allProgresses,
+                    onTagsChanged: (newTags) {
+                      setState(() => selectedProgresses = newTags);
                     },
-                    child: Text(widget.lang == 'cn' ? '全部' : 'All'),
+                    accentColor: const Color(0xFFFF9800),
                   ),
                 ],
               ),
-            ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _filterErrorType = null;
+                  _filterKnowledgeTags.clear();
+                  _filterProgressSet.clear();
+                  _applyFilter();
+                });
+                Navigator.pop(context);
+              },
+              child: Text(widget.lang == 'cn' ? '清空' : 'Clear'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  _filterErrorType = tempErrorType;
+                  _filterKnowledgeTags = selectedKnowledgeTags;
+                  _filterProgressSet = selectedProgresses;
+                  _applyFilter();
+                });
+                Navigator.pop(context);
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF69B4)),
+              child: Text(widget.lang == 'cn' ? '确定' : 'Confirm'),
+            ),
+          ],
         ),
       ),
     );
@@ -434,6 +599,17 @@ $errorContent
 
   @override
   Widget build(BuildContext context) {
+    // 如果处于分组汇总视图模式，显示全屏分组视图（替换所有正常UI）
+    if (_inGroupedView) {
+      return ErrorRecordGroupedView(
+        lang: widget.lang,
+        allRecords: _displayRecords,
+        dao: _errorRecordDao,
+        onHomeTap: widget.onHomeTap,
+        onCancel: () => setState(() => _inGroupedView = false),
+      );
+    }
+
     final tabs = widget.lang == 'cn'
         ? ['筛选', '视图', '练习', '错类']
         : ['Filter', 'View', 'Practice', 'Error Type'];
@@ -475,7 +651,9 @@ $errorContent
             ),
             SubmenuTabs(
               tabs: tabs,
-              selectedTab: '',
+              selectedTab: _selectedIds.isNotEmpty 
+                  ? (widget.lang == 'cn' ? '练习' : 'Practice')
+                  : '',
               onTabSelected: _handleTabSelected,
               onHomeTap: widget.onHomeTap,
               lang: widget.lang,

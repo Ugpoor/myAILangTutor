@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'dart:io';
 import '../components/app_title_bar.dart';
 import '../components/submenu_tabs.dart';
 import '../components/ai_reply_bar.dart';
 import '../components/input_area.dart';
-import '../components/chat_bubble_list.dart';
+import '../components/dynamic_tag_selector.dart';
 import '../database/db_helper.dart';
 import '../database/models/portfolio_item.dart';
+import 'package:path_provider/path_provider.dart';
 import 'portfolio_detail_page.dart';
 
 class PortfolioPageSimple extends StatefulWidget {
@@ -28,8 +31,9 @@ class _PortfolioPageSimpleState extends State<PortfolioPageSimple> {
   List<PortfolioItem> _allItems = [];
   List<PortfolioItem> _displayItems = [];
   final Set<int> _selectedIds = {};
+  Set<String> _filterKnowledgeTags = {};
+  Set<String> _filterLessonUnits = {};
   bool? _filterIsOriginal;
-  String? _filterKnowledgeTag;
   late PortfolioDao _portfolioDao;
 
   @override
@@ -55,10 +59,8 @@ class _PortfolioPageSimpleState extends State<PortfolioPageSimple> {
   void _applyFilter() {
     _displayItems = _allItems.where((item) {
       if (_filterIsOriginal != null && item.isOriginal != _filterIsOriginal) return false;
-      if (_filterKnowledgeTag != null &&
-          (item.knowledgeTag == null || !item.knowledgeTag!.contains(_filterKnowledgeTag!))) {
-        return false;
-      }
+      if (_filterKnowledgeTags.isNotEmpty && !_filterKnowledgeTags.any((tag) => item.knowledgeTag?.contains(tag) ?? false)) return false;
+      if (_filterLessonUnits.isNotEmpty && !_filterLessonUnits.any((unit) => item.lessonUnit?.contains(unit) ?? false)) return false;
       return true;
     }).toList();
   }
@@ -70,8 +72,6 @@ class _PortfolioPageSimpleState extends State<PortfolioPageSimple> {
       _navigateToNewOriginal();
     } else if (tab == (widget.lang == 'cn' ? '练习' : 'Practice')) {
       _generateExercisesForSelected();
-    } else if (tab == (widget.lang == 'cn' ? '评析' : 'Analyze')) {
-      _aiAnalyzeSelected();
     }
   }
 
@@ -119,64 +119,114 @@ class _PortfolioPageSimpleState extends State<PortfolioPageSimple> {
     );
   }
 
-  Future<void> _aiAnalyzeSelected() async {
-    if (_selectedIds.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.lang == 'cn' ? '请先选择作品' : 'Select items first')),
-      );
-      return;
-    }
-    // Navigate to first selected item for AI review
-    final firstItem = _allItems.firstWhere((item) => _selectedIds.contains(item.id));
-    await _navigateToDetail(firstItem);
-  }
-
   void _showFilterDialog() {
-    showDialog(
+    final knowledgeTags = _allItems.map((i) => i.knowledgeTag).whereType<String>().toSet().toList();
+    final lessonUnits = _allItems.map((i) => i.lessonUnit).whereType<String>().toSet().toList();
+    final selectedKTags = Set<String>.from(_filterKnowledgeTags);
+    final selectedLUnits = Set<String>.from(_filterLessonUnits);
+    bool? tempIsOriginal = _filterIsOriginal;
+
+    showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(widget.lang == 'cn' ? '筛选作品' : 'Filter Portfolio'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(widget.lang == 'cn' ? '按类型筛选：' : 'Filter by type:'),
-            const SizedBox(height: 8),
-            Row(
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text(widget.lang == 'cn' ? '筛选作品' : 'Filter Portfolio'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      _filterIsOriginal = true;
-                      _applyFilter();
-                    });
-                    Navigator.pop(context);
-                  },
-                  child: Text(widget.lang == 'cn' ? '原创' : 'Original'),
+                // 原创/赏析筛选（单选）
+                Text(widget.lang == 'cn' ? '类型：' : 'Type:',
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    FilterChip(
+                      label: Text(widget.lang == 'cn' ? '原创' : 'Original',
+                          style: const TextStyle(fontSize: 12)),
+                      selected: tempIsOriginal == true,
+                      onSelected: (_) {
+                        setState(() => tempIsOriginal = true);
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    FilterChip(
+                      label: Text(widget.lang == 'cn' ? '赏析' : 'Analysis',
+                          style: const TextStyle(fontSize: 12)),
+                      selected: tempIsOriginal == false,
+                      onSelected: (_) {
+                        setState(() => tempIsOriginal = false);
+                      },
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      _filterIsOriginal = false;
-                      _applyFilter();
-                    });
-                    Navigator.pop(context);
-                  },
-                  child: Text(widget.lang == 'cn' ? '赏析' : 'Analysis'),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      _filterIsOriginal = null;
-                      _filterKnowledgeTag = null;
-                      _applyFilter();
-                    });
-                    Navigator.pop(context);
-                  },
-                  child: Text(widget.lang == 'cn' ? '全部' : 'All'),
-                ),
+                const Divider(height: 24),
+                // 知识点标签筛选（多选）
+                Text(widget.lang == 'cn' ? '知识点标签：' : 'Knowledge tags:',
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                if (knowledgeTags.isNotEmpty) ...[
+                  Wrap(
+                    spacing: 6,
+                    children: knowledgeTags.map((tag) => FilterChip(
+                      label: Text(tag, style: const TextStyle(fontSize: 11)),
+                      selected: selectedKTags.contains(tag),
+                      onSelected: (_) {
+                        setState(() {
+                          selectedKTags.contains(tag) ? selectedKTags.remove(tag) : selectedKTags.add(tag);
+                        });
+                      },
+                    )).toList(),
+                  ),
+                ],
+                const Divider(height: 24),
+                // 课内标签筛选（多选）
+                Text(widget.lang == 'cn' ? '课内标签：' : 'Lesson units:',
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                if (lessonUnits.isNotEmpty) ...[
+                  Wrap(
+                    spacing: 6,
+                    children: lessonUnits.map((unit) => FilterChip(
+                      label: Text(unit, style: const TextStyle(fontSize: 11)),
+                      selected: selectedLUnits.contains(unit),
+                      onSelected: (_) {
+                        setState(() {
+                          selectedLUnits.contains(unit) ? selectedLUnits.remove(unit) : selectedLUnits.add(unit);
+                        });
+                      },
+                    )).toList(),
+                  ),
+                ],
               ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _filterIsOriginal = null;
+                  _filterKnowledgeTags.clear();
+                  _filterLessonUnits.clear();
+                  _applyFilter();
+                });
+                Navigator.pop(context);
+              },
+              child: Text(widget.lang == 'cn' ? '清空' : 'Clear'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  _filterIsOriginal = tempIsOriginal;
+                  _filterKnowledgeTags = selectedKTags;
+                  _filterLessonUnits = selectedLUnits;
+                  _applyFilter();
+                });
+                Navigator.pop(context);
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF69B4)),
+              child: Text(widget.lang == 'cn' ? '确定' : 'Confirm'),
             ),
           ],
         ),
@@ -187,8 +237,8 @@ class _PortfolioPageSimpleState extends State<PortfolioPageSimple> {
   @override
   Widget build(BuildContext context) {
     final tabs = widget.lang == 'cn'
-        ? ['筛选', '原创', '练习', '评析']
-        : ['Filter', 'Original', 'Practice', 'Analyze'];
+        ? ['筛选', '原创', '练习']
+        : ['Filter', 'Original', 'Practice'];
 
     return Scaffold(
       backgroundColor: const Color(0xFFFFE4E9),

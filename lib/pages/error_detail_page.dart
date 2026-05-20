@@ -76,7 +76,48 @@ class _ErrorDetailPageState extends State<ErrorDetailPage> {
       progress: _progress,
       reviewed: _progress == '已订正',
     );
-    await widget.errorRecordDao.update(updated);
+    
+    // 保存后检查是否应自动标记为已订正
+    final newRecord = await widget.errorRecordDao.getById(updated.id!);
+    if (newRecord != null && newRecord.progress == '待订正') {
+      final hasAllContent = 
+          (updated.question?.isNotEmpty ?? false) &&
+          (updated.wrongAnswer?.isNotEmpty ?? false) &&
+          (updated.wrongWhere?.isNotEmpty ?? false) &&
+          (updated.whyWrong?.isNotEmpty ?? false) &&
+          (updated.howPrevent?.isNotEmpty ?? false) &&
+          (newRecord.correctAnswer?.isNotEmpty ?? false);
+      
+      if (hasAllContent && mounted) {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(widget.lang == 'cn' ? '自动标记为已订正' : 'Auto-Mark as Completed'),
+            content: Text(widget.lang == 'cn' 
+                ? '所有关键字段已填写完毕，是否将本题标为"已订正"？' 
+                : 'All required fields are filled. Mark this record as "Completed"?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(widget.lang == 'cn' ? '保持待订正' : 'Keep Pending'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                child: Text(widget.lang == 'cn' ? '标记已订正' : 'Mark Completed'),
+              ),
+            ],
+          ),
+        );
+        
+        if (confirmed == true) {
+          final marked = updated.copyWith(progress: '已订正');
+          await widget.errorRecordDao.update(marked);
+          setState(() => _progress = '已订正');
+        }
+      }
+    }
+    
     if (mounted) {
       Navigator.of(context).pop(true);
     }
@@ -279,7 +320,7 @@ class _ErrorDetailPageState extends State<ErrorDetailPage> {
             ),
             SubmenuTabs(
               tabs: tabs,
-              selectedTab: '',
+              selectedTab: tabs[0],
               onTabSelected: (tab) {
                 final cnCancel = widget.lang == 'cn' ? '取消' : 'Cancel';
                 final cnSave = widget.lang == 'cn' ? '保存' : 'Save';

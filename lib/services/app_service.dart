@@ -600,9 +600,8 @@ $content
       final result = await _exerciseDao.cleanExercises();
       return {
         'success': true,
-        'math_deleted': result['math_deleted'],
         'duplicate_deleted': result['duplicate_deleted'],
-        'message': '清理完成：删除数学题 ${result['math_deleted']} 条，重复习题 ${result['duplicate_deleted']} 条',
+        'message': '清理完成：删除重复习题 ${result['duplicate_deleted']} 条',
       };
     } catch (e) {
       return {

@@ -16,6 +16,7 @@ class Skill {
   final String? parameters;
   final String? returnType;
   final String? description;
+  final String? contentPath; // 关联内容文件路径（H5阅读预览）
 
   Skill({
     this.id,
@@ -33,6 +34,7 @@ class Skill {
     this.parameters,
     this.returnType,
     this.description,
+    this.contentPath,
   });
 
   Map<String, dynamic> toMap() {
@@ -52,6 +54,7 @@ class Skill {
       'parameters': parameters,
       'return_type': returnType,
       'description': description,
+      'content_path': contentPath,
     };
   }
 
@@ -76,6 +79,7 @@ class Skill {
       parameters: map['parameters'] as String?,
       returnType: map['return_type'] as String?,
       description: map['description'] as String?,
+      contentPath: map['content_path'] as String?,
     );
   }
 
@@ -95,6 +99,7 @@ class Skill {
     String? parameters,
     String? returnType,
     String? description,
+    String? contentPath,
   }) {
     return Skill(
       id: id ?? this.id,
@@ -112,6 +117,7 @@ class Skill {
       parameters: parameters ?? this.parameters,
       returnType: returnType ?? this.returnType,
       description: description ?? this.description,
+      contentPath: contentPath ?? this.contentPath,
     );
   }
 }

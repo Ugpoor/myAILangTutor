@@ -6,11 +6,13 @@ import '../components/submenu_tabs.dart';
 import '../components/ai_reply_bar.dart';
 import '../components/input_area.dart';
 import '../components/chat_bubble_list.dart';
+import '../components/dynamic_tag_selector.dart';
 import '../database/db_helper.dart';
 import '../database/models/knowledge_point.dart';
 import '../database/models/exercise.dart';
 import '../services/llm_service.dart';
 import 'knowledge_outline_page.dart';
+import 'knowledge_point_detail_page.dart';
 
 class KnowledgePointPageSimple extends StatefulWidget {
   final String lang;
@@ -36,12 +38,13 @@ class _KnowledgePointPageSimpleState extends State<KnowledgePointPageSimple> {
   List<KnowledgePoint> _allPoints = [];
   List<KnowledgePoint> _displayPoints = [];
   final Set<int> _selectedIds = {};
-  String? _filterCategory;
-  String? _filterLessonUnit;
+  Set<String> _filterCategories = {};
+  Set<String> _filterLessonUnits = {};
   late KnowledgePointDao _knowledgePointDao;
   late ExerciseDao _exerciseDao;
   final LlmService _llmService = LlmService();
   bool _isGenerating = false;
+  bool _isCleaning = false;
 
   @override
   void initState() {
@@ -73,11 +76,8 @@ class _KnowledgePointPageSimpleState extends State<KnowledgePointPageSimple> {
 
   void _applyFilter() {
     _displayPoints = _allPoints.where((p) {
-      if (_filterCategory != null && p.category != _filterCategory) return false;
-      if (_filterLessonUnit != null &&
-          (p.lessonUnit == null || !p.lessonUnit!.contains(_filterLessonUnit!))) {
-        return false;
-      }
+      if (_filterCategories.isNotEmpty && !(_filterCategories.contains(p.category) || p.category == null)) return false;
+      if (_filterLessonUnits.isNotEmpty && !_filterLessonUnits.any((u) => p.lessonUnit?.contains(u) ?? false)) return false;
       return true;
     }).toList();
   }
@@ -146,17 +146,16 @@ class _KnowledgePointPageSimpleState extends State<KnowledgePointPageSimple> {
         combinedContent.writeln('');
       }
 
-      final subjectLabel = widget.lang == 'cn' ? '科目' : 'Subject';
-      final prompt = '''你是一位教育专家。请根据以下主题知识点内容，出一组综合练习题。
+      final prompt = '''你是一位语文教育专家。请根据以下主题知识点内容，出一组综合练习题。
 
 主题知识点（共${selectedPoints.length}个）：
 ${combinedContent.toString()}
 
 要求：
-1. 出填空题2题（针对核心概念）
-2. 出选择题5题（每题A/B/C/D四个选项）
+1. 出填空题2题（针对核心概念，如字词、成语、古诗文等）
+2. 出选择题5题（每题A/B/C/D四个选项，考查语文基础知识）
 3. 题目要覆盖所有选中知识点的关键内容
-4. 只出与当前知识点相关的语文题目，不要涉及数学等其他学科
+4. 只出语文学科题目，不要涉及数学、物理、化学等其他学科
 
 请以如下JSON数组格式回复（只回复JSON，不要其他文字）：
 [
@@ -172,9 +171,9 @@ ${combinedContent.toString()}
 ]
 
 注意：
-- question 字段是完整的题目描述
+- question 字段是完整的题目描述（如：填写正确的汉字、补充完整诗句等）
 - options 字段对于选择题是 A/B/C/D 选项数组，填空题为 null
-- correctAnswer 是简短的答案
+- correctAnswer 是简短的答案（如：正确的字、成语、诗句等）
 - explanation 是详细的解题思路
 - knowledgeTag 标识该题目属于哪个知识点
 - 请严格按照格式输出7道题目的JSON数组
@@ -349,67 +348,73 @@ ${combinedContent.toString()}
   }
 
   void _showFilterDialog() {
-    final categories = _allPoints.map((p) => p.category).whereType<String>().toSet().toList();
-    final lessonUnits = _allPoints.map((p) => p.lessonUnit).whereType<String>().toSet().toList();
+    final categories = _allPoints.map((p) => p.category).whereType<String>().toSet();
+    final lessonUnits = _allPoints.map((p) => p.lessonUnit).whereType<String>().toSet();
+    Set<String> selectedCategories = Set<String>.from(_filterCategories);
+    Set<String> selectedLessonUnits = Set<String>.from(_filterLessonUnits);
 
-    showDialog(
+    showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(widget.lang == 'cn' ? '筛选知识点' : 'Filter Knowledge'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(widget.lang == 'cn' ? '按分类筛选：' : 'By category:',
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                children: categories.map((c) => ChoiceChip(
-                  label: Text(c, style: const TextStyle(fontSize: 12)),
-                  selected: _filterCategory == c,
-                  onSelected: (_) {
-                    setState(() {
-                      _filterCategory = _filterCategory == c ? null : c;
-                      _applyFilter();
-                    });
-                    Navigator.pop(context);
-                  },
-                )).toList(),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text(widget.lang == 'cn' ? '筛选知识点' : 'Filter Knowledge'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 分类筛选（使用动态标签选择器）
+                  DynamicTagSelector(
+                    label: widget.lang == 'cn' ? '分类' : 'Category',
+                    currentTags: selectedCategories,
+                    availableOptions: categories,
+                    onTagsChanged: (newTags) {
+                      setState(() => selectedCategories = newTags);
+                    },
+                    accentColor: const Color(0xFF2196F3),
+                  ),
+                  const SizedBox(height: 16),
+                  // 课内单元筛选（使用动态标签选择器）
+                  DynamicTagSelector(
+                    label: widget.lang == 'cn' ? '课内单元' : 'Lesson units',
+                    currentTags: selectedLessonUnits,
+                    availableOptions: lessonUnits,
+                    onTagsChanged: (newTags) {
+                      setState(() => selectedLessonUnits = newTags);
+                    },
+                    accentColor: const Color(0xFFFF9800),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              Text(widget.lang == 'cn' ? '按课内单元筛选：' : 'By lesson unit:',
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                children: lessonUnits.map((u) => ChoiceChip(
-                  label: Text(u, style: const TextStyle(fontSize: 12)),
-                  selected: _filterLessonUnit == u,
-                  onSelected: (_) {
-                    setState(() {
-                      _filterLessonUnit = _filterLessonUnit == u ? null : u;
-                      _applyFilter();
-                    });
-                    Navigator.pop(context);
-                  },
-                )).toList(),
-              ),
-              const SizedBox(height: 12),
-              ElevatedButton(
-                onPressed: () {
-                  setState(() {
-                    _filterCategory = null;
-                    _filterLessonUnit = null;
-                    _applyFilter();
-                  });
-                  Navigator.pop(context);
-                },
-                child: Text(widget.lang == 'cn' ? '全部' : 'All'),
-              ),
-            ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _filterCategories.clear();
+                  _filterLessonUnits.clear();
+                  _applyFilter();
+                });
+                Navigator.pop(context);
+              },
+              child: Text(widget.lang == 'cn' ? '清空' : 'Clear'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  _filterCategories = selectedCategories;
+                  _filterLessonUnits = selectedLessonUnits;
+                  _applyFilter();
+                });
+                Navigator.pop(context);
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF69B4)),
+              child: Text(widget.lang == 'cn' ? '确定' : 'Confirm'),
+            ),
+          ],
         ),
       ),
     );
@@ -584,36 +589,15 @@ ${combinedContent.toString()}
     );
   }
 
-  void _showPointDetail(KnowledgePoint point) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(point.title),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (point.category != null)
-                Text('${widget.lang == 'cn' ? "分类" : "Category"}: ${point.category}'),
-              if (point.lessonUnit != null)
-                Text('${widget.lang == 'cn' ? "课内" : "Lesson"}: ${point.lessonUnit}'),
-              if (point.errorType != null)
-                Text('${widget.lang == 'cn' ? "关联错类" : "Error type"}: ${point.errorType}'),
-              const Divider(),
-              Text(
-                point.content ?? (widget.lang == 'cn' ? '无详细内容' : 'No content'),
-                style: const TextStyle(fontSize: 14),
-              ),
-            ],
-          ),
+  Future<void> _showPointDetail(KnowledgePoint point) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => KnowledgePointDetailPage(
+          lang: widget.lang,
+          point: point,
+          onHomeTap: widget.onHomeTap,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(widget.lang == 'cn' ? '关闭' : 'Close'),
-          ),
-        ],
       ),
     );
   }
