@@ -30,7 +30,7 @@ class _ErrorDetailPageState extends State<ErrorDetailPage> {
   late TextEditingController _howPreventController;
   late TextEditingController _notesController;
   String? _errorType;
-  String? _knowledgeTag;
+  String? _kid;
   String _progress = '待订正';
 
   final List<String> _errorTypes = [
@@ -48,7 +48,7 @@ class _ErrorDetailPageState extends State<ErrorDetailPage> {
     _howPreventController = TextEditingController(text: _record.howPrevent ?? '');
     _notesController = TextEditingController(text: _record.notes ?? '');
     _errorType = _record.errorType;
-    _knowledgeTag = _record.knowledgeTag;
+    _kid = _record.kid;
     _progress = _record.progress;
   }
 
@@ -72,9 +72,8 @@ class _ErrorDetailPageState extends State<ErrorDetailPage> {
       howPrevent: _howPreventController.text.trim(),
       notes: _notesController.text.trim(),
       errorType: _errorType,
-      knowledgeTag: _knowledgeTag,
+      kid: _kid,
       progress: _progress,
-      reviewed: _progress == '已订正',
     );
     
     // 保存后检查是否应自动标记为已订正
@@ -294,14 +293,14 @@ class _ErrorDetailPageState extends State<ErrorDetailPage> {
                         onChanged: (v) => setState(() => _errorType = v),
                       ),
                       const SizedBox(height: 12),
-                      // 知识标签
+                      // 知识点ID
                       TextField(
-                        controller: TextEditingController(text: _knowledgeTag ?? ''),
+                        controller: TextEditingController(text: _kid ?? ''),
                         decoration: InputDecoration(
-                          labelText: widget.lang == 'cn' ? '知识标签' : 'Knowledge Tag',
+                          labelText: widget.lang == 'cn' ? '知识点ID' : 'Knowledge ID',
                           border: const OutlineInputBorder(),
                         ),
-                        onChanged: (v) => _knowledgeTag = v.isEmpty ? null : v,
+                        onChanged: (v) => _kid = v.isEmpty ? null : v,
                       ),
                       const SizedBox(height: 12),
                       // 备注

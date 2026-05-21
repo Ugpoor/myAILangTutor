@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import 'models/inbox_item.dart';
+import 'models/schema.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
@@ -7,6 +8,7 @@ class DatabaseHelper {
   DatabaseHelper._internal();
 
   static Database? _database;
+  static const int _version = 21;
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -17,13 +19,191 @@ class DatabaseHelper {
   Future<Database> _initDatabase() async {
     return await openDatabase(
       'myAILangTutor.db',
-      version: 15,
+      version: _version,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
   }
 
   Future<void> _onCreate(Database db, int version) async {
+    await _createKnowledgeOutlinesTable(db);
+    await _createKnowledgePointsTable(db);
+    await _createErrorRecordsTable(db);
+    await _createTestPapersTable(db);
+    await _createExercisesTable(db);
+    await _createPortfolioItemsTable(db);
+    await _createSkillsTable(db);
+    await _createInboxItemsTable(db);
+    await _createOtherTables(db);
+  }
+
+  Future<void> _createKnowledgeOutlinesTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE ${KnowledgeOutlineSchema.tableName} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cid TEXT NOT NULL,
+        fid TEXT,
+        content TEXT NOT NULL,
+        lang TEXT DEFAULT 'cn',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+  }
+
+  Future<void> _createKnowledgePointsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE ${KnowledgePointSchema.tableName} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kid TEXT UNIQUE,
+        title TEXT NOT NULL,
+        unit_number TEXT,
+        lesson_number TEXT,
+        cid TEXT NOT NULL,
+        content_path TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        lang TEXT DEFAULT 'cn',
+        knowledge_tag TEXT,
+        test_times INTEGER DEFAULT 0,
+        error_times INTEGER DEFAULT 0,
+        test_recs TEXT,
+        error_recs TEXT,
+        brief TEXT
+      )
+    ''');
+  }
+
+  Future<void> _createErrorRecordsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE ${ErrorRecordSchema.tableName} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        content TEXT NOT NULL,
+        correct_answer TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        lang TEXT DEFAULT 'cn',
+        content_path TEXT,
+        error_id TEXT,
+        error_type TEXT,
+        progress TEXT DEFAULT '待订正',
+        question TEXT,
+        wrong_answer TEXT,
+        wrong_where TEXT,
+        why_wrong TEXT,
+        how_prevent TEXT,
+        notes TEXT,
+        images TEXT,
+        tid TEXT,
+        qid TEXT,
+        grade_memo TEXT,
+        correction TEXT,
+        kid TEXT,
+        unit_number TEXT,
+        lesson_number TEXT,
+        cid TEXT
+      )
+    ''');
+  }
+
+  Future<void> _createTestPapersTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE ${TestPaperSchema.tableName} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tid TEXT UNIQUE,
+        test_title TEXT NOT NULL,
+        images TEXT,
+        question_list TEXT,
+        content_path TEXT NOT NULL,
+        unit_number TEXT,
+        lesson_number TEXT,
+        source TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        lang TEXT DEFAULT 'cn'
+      )
+    ''');
+  }
+
+  Future<void> _createExercisesTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE ${ExerciseSchema.tableName} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        question TEXT NOT NULL,
+        options TEXT,
+        correct_answer TEXT,
+        explanation TEXT,
+        category TEXT,
+        difficulty INTEGER DEFAULT 1,
+        completed INTEGER DEFAULT 0,
+        content_path TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        lang TEXT DEFAULT 'cn',
+        progress TEXT DEFAULT '未答题',
+        exam_paper TEXT,
+        answer_sheet TEXT,
+        answer_key TEXT,
+        grading TEXT,
+        source TEXT
+      )
+    ''');
+  }
+
+  Future<void> _createPortfolioItemsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE ${PortfolioItemSchema.tableName} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        wid TEXT UNIQUE,
+        title TEXT NOT NULL,
+        content_path TEXT,
+        thumbnail_path TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        lang TEXT DEFAULT 'cn',
+        is_original INTEGER DEFAULT 0,
+        ai_review TEXT,
+        brief TEXT,
+        kid TEXT,
+        unit_number TEXT,
+        lesson_number TEXT
+      )
+    ''');
+  }
+
+  Future<void> _createSkillsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE ${SkillSchema.tableName} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        lang TEXT DEFAULT 'cn',
+        skill_id TEXT,
+        category TEXT,
+        prerequisite TEXT,
+        prompt_text TEXT,
+        internal_function TEXT,
+        parameters TEXT,
+        return_type TEXT,
+        description TEXT
+      )
+    ''');
+  }
+
+  Future<void> _createInboxItemsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE ${InboxItemSchema.tableName} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        source TEXT NOT NULL,
+        url TEXT NOT NULL,
+        filePath TEXT NOT NULL,
+        content TEXT,
+        category TEXT DEFAULT '未知归类',
+        status TEXT DEFAULT '未处理',
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT
+      )
+    ''');
+  }
+
+  Future<void> _createOtherTables(Database db) async {
     await db.execute('''
       CREATE TABLE documents (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,112 +234,6 @@ class DatabaseHelper {
     ''');
 
     await db.execute('''
-      CREATE TABLE error_records (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        content TEXT NOT NULL,
-        correct_answer TEXT,
-        subject TEXT,
-        lesson TEXT,
-        content_path TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        reviewed INTEGER DEFAULT 0,
-        lang TEXT DEFAULT 'cn',
-        error_id TEXT,
-        error_type TEXT,
-        exercise_tag TEXT,
-        knowledge_tag TEXT,
-        progress TEXT DEFAULT '待订正',
-        question TEXT,
-        wrong_answer TEXT,
-        wrong_where TEXT,
-        why_wrong TEXT,
-        how_prevent TEXT,
-        notes TEXT,
-        images TEXT
-      )
-    ''');
-
-    await db.execute('''
-      CREATE TABLE knowledge_points (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        content TEXT,
-        category TEXT,
-        lesson_unit TEXT,
-        error_type TEXT,
-        parent_id INTEGER,
-        difficulty INTEGER DEFAULT 1,
-        mastered INTEGER DEFAULT 0,
-        content_path TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        lang TEXT DEFAULT 'cn',
-        FOREIGN KEY (parent_id) REFERENCES knowledge_points(id) ON DELETE SET NULL
-      )
-    ''');
-
-    await db.execute('''
-      CREATE TABLE exercises (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        question TEXT NOT NULL,
-        options TEXT,
-        correct_answer TEXT,
-        explanation TEXT,
-        category TEXT,
-        difficulty INTEGER DEFAULT 1,
-        completed INTEGER DEFAULT 0,
-        content_path TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        lang TEXT DEFAULT 'cn',
-        exercise_id TEXT,
-        lesson_unit TEXT,
-        knowledge_tag TEXT,
-        progress TEXT DEFAULT '未答题',
-        exam_paper TEXT,
-        answer_sheet TEXT,
-        answer_key TEXT,
-        grading TEXT
-      )
-    ''');
-
-    await db.execute('''
-      CREATE TABLE portfolio_items (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        type TEXT,
-        content_path TEXT,
-        thumbnail_path TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        lang TEXT DEFAULT 'cn',
-        portfolio_id TEXT,
-        is_original INTEGER DEFAULT 0,
-        knowledge_tag TEXT,
-        lesson_unit TEXT,
-        ai_review TEXT
-      )
-    ''');
-
-    await db.execute('''
-      CREATE TABLE skills (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        level INTEGER DEFAULT 1,
-        progress REAL DEFAULT 0,
-        last_practiced TIMESTAMP,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        lang TEXT DEFAULT 'cn',
-        skill_id TEXT,
-        category TEXT,
-        prerequisite TEXT,
-        prompt_text TEXT,
-        internal_function TEXT,
-        parameters TEXT,
-        return_type TEXT,
-        description TEXT,
-        content_path TEXT
-      )
-    ''');
-
-    await db.execute('''
       CREATE TABLE settings (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         key TEXT NOT NULL UNIQUE,
@@ -170,7 +244,7 @@ class DatabaseHelper {
     ''');
 
     await db.execute('''
-      CREATE TABLE chat_messages (
+      CREATE TABLE ${ChatMessageSchema.tableName} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         content TEXT NOT NULL,
         reasoning TEXT,
@@ -181,22 +255,7 @@ class DatabaseHelper {
     ''');
 
     await db.execute('''
-      CREATE TABLE inbox_items (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        source TEXT NOT NULL,
-        url TEXT NOT NULL,
-        filePath TEXT NOT NULL,
-        content TEXT,
-        category TEXT DEFAULT '未知归类',
-        status TEXT DEFAULT '未处理',
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT
-      )
-    ''');
-
-    await db.execute('''
-      CREATE TABLE efficiency_records (
+      CREATE TABLE ${EfficiencyRecordSchema.tableName} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         record_id TEXT,
         title TEXT NOT NULL,
@@ -209,7 +268,7 @@ class DatabaseHelper {
     ''');
 
     await db.execute('''
-      CREATE TABLE schedule_items (
+      CREATE TABLE ${ScheduleItemSchema.tableName} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         schedule_id TEXT NOT NULL UNIQUE,
         title TEXT NOT NULL,
@@ -227,182 +286,109 @@ class DatabaseHelper {
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 2) {
-      await db.execute('''
-        CREATE TABLE chat_messages (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          content TEXT NOT NULL,
-          reasoning TEXT,
-          is_user INTEGER DEFAULT 0,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          lang TEXT DEFAULT 'cn'
-        )
-      ''');
+    if (oldVersion < 16) {
+      await _upgradeToV16(db);
     }
-    if (oldVersion < 3) {
-      await db.execute('''
-        CREATE TABLE inbox_items (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          title TEXT NOT NULL,
-          source TEXT NOT NULL,
-          url TEXT NOT NULL,
-          filePath TEXT NOT NULL,
-          content TEXT,
-          category TEXT DEFAULT '未知归类',
-          status TEXT DEFAULT '未处理',
-          createdAt TEXT NOT NULL,
-          updatedAt TEXT
-        )
-      ''');
+    if (oldVersion < 17) {
+      await _upgradeToV17(db);
     }
-    if (oldVersion < 4) {
-      await db.execute('''
-        CREATE TABLE efficiency_records (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          record_id TEXT,
-          title TEXT NOT NULL,
-          unit_count INTEGER DEFAULT 0,
-          unit_efficiency REAL DEFAULT 0,
-          record_time TEXT,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          lang TEXT DEFAULT 'cn'
-        )
-      ''');
+    if (oldVersion < 18) {
+      await _upgradeToV18(db);
     }
-    if (oldVersion < 7) {
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS schedule_items (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          schedule_id TEXT NOT NULL UNIQUE,
-          title TEXT NOT NULL,
-          start_time TEXT NOT NULL,
-          end_time TEXT NOT NULL,
-          repeat_type TEXT DEFAULT 'none',
-          repeat_days TEXT,
-          date TEXT NOT NULL DEFAULT CURRENT_DATE,
-          completed INTEGER DEFAULT 0,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          lang TEXT DEFAULT 'cn'
-        )
-      ''');
+    if (oldVersion < 19) {
+      await _upgradeToV19(db);
     }
-    if (oldVersion < 8) {
-      // 确保efficiency_records表有正确的字段
-      try {
-        await db.execute('ALTER TABLE efficiency_records ADD COLUMN IF NOT EXISTS unit_count INTEGER DEFAULT 0');
-      } catch (e) {
-        // 如果列已存在，忽略错误
-      }
+    if (oldVersion < 20) {
+      await _upgradeToV20(db);
     }
-    if (oldVersion < 9) {
-      // 添加content_path字段到各个表
-      try {
-        await db.execute('ALTER TABLE error_records ADD COLUMN IF NOT EXISTS content_path TEXT');
-      } catch (e) { /* 忽略 */ }
-      
-      try {
-        await db.execute('ALTER TABLE knowledge_points ADD COLUMN IF NOT EXISTS lesson_unit TEXT');
-        await db.execute('ALTER TABLE knowledge_points ADD COLUMN IF NOT EXISTS error_type TEXT');
-        await db.execute('ALTER TABLE knowledge_points ADD COLUMN IF NOT EXISTS content_path TEXT');
-      } catch (e) { /* 忽略 */ }
-      
-      try {
-        await db.execute('ALTER TABLE exercises ADD COLUMN IF NOT EXISTS content_path TEXT');
-      } catch (e) { /* 忽略 */ }
+    if (oldVersion < 21) {
+      await _upgradeToV21(db);
     }
-    if (oldVersion < 10) {
-      // v10: 扩充 error_records, exercises, portfolio_items, skills 表字段
-      const errorRecordColumns = [
-        'error_id TEXT', 'error_type TEXT', 'exercise_tag TEXT',
-        'knowledge_tag TEXT', "progress TEXT DEFAULT '待订正'",
-        'question TEXT', 'wrong_answer TEXT', 'wrong_where TEXT',
-        'why_wrong TEXT', 'how_prevent TEXT', 'notes TEXT', 'images TEXT',
-      ];
-      for (final col in errorRecordColumns) {
-        try { await db.execute('ALTER TABLE error_records ADD COLUMN $col'); } catch (e) { /* 忽略 */ }
-      }
+  }
 
-      const exerciseColumns = [
-        'exercise_id TEXT', 'lesson_unit TEXT', 'knowledge_tag TEXT',
-        "progress TEXT DEFAULT '未答题'",
-        'exam_paper TEXT', 'answer_sheet TEXT', 'answer_key TEXT', 'grading TEXT',
-      ];
-      for (final col in exerciseColumns) {
-        try { await db.execute('ALTER TABLE exercises ADD COLUMN $col'); } catch (e) { /* 忽略 */ }
-      }
+  Future<void> _upgradeToV16(Database db) async {
+    await _createTestPapersTable(db);
+  }
 
-      const portfolioColumns = [
-        'portfolio_id TEXT', 'is_original INTEGER DEFAULT 0',
-        'knowledge_tag TEXT', 'lesson_unit TEXT', 'ai_review TEXT',
-      ];
-      for (final col in portfolioColumns) {
-        try { await db.execute('ALTER TABLE portfolio_items ADD COLUMN $col'); } catch (e) { /* 忽略 */ }
-      }
+  Future<void> _upgradeToV17(Database db) async {
+    try {
+      await db.execute("ALTER TABLE knowledge_points ADD COLUMN kid TEXT");
+    } catch (e) {}
+    try {
+      await db.execute("ALTER TABLE knowledge_points ADD COLUMN cid TEXT");
+    } catch (e) {}
+    try {
+      await db.execute("ALTER TABLE knowledge_points ADD COLUMN brief TEXT");
+    } catch (e) {}
+    try {
+      await db.execute("ALTER TABLE knowledge_points ADD COLUMN test_times INTEGER DEFAULT 0");
+    } catch (e) {}
+    try {
+      await db.execute("ALTER TABLE knowledge_points ADD COLUMN error_times INTEGER DEFAULT 0");
+    } catch (e) {}
+    try {
+      await db.execute("ALTER TABLE knowledge_points ADD COLUMN test_recs TEXT");
+    } catch (e) {}
+    try {
+      await db.execute("ALTER TABLE knowledge_points ADD COLUMN error_recs TEXT");
+    } catch (e) {}
+  }
 
-      const skillColumns = [
-        'skill_id TEXT', 'category TEXT', 'prerequisite TEXT',
-        'prompt_text TEXT', 'internal_function TEXT', 'parameters TEXT',
-        'return_type TEXT', 'description TEXT',
-      ];
-      for (final col in skillColumns) {
-        try { await db.execute('ALTER TABLE skills ADD COLUMN $col'); } catch (e) { /* 忽略 */ }
-      }
-    }
-    if (oldVersion < 12) {
-      // v12: exercises 表添加 source 字段（来源标签：收件箱/知识点/错误本/作品集）
-      try {
-        await db.execute("ALTER TABLE exercises ADD COLUMN source TEXT DEFAULT ''");
-      } catch (e) { /* 列已存在，忽略 */ }
-    }
-    if (oldVersion < 13) {
-      // v13: skills 表添加 content_path 字段（关联内容文件路径）
-      try {
-        await db.execute("ALTER TABLE skills ADD COLUMN content_path TEXT DEFAULT ''");
-      } catch (e) { /* 列已存在，忽略 */ }
-      
-      // knowledge_points 表添加 cid 和 father_id 字段
-      try {
-        await db.execute("ALTER TABLE knowledge_points ADD COLUMN cid TEXT DEFAULT ''");
-      } catch (e) { /* 列已存在，忽略 */ }
-      
-      try {
-        await db.execute("ALTER TABLE knowledge_points ADD COLUMN father_id INTEGER DEFAULT NULL");
-      } catch (e) { /* 列已存在，忽略 */ }
-    }
-    if (oldVersion < 14) {
-      // v14: portfolio_items 表添加 content 字段（文章内容正文）
-      try {
-        await db.execute("ALTER TABLE portfolio_items ADD COLUMN content TEXT");
-      } catch (e) { /* 列已存在，忽略 */ }
-    }
-    if (oldVersion < 15) {
-      // v15: 习题集两层结构重构
-      // 1. exam_papers 表新建
-      try {
-        await db.execute('''
-          CREATE TABLE exam_papers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            paper_id TEXT NOT NULL UNIQUE,
-            title TEXT NOT NULL,
-            subject TEXT,
-            lesson_unit TEXT,
-            knowledge_tag TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            exam_date TIMESTAMP,
-            lang TEXT DEFAULT 'cn',
-            total_score INTEGER,
-            duration INTEGER,
-            status TEXT DEFAULT '未开始'
-          )
-        ''');
-      } catch (e) { /* 表已存在，忽略 */ }
-      
-      // 2. exercises 表添加 paper_id 字段（关联试卷）
-      try {
-        await db.execute("ALTER TABLE exercises ADD COLUMN paper_id TEXT");
-      } catch (e) { /* 列已存在，忽略 */ }
-    }
+  Future<void> _upgradeToV18(Database db) async {
+    try {
+      await db.execute("ALTER TABLE error_records ADD COLUMN tid TEXT");
+    } catch (e) {}
+    try {
+      await db.execute("ALTER TABLE error_records ADD COLUMN qid TEXT");
+    } catch (e) {}
+    try {
+      await db.execute("ALTER TABLE error_records ADD COLUMN grade_memo TEXT");
+    } catch (e) {}
+    try {
+      await db.execute("ALTER TABLE error_records ADD COLUMN correction TEXT");
+    } catch (e) {}
+    try {
+      await db.execute("ALTER TABLE error_records ADD COLUMN kid TEXT");
+    } catch (e) {}
+    try {
+      await db.execute("ALTER TABLE error_records ADD COLUMN unit_number TEXT");
+    } catch (e) {}
+    try {
+      await db.execute("ALTER TABLE error_records ADD COLUMN lesson_number TEXT");
+    } catch (e) {}
+  }
+
+  Future<void> _upgradeToV19(Database db) async {
+    try {
+      await db.execute("ALTER TABLE portfolio_items ADD COLUMN wid TEXT");
+    } catch (e) {}
+    try {
+      await db.execute("ALTER TABLE portfolio_items ADD COLUMN brief TEXT");
+    } catch (e) {}
+    try {
+      await db.execute("ALTER TABLE portfolio_items ADD COLUMN kid TEXT");
+    } catch (e) {}
+    try {
+      await db.execute("ALTER TABLE portfolio_items ADD COLUMN unit_number TEXT");
+    } catch (e) {}
+    try {
+      await db.execute("ALTER TABLE portfolio_items ADD COLUMN lesson_number TEXT");
+    } catch (e) {}
+  }
+
+  Future<void> _upgradeToV20(Database db) async {
+    try {
+      await db.execute("ALTER TABLE skills DROP COLUMN level");
+    } catch (e) {}
+    try {
+      await db.execute("ALTER TABLE skills DROP COLUMN progress");
+    } catch (e) {}
+    try {
+      await db.execute("ALTER TABLE skills DROP COLUMN last_practiced");
+    } catch (e) {}
+    try {
+      await db.execute("ALTER TABLE skills DROP COLUMN content_path");
+    } catch (e) {}
   }
 
   Future<int> insert(String table, Map<String, dynamic> data) async {
@@ -459,102 +445,6 @@ class DatabaseHelper {
     _database = null;
   }
 
-  // ========== Exercises 清理方法 ==========
-
-  /// 删除包含明显数学内容的习题（只删除明确是数学题的记录）
-  Future<int> deleteMathExercises() async {
-    final db = await database;
-    
-    // 只匹配明确的数学符号和公式，避免误删语文中的通用词汇
-    const mathKeywords = [
-      'π=', 'π值', '勾股定理', '二次方程', '一元二次方程', 'x²=', 'x^2=',
-      '∑', '∫', 'sin(', 'cos(', 'tan(', 'log(', 'ln(',
-      'matrix', 'determinant', '微积分', '导数', '积分',
-      '面积公式', '周长公式', '体积公式',
-    ];
-
-    int deletedCount = 0;
-    
-    for (final keyword in mathKeywords) {
-      // 在 question、exam_paper、knowledge_tag 字段中搜索
-      final result = await db.rawDelete(
-        "DELETE FROM exercises WHERE "
-        "(question LIKE ? OR exam_paper LIKE ? OR knowledge_tag LIKE ?)",
-        ['%$keyword%', '%$keyword%', '%$keyword%'],
-      );
-      deletedCount += result;
-    }
-
-    return deletedCount;
-  }
-
-  /// 删除重复的习题（保留 id 最小的那条）
-  Future<int> deduplicateExercises() async {
-    final db = await database;
-    
-    // 通过 exercise_id 或 exam_paper 内容判断重复
-    // 如果 exercise_id 相同，或 exam_paper 完全相同，则视为重复
-    int deletedCount = 0;
-
-    // 1. 基于 exercise_id 去重
-    final duplicateById = await db.rawQuery(
-      """
-      SELECT MIN(id) as keep_id, GROUP_CONCAT(id) as all_ids
-      FROM exercises
-      WHERE exercise_id IS NOT NULL AND exercise_id != ''
-      GROUP BY exercise_id
-      HAVING COUNT(*) > 1
-      """,
-    );
-
-    for (final row in duplicateById) {
-      final keepId = row['keep_id'] as int?;
-      final allIdsStr = row['all_ids'] as String?;
-      if (keepId != null && allIdsStr != null) {
-        final ids = (allIdsStr as String).split(',').map(int.parse).where((id) => id != keepId).toList();
-        for (final id in ids) {
-          await db.delete('exercises', where: 'id = ?', whereArgs: [id]);
-          deletedCount++;
-        }
-      }
-    }
-
-    // 2. 基于 exam_paper 内容去重（完全相同的内容）
-    final duplicateByContent = await db.rawQuery(
-      """
-      SELECT MIN(id) as keep_id, GROUP_CONCAT(id) as all_ids
-      FROM exercises
-      WHERE exam_paper IS NOT NULL AND exam_paper != ''
-      GROUP BY exam_paper
-      HAVING COUNT(*) > 1
-      """,
-    );
-
-    for (final row in duplicateByContent) {
-      final keepId = row['keep_id'] as int?;
-      final allIdsStr = row['all_ids'] as String?;
-      if (keepId != null && allIdsStr != null) {
-        final ids = (allIdsStr as String).split(',').map(int.parse).where((id) => id != keepId).toList();
-        for (final id in ids) {
-          await db.delete('exercises', where: 'id = ?', whereArgs: [id]);
-          deletedCount++;
-        }
-      }
-    }
-
-    return deletedCount;
-  }
-
-  /// 一键清理：去重
-  Future<Map<String, int>> cleanExercises() async {
-    final dupDeleted = await deduplicateExercises();
-    
-    return {
-      'duplicate_deleted': dupDeleted,
-    };
-  }
-
-  // Inbox items methods
   Future<int> insertInboxItem(InboxItem item) async {
     final db = await database;
     return await db.insert('inbox_items', item.toMap());
@@ -645,7 +535,6 @@ class DatabaseHelper {
     );
   }
 
-  // Efficiency records methods
   Future<List<Map<String, dynamic>>> getRecentEfficiencyRecords(int limit) async {
     final db = await database;
     return await db.query(
@@ -655,7 +544,6 @@ class DatabaseHelper {
     );
   }
 
-  // Schedule items methods
   Future<List<Map<String, dynamic>>> getAllScheduleItems() async {
     final db = await database;
     return await db.query(
@@ -676,7 +564,6 @@ class DatabaseHelper {
     );
   }
 
-  // Chat messages methods - retrieve AI messages (especially classification records)
   Future<List<Map<String, dynamic>>> getClassificationMessages() async {
     final db = await database;
     return await db.query(

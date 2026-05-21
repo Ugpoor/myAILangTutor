@@ -37,24 +37,9 @@ class _PortfolioDetailPageState extends State<PortfolioDetailPage> {
   late TextEditingController _articleContentController;
   late TextEditingController _unitNoController; // 单元号
   late TextEditingController _lessonNoController; // 课号
-  String? _knowledgeTag;
-  String? _lessonUnit;
-  String? _exerciseTag;
-  String? _errorTypeTag;
   bool _isAiAnalyzing = false;
   String? _aiReview;
   final LlmService _llmService = LlmService();
-  
-  // 知识标签列表（带ID前缀）
-  List<String> _knowledgeTags = [];
-  // 知识标签映射：displayValue -> rawValue
-  Map<String, String> _knowledgeTagMap = {};
-  // 习题目标 - 只读显示关联的习题ID（每条作品只关联一条相关习题）
-  List<String> _exerciseTags = [];
-  // 错类标签列表（带ID前缀）
-  List<String> _errorTypeTags = [];
-  // 错类标签映射：displayValue -> rawValue
-  Map<String, String> _errorTypeTagMap = {};
   bool _isLoadingOptions = true;
 
   @override
@@ -64,15 +49,10 @@ class _PortfolioDetailPageState extends State<PortfolioDetailPage> {
     _titleController = TextEditingController(text: _item.title);
     _articleContentController = TextEditingController(text: _getInitialArticleContent());
     
-    // 解析课内单元（格式：第X单元第Y课 -> 两个数字）
-    final lessonUnit = _item.lessonUnit ?? '';
-    _unitNoController = TextEditingController(text: _parseUnitNo(lessonUnit));
-    _lessonNoController = TextEditingController(text: _parseLessonNo(lessonUnit));
+    // 解析单元和课号
+    _unitNoController = TextEditingController(text: _item.unitNumber ?? '');
+    _lessonNoController = TextEditingController(text: _item.lessonNumber ?? '');
     
-    _knowledgeTag = _item.knowledgeTag;
-    _lessonUnit = lessonUnit;
-    _exerciseTag = null;
-    _errorTypeTag = null;
     _aiReview = _item.aiReview;
     _llmService.init();
     _loadOptions().then((_) {
@@ -133,49 +113,7 @@ class _PortfolioDetailPageState extends State<PortfolioDetailPage> {
   }
 
   Future<void> _loadOptions() async {
-    try {
-      final db = await DatabaseHelper().database;
-      final kpDao = KnowledgePointDao(db);
-      
-      // 加载知识标签（带ID前缀，如"1. 细节描写"）
-      final knowledgePoints = await kpDao.getAll(lang: widget.lang);
-      final kTags = <String>[];
-      final kTagMap = <String, String>{};
-      for (var i = 0; i < knowledgePoints.length; i++) {
-        final p = knowledgePoints[i];
-        final display = '${p.id ?? "?"}. ${p.title}';
-        kTags.add(display);
-        kTagMap[display] = p.title;
-      }
-      
-      // 加载习题标签（从习题集提取ID，只读显示）
-      final exerciseDao = ExerciseDao(db);
-      final exercises = await exerciseDao.getAll(lang: widget.lang);
-      final exTags = exercises.map((e) => e.exerciseId).whereType<String>().toSet().toList();
-      
-      // 加载错类标签（带ID前缀）
-      final errorTypesRaw = await kpDao.getAllErrorTypes();
-      final errorTypes = <String>[];
-      final errorTypeMap = <String, String>{};
-      for (var i = 0; i < errorTypesRaw.length; i++) {
-        final raw = errorTypesRaw[i];
-        final display = '${i + 1}. $raw';
-        errorTypes.add(display);
-        errorTypeMap[display] = raw;
-      }
-      
-      setState(() {
-        _knowledgeTags = kTags;
-        _knowledgeTagMap = kTagMap;
-        _exerciseTags = exTags;
-        _errorTypeTags = errorTypes;
-        _errorTypeTagMap = errorTypeMap;
-        _isLoadingOptions = false;
-      });
-    } catch (e) {
-      print('[PortfolioDetail] 加载选项失败: $e');
-      setState(() => _isLoadingOptions = false);
-    }
+    setState(() => _isLoadingOptions = false);
   }
 
   Future<void> _saveItem() async {
@@ -193,14 +131,11 @@ class _PortfolioDetailPageState extends State<PortfolioDetailPage> {
 
     final updated = _item.copyWith(
       title: _titleController.text.trim(),
-      knowledgeTag: _knowledgeTag,
-      lessonUnit: _buildLessonUnit().isEmpty ? null : _buildLessonUnit(),
+      unitNumber: _unitNoController.text.trim().isEmpty ? null : _unitNoController.text.trim(),
+      lessonNumber: _lessonNoController.text.trim().isEmpty ? null : _lessonNoController.text.trim(),
       aiReview: _aiReview,
     );
     
-    setState(() {
-      _lessonUnit = _buildLessonUnit();
-    });
     await widget.portfolioDao.update(updated);
     if (mounted) {
       Navigator.of(context).pop(true);
@@ -368,7 +303,7 @@ class _PortfolioDetailPageState extends State<PortfolioDetailPage> {
                       Row(
                         children: [
                           Text(
-                            '${_item.portfolioId ?? ""} ',
+                            '${_item.wid ?? ""} ',
                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                           ),
                         ],
@@ -387,14 +322,7 @@ class _PortfolioDetailPageState extends State<PortfolioDetailPage> {
                       if (_isLoadingOptions)
                         const Center(child: CircularProgressIndicator()),
                       ...[
-                        // 知识点标签下拉（带ID前缀）
-                        _buildLabelDropdown(
-                          label: widget.lang == 'cn' ? '知识点标签' : 'Knowledge:',
-                          value: _knowledgeTag,
-                          items: _knowledgeTags,
-                          onChanged: (v) => setState(() => _knowledgeTag = _knowledgeTagMap[v] ?? v),
-                          type: 'knowledge',
-                        ),
+                        
                         const SizedBox(height: 4),
                         
                         // 课内单元 - 手动输入（非年级，格式：第X单元第X课）
@@ -465,18 +393,10 @@ class _PortfolioDetailPageState extends State<PortfolioDetailPage> {
                         ),
                         const SizedBox(height: 4),
                         
-                        // 习题标签 - 只读显示系统自动生成的练习ID
-                        _buildExerciseTagDisplay(),
+                        
                         const SizedBox(height: 4),
                         
-                        // 错类标签下拉（带ID前缀）
-                        _buildLabelDropdown(
-                          label: widget.lang == 'cn' ? '错类标签' : 'Error Type:',
-                          value: _errorTypeTag,
-                          items: _errorTypeTags,
-                          onChanged: (v) => setState(() => _errorTypeTag = _errorTypeTagMap[v] ?? v),
-                          type: 'errorType',
-                        ),
+                        
                       ],
                       
                       const SizedBox(height: 20),
@@ -571,50 +491,6 @@ class _PortfolioDetailPageState extends State<PortfolioDetailPage> {
           ],
         ),
       ),
-    );
-  }
-
-  /// 构建习目标只读显示（系统自动生成的练习ID）
-  Widget _buildExerciseTagDisplay() {
-    return Row(
-      children: [
-        SizedBox(
-          width: 70,
-          child: Text(
-            widget.lang == 'cn' ? '习题标签' : 'Exercises:',
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.grey[100],
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: Colors.grey[300]!),
-            ),
-            child: Wrap(
-              spacing: 4,
-              runSpacing: 4,
-              children: [
-                if (_exerciseTags.isEmpty)
-                  Text(
-                    widget.lang == 'cn' ? '暂无练习' : 'No exercises generated',
-                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
-                  ),
-                ..._exerciseTags.map((tag) => Chip(
-                  label: Text(tag, style: const TextStyle(fontSize: 10)),
-                  visualDensity: VisualDensity.compact,
-                  labelPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-                  padding: EdgeInsets.zero,
-                  backgroundColor: Colors.blue[50],
-                )),
-              ],
-            ),
-          ),
-        ),
-      ],
     );
   }
 

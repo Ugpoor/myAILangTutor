@@ -941,11 +941,7 @@ $content
       content: data['content'] ?? data['question'] ?? '',
       errorId: 'T$nextNum',
       correctAnswer: data['correctAnswer'] as String?,
-      subject: data['subject'] as String?,
-      lesson: data['lesson'] as String?,
       errorType: data['errorType'] as String?,
-      exerciseTag: data['exerciseTag'] as String?,
-      knowledgeTag: data['knowledgeTag'] as String?,
       progress: data['progress'] ?? '待订正',
       question: data['question'] as String?,
       wrongAnswer: data['wrongAnswer'] as String?,
@@ -956,6 +952,14 @@ $content
       contentPath: item.filePath,
       createdAt: item.createdAt,
       lang: 'cn',
+      tid: data['tid'] as String?,
+      qid: data['qid'] as String?,
+      gradeMemo: data['gradeMemo'] as String?,
+      correction: data['correction'] as String?,
+      kid: data['kid'] as String?,
+      unitNumber: data['unitNumber'] as String?,
+      lessonNumber: data['lessonNumber'] as String?,
+      cid: data['cid'] as String?,
     );
 
     await dao.insert(record);
@@ -971,14 +975,10 @@ $content
       options: data['options'] as String?,
       correctAnswer: data['correctAnswer'] as String?,
       explanation: data['explanation'] as String?,
-      category: data['category'] as String?,
       difficulty: data['difficulty'] as int? ?? 1,
-      lessonUnit: data['lessonUnit'] as String?,
-      knowledgeTag: data['knowledgeTag'] as String?,
       progress: '未答题',
       examPaper: data['examPaper'] as String?,
       answerKey: data['answerKey'] as String?,
-      exerciseId: 'T$nextNum',
       contentPath: item.filePath,
       createdAt: item.createdAt,
       lang: 'cn',
@@ -991,23 +991,22 @@ $content
 
   Future<void> _insertPortfolioItem(Database db, InboxItem item, Map<String, dynamic> data) async {
     final dao = PortfolioDao(db);
-    final nextNum = await dao.nextPortfolioIdNumber();
 
     final portfolio = PortfolioItem(
       title: data['title'] ?? item.title,
-      type: data['type'] as String?,
       contentPath: item.filePath,
-      portfolioId: 'W$nextNum',
       isOriginal: data['isOriginal'] as bool? ?? false,
-      knowledgeTag: data['knowledgeTag'] as String?,
-      lessonUnit: data['lessonUnit'] as String?,
       aiReview: data['aiReview'] as String?,
       createdAt: item.createdAt,
       lang: 'cn',
+      brief: data['brief'] as String?,
+      kid: data['kid'] as String?,
+      unitNumber: data['unitNumber'] as String?,
+      lessonNumber: data['lessonNumber'] as String?,
     );
 
     await dao.insert(portfolio);
-    print('[WriteThrough] 作品集条目已创建: W$nextNum');
+    print('[WriteThrough] 作品集条目已创建');
   }
 
   Future<void> _insertKnowledgePoint(Database db, InboxItem item, Map<String, dynamic> data) async {
@@ -1015,15 +1014,14 @@ $content
 
     final point = KnowledgePoint(
       title: data['title'] ?? item.title,
-      content: (data['content'] as String?)?.substring(0, 500),
-      category: data['category'] as String?,
-      lessonUnit: data['lessonUnit'] as String?,
-      knowledgeTag: data['knowledgeTag'] as String?,
-      difficulty: data['difficulty'] as int? ?? 1,
       contentPath: item.filePath,
-      mastered: false,
       createdAt: item.createdAt,
       lang: 'cn',
+      cid: data['cid'] as String? ?? '',
+      unitNumber: data['unitNumber'] as String?,
+      lessonNumber: data['lessonNumber'] as String?,
+      brief: data['brief'] as String?,
+      knowledgeTag: data['knowledgeTag'] as String?,
     );
 
     await dao.insert(point);
@@ -1052,46 +1050,39 @@ $content
 
       case '习题集':
         final dao = ExerciseDao(db);
-        final nextNum = await dao.nextExerciseIdNumber();
         await dao.insert(Exercise(
           question: item.title,
-          exerciseId: 'T$nextNum',
           contentPath: item.filePath,
           progress: '未答题',
           createdAt: item.createdAt,
           lang: 'cn',
           source: '收件箱',
         ));
-        print('[Fallback] 习题集条目已创建（仅标题）: T$nextNum');
+        print('[Fallback] 习题集条目已创建（仅标题）');
         break;
 
       case '作品集':
         final dao = PortfolioDao(db);
-        final nextNum = await dao.nextPortfolioIdNumber();
         await dao.insert(PortfolioItem(
           title: item.title,
-          portfolioId: 'W$nextNum',
           contentPath: item.filePath,
           isOriginal: false,
           createdAt: item.createdAt,
           lang: 'cn',
         ));
-        print('[Fallback] 作品集条目已创建（仅标题）: W$nextNum');
+        print('[Fallback] 作品集条目已创建（仅标题）');
         break;
 
       case '知识点':
         final dao = KnowledgePointDao(db);
         await dao.insert(KnowledgePoint(
           title: item.title,
-          content: item.content.length > 500 
-              ? item.content.substring(0, 500) 
-              : item.content,
           contentPath: item.filePath,
-          mastered: false,
           createdAt: item.createdAt,
           lang: 'cn',
+          cid: '',
         ));
-        print('[Fallback] 知识点条目已创建（截断内容）');
+        print('[Fallback] 知识点条目已创建');
         break;
     }
   }

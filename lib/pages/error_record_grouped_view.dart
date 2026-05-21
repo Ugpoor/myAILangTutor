@@ -61,9 +61,9 @@ class _ErrorRecordGroupedViewState extends State<ErrorRecordGroupedView> {
   String _getGroupKey(ErrorRecord r) {
     switch (_groupMode) {
       case _GroupMode.exerciseTag:
-        return r.exerciseTag ?? '';
+        return r.qid ?? '';
       case _GroupMode.knowledgeTag:
-        return r.knowledgeTag ?? '';
+        return r.kid ?? '';
       case _GroupMode.errorType:
         return r.errorType ?? '';
     }
@@ -219,7 +219,7 @@ class _ErrorRecordGroupedViewState extends State<ErrorRecordGroupedView> {
     // 按知识点分组
     final Map<String, List<ErrorRecord>> knowledgeGroups = {};
     for (final record in records) {
-      final kt = record.knowledgeTag ?? (widget.lang == 'cn' ? '未分类' : 'Uncategorized');
+      final kt = record.kid ?? (widget.lang == 'cn' ? '未分类' : 'Uncategorized');
       knowledgeGroups.putIfAbsent(kt, () => []);
       knowledgeGroups[kt]!.add(record);
     }
@@ -390,9 +390,9 @@ class _ErrorRecordGroupedViewState extends State<ErrorRecordGroupedView> {
                   spacing: 4,
                   children: [
                     // 知识点标签
-                    if (record.knowledgeTag != null)
+                    if (record.kid != null)
                       Chip(
-                        label: Text(record.knowledgeTag!, style: const TextStyle(fontSize: 9)),
+                        label: Text(record.kid!, style: const TextStyle(fontSize: 9)),
                         backgroundColor: Colors.blue[100],
                         visualDensity: VisualDensity.compact,
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -409,10 +409,10 @@ class _ErrorRecordGroupedViewState extends State<ErrorRecordGroupedView> {
                         padding: EdgeInsets.zero,
                         side: BorderSide.none,
                       ),
-                    // 课内标签
-                    if (record.lesson != null)
+                    // 题目标签
+                    if (record.qid != null)
                       Chip(
-                        label: Text(record.lesson!, style: const TextStyle(fontSize: 9)),
+                        label: Text(record.qid!, style: const TextStyle(fontSize: 9)),
                         backgroundColor: Colors.purple[100],
                         visualDensity: VisualDensity.compact,
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -500,11 +500,11 @@ class _ErrorRecordGroupedViewState extends State<ErrorRecordGroupedView> {
                                 const SizedBox(height: 2),
                                 Row(
                                   children: [
-                                    if (record.knowledgeTag != null)
+                                    if (record.kid != null)
                                       Padding(
                                         padding: const EdgeInsets.only(right: 4),
                                         child: Chip(
-                                          label: Text(record.knowledgeTag!,
+                                          label: Text(record.kid!,
                                               style: const TextStyle(fontSize: 10)),
                                           backgroundColor: Colors.blue[100],
                                           labelStyle: const TextStyle(fontSize: 10),

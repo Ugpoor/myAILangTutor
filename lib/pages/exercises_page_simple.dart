@@ -313,8 +313,6 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
         await errorRecordDao.insert(ErrorRecord(
           content: exercise.question,
           errorId: 'T$nextNum',
-          exerciseTag: exercise.exerciseId,
-          knowledgeTag: exercise.knowledgeTag,
           question: exercise.examPaper,
           wrongAnswer: exercise.answerSheet,
           progress: '待订正',

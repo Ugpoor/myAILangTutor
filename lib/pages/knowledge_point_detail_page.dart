@@ -49,21 +49,12 @@ class _KnowledgePointDetailPageState extends State<KnowledgePointDetailPage> {
     super.initState();
     _point = widget.point;
     _titleController = TextEditingController(text: _point.title);
-    _contentController = TextEditingController(text: _point.content ?? '');
     _cidController = TextEditingController(text: _point.cid ?? '');
-    _category = _point.category;
-    _lessonUnit = _point.lessonUnit;
-    _errorType = _point.errorType;
-    _fatherId = _point.fatherId ?? 0;
-    _difficulty = _point.difficulty;
-    _mastered = _point.mastered;
-    _knowledgeTag = _point.knowledgeTag;
   }
 
   @override
   void dispose() {
     _titleController.dispose();
-    _contentController.dispose();
     _cidController.dispose();
     super.dispose();
   }
@@ -71,15 +62,7 @@ class _KnowledgePointDetailPageState extends State<KnowledgePointDetailPage> {
   Future<void> _saveRecord() async {
     final updated = _point.copyWith(
       title: _titleController.text.trim(),
-      content: _contentController.text.trim().isEmpty ? null : _contentController.text.trim(),
-      category: _category,
-      lessonUnit: _lessonUnit,
-      errorType: _errorType,
-      fatherId: _fatherId == 0 ? null : _fatherId,
-      difficulty: _difficulty,
-      mastered: _mastered,
       cid: _cidController.text.trim().isEmpty ? null : _cidController.text.trim(),
-      knowledgeTag: _knowledgeTag,
     );
 
     final db = await DatabaseHelper().database;

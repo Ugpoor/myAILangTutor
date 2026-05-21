@@ -146,21 +146,17 @@ class AppService {
     return await _todoDao.delete(id);
   }
 
-  Future<List<ErrorRecord>> getErrorRecords({String? lang, bool? reviewed}) async {
-    return await _errorRecordDao.getAll(lang: lang, reviewed: reviewed);
+  Future<List<ErrorRecord>> getErrorRecords({String? lang}) async {
+    return await _errorRecordDao.getAll(lang: lang);
   }
 
   Future<int> createErrorRecord(String content, {
     String? correctAnswer,
-    String? subject,
-    String? lesson,
     String lang = 'cn',
   }) async {
     final record = ErrorRecord(
       content: content,
       correctAnswer: correctAnswer,
-      subject: subject,
-      lesson: lesson,
       createdAt: DateTime.now(),
       lang: lang,
     );
@@ -170,26 +166,26 @@ class AppService {
   Future<int> markErrorReviewed(int id) async {
     final record = await _errorRecordDao.getById(id);
     if (record != null) {
-      return await _errorRecordDao.update(record.copyWith(reviewed: true));
+      return await _errorRecordDao.update(record.copyWith(progress: '已订正'));
     }
     return 0;
   }
 
-  Future<List<KnowledgePoint>> getKnowledgePoints({String? lang, String? category}) async {
-    return await _knowledgePointDao.getAll(lang: lang, category: category);
+  Future<List<KnowledgePoint>> getKnowledgePoints({String? lang}) async {
+    return await _knowledgePointDao.getAll(lang: lang);
   }
 
   Future<int> createKnowledgePoint(String title, {
-    String? content,
-    String? category,
-    int difficulty = 1,
+    String cid = '',
+    String contentPath = '',
+    String? brief,
     String lang = 'cn',
   }) async {
     final point = KnowledgePoint(
       title: title,
-      content: content,
-      category: category,
-      difficulty: difficulty,
+      cid: cid,
+      contentPath: contentPath,
+      brief: brief,
       createdAt: DateTime.now(),
       lang: lang,
     );
@@ -199,7 +195,8 @@ class AppService {
   Future<int> toggleKnowledgeMastered(int id) async {
     final point = await _knowledgePointDao.getById(id);
     if (point != null) {
-      return await _knowledgePointDao.update(point.copyWith(mastered: !point.mastered));
+      final newTestTimes = point.testTimes ?? 0;
+      return await _knowledgePointDao.update(point.copyWith(testTimes: newTestTimes + 1));
     }
     return 0;
   }
@@ -237,21 +234,21 @@ class AppService {
     return 0;
   }
 
-  Future<List<PortfolioItem>> getPortfolioItems({String? lang, String? type}) async {
-    return await _portfolioDao.getAll(lang: lang, type: type);
+  Future<List<PortfolioItem>> getPortfolioItems({String? lang}) async {
+    return await _portfolioDao.getAll(lang: lang);
   }
 
   Future<int> createPortfolioItem(String title, {
-    String? type,
     String? contentPath,
     String? thumbnailPath,
+    bool isOriginal = false,
     String lang = 'cn',
   }) async {
     final item = PortfolioItem(
       title: title,
-      type: type,
       contentPath: contentPath,
       thumbnailPath: thumbnailPath,
+      isOriginal: isOriginal,
       createdAt: DateTime.now(),
       lang: lang,
     );
@@ -263,14 +260,10 @@ class AppService {
   }
 
   Future<int> createSkill(String name, {
-    int level = 1,
-    double progress = 0,
     String lang = 'cn',
   }) async {
     final skill = Skill(
       name: name,
-      level: level,
-      progress: progress,
       createdAt: DateTime.now(),
       lang: lang,
     );
@@ -280,14 +273,7 @@ class AppService {
   Future<int> updateSkillProgress(int id, double progress) async {
     final skill = await _skillDao.getById(id);
     if (skill != null) {
-      final updatedSkill = skill.copyWith(
-        progress: progress.clamp(0, 100),
-        lastPracticed: DateTime.now(),
-      );
-      if (updatedSkill.progress >= 100 && updatedSkill.level < 10) {
-        updatedSkill.copyWith(level: updatedSkill.level + 1, progress: 0);
-      }
-      return await _skillDao.update(updatedSkill);
+      return await _skillDao.update(skill);
     }
     return 0;
   }
@@ -474,11 +460,9 @@ $content
       final errorRecord = ErrorRecord(
         content: summary,
         correctAnswer: null,
-        subject: customSubject,
-        lesson: customLesson,
         contentPath: inboxItem.filePath,
         createdAt: inboxItem.createdAt,
-        reviewed: false,
+        lang: 'cn',
       );
 
       final id = await _errorRecordDao.insert(errorRecord);
@@ -496,10 +480,7 @@ $content
   }
 
   Future<Map<String, dynamic>> convertInboxToKnowledgePoint(InboxItem inboxItem, {
-    String? customCategory,
-    String? customLessonUnit,
-    String? customErrorType,
-    int customDifficulty = 1,
+    String cid = '',
   }) async {
     try {
       final summary = await _generateSummary(
@@ -509,14 +490,11 @@ $content
 
       final knowledgePoint = KnowledgePoint(
         title: inboxItem.title,
-        content: summary,
-        category: customCategory,
-        lessonUnit: customLessonUnit,
-        errorType: customErrorType,
-        difficulty: customDifficulty,
-        mastered: false,
-        contentPath: inboxItem.filePath,
+        cid: cid,
+        contentPath: inboxItem.filePath ?? '',
+        brief: summary,
         createdAt: inboxItem.createdAt,
+        lang: 'cn',
       );
 
       final id = await _knowledgePointDao.insert(knowledgePoint);
@@ -575,10 +553,11 @@ $content
     try {
       final portfolioItem = PortfolioItem(
         title: inboxItem.title,
-        type: customType ?? '文章',
         contentPath: inboxItem.filePath,
         thumbnailPath: null,
+        isOriginal: false,
         createdAt: inboxItem.createdAt,
+        lang: 'cn',
       );
 
       final id = await _portfolioDao.insert(portfolioItem);

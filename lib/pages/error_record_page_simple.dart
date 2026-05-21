@@ -107,27 +107,27 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
   void _applyFilter() {
     List<ErrorRecord> filtered = _allRecords.where((r) {
       if (_filterErrorType != null && r.errorType != _filterErrorType) return false;
-      if (_filterKnowledgeTags.isNotEmpty && !_filterKnowledgeTags.any((tag) => r.knowledgeTag?.contains(tag) ?? false)) return false;
+      if (_filterKnowledgeTags.isNotEmpty && !_filterKnowledgeTags.any((tag) => r.kid?.contains(tag) ?? false)) return false;
       if (_filterProgressSet.isNotEmpty && !_filterProgressSet.contains(r.progress)) return false;
       return true;
     }).toList();
     
     // Apply view mode sorting after filter
     switch (_viewMode) {
-      case 0: // 按知识点大纲排列（errorType→knowledgeTag分组）
+      case 0: // 按知识点大纲排列（errorType→kid分组）
         filtered.sort((a, b) {
           final typeA = a.errorType ?? '';
           final typeB = b.errorType ?? '';
           if (typeA != typeB) return typeA.compareTo(typeB);
-          final tagA = a.knowledgeTag ?? '';
-          final tagB = b.knowledgeTag ?? '';
+          final tagA = a.kid ?? '';
+          final tagB = b.kid ?? '';
           return tagA.compareTo(tagB);
         });
         break;
-      case 1: // 按习题标号排列（exerciseTag升序）
+      case 1: // 按习题标号排列（qid升序）
         filtered.sort((a, b) {
-          final tagA = a.exerciseTag ?? '';
-          final tagB = b.exerciseTag ?? '';
+          final tagA = a.qid ?? '';
+          final tagB = b.qid ?? '';
           if (tagA.isEmpty && tagB.isEmpty) {
             return (a.id ?? 0).compareTo(b.id ?? 0);
           }
@@ -195,11 +195,11 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
     Map<String, Map<String, List<ErrorRecord>>> grouped = {};
     for (final record in _allRecords) {
       final errorType = record.errorType ?? '未分类';
-      final knowledgeTag = record.knowledgeTag ?? '未分类';
+      final kid = record.kid ?? '未分类';
       
       grouped.putIfAbsent(errorType, () => {});
-      grouped[errorType]![knowledgeTag] = 
-          (grouped[errorType]![knowledgeTag] ?? []) + [record];
+      grouped[errorType]![kid] = 
+          (grouped[errorType]![kid] ?? []) + [record];
     }
     
     Navigator.push(
@@ -366,10 +366,8 @@ $errorContent
           explanation: exData['explanation'] as String?,
           category: '错题',
           difficulty: 1,
-          knowledgeTag: selectedRecords.first.knowledgeTag,
           progress: '未答题',
           source: '错误本',
-          exerciseId: 'T$nextNum',
           contentPath: selectedRecords.first.contentPath,
           createdAt: DateTime.now(),
           lang: widget.lang,
@@ -445,7 +443,7 @@ $errorContent
     String? tempErrorType = _filterErrorType;
     
     // 获取所有可用的知识点标签和进度选项
-    final allKnowledgeTags = _allRecords.map((r) => r.knowledgeTag).whereType<String>().toSet();
+    final allKnowledgeTags = _allRecords.map((r) => r.kid).whereType<String>().toSet();
     final allProgresses = {'待订正', '已订正'};
 
     showDialog<void>(
@@ -715,17 +713,11 @@ $errorContent
                     Wrap(
                       spacing: 6,
                       children: [
-                        if (record.lesson != null)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(color: Colors.blue[100], borderRadius: BorderRadius.circular(4)),
-                            child: Text('课内: ${record.lesson}', style: const TextStyle(fontSize: 11, color: Colors.blue)),
-                          ),
-                        if (record.knowledgeTag != null)
+                        if (record.kid != null)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(color: const Color(0xFF87CEEB), borderRadius: BorderRadius.circular(4)),
-                            child: Text('知识: ${record.knowledgeTag}', style: const TextStyle(fontSize: 11)),
+                            child: Text('知识: ${record.kid}', style: const TextStyle(fontSize: 11)),
                           ),
                         if (record.errorType != null)
                           Container(
@@ -733,11 +725,11 @@ $errorContent
                             decoration: BoxDecoration(color: const Color(0xFFFFA07A), borderRadius: BorderRadius.circular(4)),
                             child: Text(record.errorType!, style: const TextStyle(fontSize: 11, color: Colors.deepOrange)),
                           ),
-                        if (record.exerciseTag != null)
+                        if (record.qid != null)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(color: const Color(0xFF98FB98), borderRadius: BorderRadius.circular(4)),
-                            child: Text('习题: ${record.exerciseTag}', style: const TextStyle(fontSize: 11)),
+                            child: Text('习题: ${record.qid}', style: const TextStyle(fontSize: 11)),
                           ),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),

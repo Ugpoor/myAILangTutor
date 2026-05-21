@@ -76,8 +76,8 @@ class _KnowledgePointPageSimpleState extends State<KnowledgePointPageSimple> {
 
   void _applyFilter() {
     _displayPoints = _allPoints.where((p) {
-      if (_filterCategories.isNotEmpty && !(_filterCategories.contains(p.category) || p.category == null)) return false;
-      if (_filterLessonUnits.isNotEmpty && !_filterLessonUnits.any((u) => p.lessonUnit?.contains(u) ?? false)) return false;
+      if (_filterCategories.isNotEmpty && !(_filterCategories.contains(p.cid) || p.cid == null)) return false;
+      if (_filterLessonUnits.isNotEmpty && !_filterLessonUnits.any((u) => p.unitNumber?.contains(u) ?? false)) return false;
       return true;
     }).toList();
   }
@@ -138,11 +138,9 @@ class _KnowledgePointPageSimpleState extends State<KnowledgePointPageSimple> {
       StringBuffer combinedContent = StringBuffer();
       for (final point in selectedPoints) {
         combinedContent.writeln('【${point.title}】');
-        if (point.category != null) combinedContent.writeln('分类：${point.category}');
-        if (point.lessonUnit != null) combinedContent.writeln('课时单元：${point.lessonUnit}');
-        if (point.cid != null) combinedContent.writeln('CID: ${point.cid}');
-        final content = point.content ?? '';
-        combinedContent.writeln('内容：$content');
+        if (point.cid != null) combinedContent.writeln('分类：${point.cid}');
+        if (point.unitNumber != null) combinedContent.writeln('单元：${point.unitNumber}');
+        if (point.brief != null) combinedContent.writeln('简介：${point.brief}');
         combinedContent.writeln('');
       }
 
@@ -218,13 +216,9 @@ ${combinedContent.toString()}
               : null,
           correctAnswer: exData['correctAnswer'] as String?,
           explanation: exData['explanation'] as String?,
-          category: pointForExercise.category ?? '练习题',
-          difficulty: 1,
-          lessonUnit: pointForExercise.lessonUnit,
-          knowledgeTag: pointForExercise.title,
+          category: pointForExercise.cid ?? '练习题',
           progress: '未答题',
           source: '知识点',
-          exerciseId: 'T$nextNum',
           contentPath: pointForExercise.contentPath,
           createdAt: DateTime.now(),
           lang: widget.lang,
@@ -261,7 +255,8 @@ ${combinedContent.toString()}
   }
 
   Future<void> _toggleMastered(KnowledgePoint point) async {
-    final updated = point.copyWith(mastered: !point.mastered);
+    final newTestTimes = (point.testTimes ?? 0) + 1;
+    final updated = point.copyWith(testTimes: newTestTimes);
     await _knowledgePointDao.update(updated);
     await _loadPoints();
   }
@@ -275,9 +270,9 @@ ${combinedContent.toString()}
   Future<void> _loadRootNodes() async {
     final db = await DatabaseHelper().database;
     final dao = KnowledgePointDao(db);
-    final rootNodes = await dao.getRootNodes(lang: widget.lang);
+    final allPoints = await dao.getAll(lang: widget.lang);
     setState(() {
-      _rootPoints = rootNodes;
+      _rootPoints = allPoints;
       _currentParentPoint = null;
       _childrenPoints = [];
       _showSpectrumMode = false;
@@ -288,44 +283,22 @@ ${combinedContent.toString()}
   Future<void> _loadChildrenOf(KnowledgePoint point) async {
     final db = await DatabaseHelper().database;
     final dao = KnowledgePointDao(db);
-    final children = await dao.getByParentId(point.id!, lang: widget.lang);
+    final allPoints = await dao.getAll(lang: widget.lang);
     setState(() {
       _currentParentPoint = point;
-      _childrenPoints = children;
+      _childrenPoints = allPoints.where((p) => p.cid == point.cid).toList();
     });
   }
 
-  /// 执行知识谱筛选：根据选中的知识点，获取父类、自身、子类
+  /// 执行知识谱筛选：根据选中的知识点，获取同分类的知识点
   Future<void> _executeSpectrumFilter(KnowledgePoint selectedPoint) async {
     final db = await DatabaseHelper().database;
     final dao = KnowledgePointDao(db);
     
-    final Set<int> resultIds = {};
-    final List<KnowledgePoint> results = [];
-
-    // 1. 添加自身
-    results.add(selectedPoint);
-    resultIds.add(selectedPoint.id!);
-
-    // 2. 获取父类（基于 fatherId）
-    if (selectedPoint.fatherId != null) {
-      final parentList = await dao.getByFatherId(selectedPoint.fatherId!, lang: widget.lang);
-      for (final parent in parentList) {
-        if (!resultIds.contains(parent.id!)) {
-          results.add(parent);
-          resultIds.add(parent.id!);
-        }
-      }
-    }
-
-    // 3. 获取所有子类（基于 fatherId）
-    final children = await dao.getAllChildrenByFatherId(selectedPoint.id!, lang: widget.lang);
-    for (final child in children) {
-      if (!resultIds.contains(child.id!)) {
-        results.add(child);
-        resultIds.add(child.id!);
-      }
-    }
+    final allPoints = await dao.getAll(lang: widget.lang);
+    
+    // 获取同分类的知识点
+    final results = allPoints.where((p) => p.cid == selectedPoint.cid).toList();
 
     setState(() {
       _spectrumResults = results;
@@ -348,8 +321,8 @@ ${combinedContent.toString()}
   }
 
   void _showFilterDialog() {
-    final categories = _allPoints.map((p) => p.category).whereType<String>().toSet();
-    final lessonUnits = _allPoints.map((p) => p.lessonUnit).whereType<String>().toSet();
+    final categories = _allPoints.map((p) => p.cid).whereType<String>().toSet();
+    final lessonUnits = _allPoints.map((p) => p.unitNumber).whereType<String>().toSet();
     Set<String> selectedCategories = Set<String>.from(_filterCategories);
     Set<String> selectedLessonUnits = Set<String>.from(_filterLessonUnits);
 
@@ -523,15 +496,15 @@ ${combinedContent.toString()}
                                 child: Text('CID: ${point.cid}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
                               ),
                             const SizedBox(width: 8),
-                            // FatherID 标识
-                            if (point.fatherId != null)
+                            // 子节点标识
+                            if (point.kid != null)
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFDDA0DD),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
-                                child: Text('父:${point.fatherId}', style: const TextStyle(fontSize: 10)),
+                                child: Text('${point.kid}', style: const TextStyle(fontSize: 10)),
                               ),
                             const SizedBox(width: 8),
                             // 标题
@@ -546,32 +519,32 @@ ${combinedContent.toString()}
                         Wrap(
                           spacing: 6,
                           children: [
-                            if (point.lessonUnit != null)
+                            if (point.unitNumber != null)
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(color: const Color(0xFFFFE4E9), borderRadius: BorderRadius.circular(4)),
-                                child: Text('课内: ${point.lessonUnit}', style: const TextStyle(fontSize: 11)),
+                                child: Text('单元: ${point.unitNumber}', style: const TextStyle(fontSize: 11)),
                               ),
-                            if (point.category != null)
+                            if (point.cid != null)
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(color: const Color(0xFF87CEEB), borderRadius: BorderRadius.circular(4)),
-                                child: Text(point.category!, style: const TextStyle(fontSize: 11)),
+                                child: Text(point.cid!, style: const TextStyle(fontSize: 11)),
                               ),
-                            if (point.errorType != null)
+                            if (point.brief != null)
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(color: const Color(0xFFFFA07A), borderRadius: BorderRadius.circular(4)),
-                                child: Text('错类: ${point.errorType}', style: const TextStyle(fontSize: 11, color: Colors.deepOrange)),
+                                child: Text('简介: ${point.brief!.length > 10 ? point.brief!.substring(0, 10) + '...' : point.brief}', style: const TextStyle(fontSize: 11, color: Colors.deepOrange)),
                               ),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
-                                color: point.mastered ? const Color(0xFF90EE90) : const Color(0xFFD3D3D3),
+                                color: (point.testTimes ?? 0) > 0 ? const Color(0xFF90EE90) : const Color(0xFFD3D3D3),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
-                                point.mastered ? (widget.lang == 'cn' ? '已掌握' : 'Mastered') : (widget.lang == 'cn' ? '未掌握' : 'Not Mastered'),
+                                (point.testTimes ?? 0) > 0 ? '测试${point.testTimes}次' : '未测试',
                                 style: const TextStyle(fontSize: 11),
                               ),
                             ),
@@ -657,8 +630,8 @@ class _SpectrumSearchDialogState extends State<_SpectrumSearchDialog> {
       final db = await DatabaseHelper().database;
       final dao = KnowledgePointDao(db);
       
-      // 根据 cid 或 title 模糊匹配
-      final results = await dao.searchByCidOrTitle(query, lang: widget.lang);
+      // 根据 keyword 模糊匹配 title 或 brief
+      final results = await dao.getAll(lang: widget.lang, keyword: query);
       
       setState(() {
         _searchResults = results;

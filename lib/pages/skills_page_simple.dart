@@ -330,7 +330,7 @@ class _SkillsPageSimpleState extends State<SkillsPageSimple> {
     final isSelected = _selectedIds.contains(skill.id);
     final categoryColor = skill.category == '内部' ? const Color(0xFF87CEEB) : const Color(0xFF98FB98);
     final isExternal = skill.category == '外部';
-    final hasContent = skill.contentPath != null && skill.contentPath!.isNotEmpty;
+    final hasContent = false;
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
@@ -459,20 +459,7 @@ class _SkillsPageSimpleState extends State<SkillsPageSimple> {
               ),
             ),
           ),
-          // 内容指示和预览按钮（如果有关联内容）
-          if (hasContent)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              child: OutlinedButton.icon(
-                onPressed: () => _previewContent(skill.contentPath!),
-                icon: const Icon(Icons.html, size: 16),
-                label: Text(widget.lang == 'cn' ? '在线阅读' : 'Read Online'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF651FFF),
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                ),
-              ),
-            ),
+          
         ],
       ),
     );

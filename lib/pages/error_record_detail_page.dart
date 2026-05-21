@@ -49,14 +49,12 @@ class _ErrorRecordDetailPageState extends State<ErrorRecordDetailPage> {
     _lang = widget.lang;
     _progress = widget.record.progress;
     _errorType = widget.record.errorType;
-    _knowledgeTag = widget.record.knowledgeTag;
     _contentController = TextEditingController(text: widget.record.content);
     _questionController = TextEditingController(text: widget.record.question ?? '');
     _wrongAnswerController = TextEditingController(text: widget.record.wrongAnswer ?? '');
     _correctAnswerController = TextEditingController(text: widget.record.correctAnswer ?? '');
     _whyWrongController = TextEditingController(text: widget.record.whyWrong ?? '');
     _howPreventController = TextEditingController(text: widget.record.howPrevent ?? '');
-    _knowledgeTagController = TextEditingController(text: widget.record.knowledgeTag ?? '');
     _errorTypeController = TextEditingController(text: widget.record.errorType ?? '');
   }
 
@@ -68,7 +66,6 @@ class _ErrorRecordDetailPageState extends State<ErrorRecordDetailPage> {
     _correctAnswerController.dispose();
     _whyWrongController.dispose();
     _howPreventController.dispose();
-    _knowledgeTagController.dispose();
     _errorTypeController.dispose();
     super.dispose();
   }
@@ -81,7 +78,6 @@ class _ErrorRecordDetailPageState extends State<ErrorRecordDetailPage> {
       correctAnswer: _correctAnswerController.text.isEmpty ? null : _correctAnswerController.text.trim(),
       whyWrong: _whyWrongController.text.isEmpty ? null : _whyWrongController.text.trim(),
       howPrevent: _howPreventController.text.isEmpty ? null : _howPreventController.text.trim(),
-      knowledgeTag: _knowledgeTagController.text.isEmpty ? null : _knowledgeTagController.text.trim(),
       errorType: _errorTypeController.text.isEmpty ? null : _errorTypeController.text.trim(),
       progress: _progress,
     );

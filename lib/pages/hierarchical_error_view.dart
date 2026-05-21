@@ -155,7 +155,7 @@ $errorContent
           explanation: exData['explanation'] as String?,
           category: isFillBlank ? '填空题' : '选择题',
           difficulty: 2,
-          knowledgeTag: selectedRecords.first.knowledgeTag ?? '综合',
+          knowledgeTag: selectedRecords.first.kid ?? '综合',
           progress: '未答题',
           source: '错误本自动生成',
           exerciseId: 'T$nextNum',

@@ -15,6 +15,24 @@ class CommonFields {
 }
 
 // ============================================================
+// 知识点大纲模块 (Knowledge Outline)
+// ============================================================
+
+class KnowledgeOutlineSchema {
+  static const String tableName = 'knowledge_outlines';
+  
+  static const Map<String, String> columns = {
+    'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
+    'cid': 'TEXT NOT NULL',
+    'fid': 'TEXT',
+    'content': 'TEXT NOT NULL',
+    'lang': "TEXT DEFAULT 'cn'",
+    'created_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+    'updated_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+  };
+}
+
+// ============================================================
 // 知识点模块 (Knowledge Point)
 // ============================================================
 

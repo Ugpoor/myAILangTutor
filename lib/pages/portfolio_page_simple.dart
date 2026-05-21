@@ -59,8 +59,8 @@ class _PortfolioPageSimpleState extends State<PortfolioPageSimple> {
   void _applyFilter() {
     _displayItems = _allItems.where((item) {
       if (_filterIsOriginal != null && item.isOriginal != _filterIsOriginal) return false;
-      if (_filterKnowledgeTags.isNotEmpty && !_filterKnowledgeTags.any((tag) => item.knowledgeTag?.contains(tag) ?? false)) return false;
-      if (_filterLessonUnits.isNotEmpty && !_filterLessonUnits.any((unit) => item.lessonUnit?.contains(unit) ?? false)) return false;
+      if (_filterKnowledgeTags.isNotEmpty && !_filterKnowledgeTags.any((tag) => item.kid?.contains(tag) ?? false)) return false;
+      if (_filterLessonUnits.isNotEmpty && !_filterLessonUnits.any((unit) => item.unitNumber?.contains(unit) ?? false)) return false;
       return true;
     }).toList();
   }
@@ -92,10 +92,8 @@ class _PortfolioPageSimpleState extends State<PortfolioPageSimple> {
   }
 
   Future<void> _navigateToNewOriginal() async {
-    final nextNum = await _portfolioDao.nextPortfolioIdNumber();
     final newItem = PortfolioItem(
       title: widget.lang == 'cn' ? '新原创作品' : 'New Original',
-      portfolioId: 'W$nextNum',
       isOriginal: true,
       createdAt: DateTime.now(),
       lang: widget.lang,
@@ -120,8 +118,8 @@ class _PortfolioPageSimpleState extends State<PortfolioPageSimple> {
   }
 
   void _showFilterDialog() {
-    final knowledgeTags = _allItems.map((i) => i.knowledgeTag).whereType<String>().toSet().toList();
-    final lessonUnits = _allItems.map((i) => i.lessonUnit).whereType<String>().toSet().toList();
+    final knowledgeTags = _allItems.map((i) => i.kid).whereType<String>().toSet().toList();
+    final lessonUnits = _allItems.map((i) => i.unitNumber).whereType<String>().toSet().toList();
     final selectedKTags = Set<String>.from(_filterKnowledgeTags);
     final selectedLUnits = Set<String>.from(_filterLessonUnits);
     bool? tempIsOriginal = _filterIsOriginal;
@@ -321,7 +319,7 @@ class _PortfolioPageSimpleState extends State<PortfolioPageSimple> {
                     Row(
                       children: [
                         Text(
-                          '${item.portfolioId ?? ""} ',
+                          '${item.wid ?? ""} ',
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                         Expanded(child: Text(item.title)),
@@ -341,17 +339,17 @@ class _PortfolioPageSimpleState extends State<PortfolioPageSimple> {
                     Wrap(
                       spacing: 6,
                       children: [
-                        if (item.lessonUnit != null)
+                        if (item.unitNumber != null)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(color: Colors.blue[100], borderRadius: BorderRadius.circular(4)),
-                            child: Text('课内: ${item.lessonUnit}', style: const TextStyle(fontSize: 11, color: Colors.blue)),
+                            child: Text('单元: ${item.unitNumber}', style: const TextStyle(fontSize: 11, color: Colors.blue)),
                           ),
-                        if (item.knowledgeTag != null)
+                        if (item.kid != null)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(color: Colors.green[100], borderRadius: BorderRadius.circular(4)),
-                            child: Text('知识: ${item.knowledgeTag}', style: const TextStyle(fontSize: 11, color: Colors.green)),
+                            child: Text('知识: ${item.kid}', style: const TextStyle(fontSize: 11, color: Colors.green)),
                           ),
                         if (item.aiReview != null)
                           Container(
