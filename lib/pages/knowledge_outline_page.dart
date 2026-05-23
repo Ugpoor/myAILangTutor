@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' show max;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import '../components/app_title_bar.dart';
 import '../components/ai_reply_bar.dart';
@@ -12,14 +13,12 @@ import '../components/outline_editor.dart';
 import '../database/db_helper.dart';
 import '../database/models/knowledge_outline.dart';
 import '../services/config_importer.dart';
+import 'main_screen.dart';
 
 class KnowledgeOutlinePage extends StatefulWidget {
   final String lang;
 
-  const KnowledgeOutlinePage({
-    super.key,
-    this.lang = 'cn',
-  });
+  const KnowledgeOutlinePage({super.key, this.lang = 'cn'});
 
   @override
   State<KnowledgeOutlinePage> createState() => _KnowledgeOutlinePageState();
@@ -28,10 +27,14 @@ class KnowledgeOutlinePage extends StatefulWidget {
 class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
   List<OutlineNode> _nodes = [];
   bool _isLoading = true;
-  final GlobalKey<OutlineEditorState> _outlineEditorKey = GlobalKey<OutlineEditorState>();
+  final GlobalKey<OutlineEditorState> _outlineEditorKey =
+      GlobalKey<OutlineEditorState>();
 
   void _goHome() {
-    Navigator.of(context, rootNavigator: true).popUntil((route) => route.isFirst);
+    Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (context) => const MainScreen()),
+      (route) => false,
+    );
   }
 
   @override
@@ -44,11 +47,11 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
     try {
       // 先从配置文件同步到数据库（双向同步）
       await ConfigImporter().syncKnowledgeOutlinesFromConfig();
-      
+
       final db = await DatabaseHelper().database;
       final dao = KnowledgeOutlineDao(db);
       final outlines = await dao.getAll(lang: widget.lang);
-      
+
       _nodes = _convertToOutlineNodes(outlines);
     } catch (e) {
       print('[KnowledgeOutlinePage] 加载大纲失败: $e');
@@ -97,30 +100,46 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
 
   List<OutlineNode> _getDefaultNodes() {
     return [
-      OutlineNode(id: '1', content: '词汇', children: [
-        OutlineNode(id: '1.1', parentId: '1', content: '近义词辨析'),
-        OutlineNode(id: '1.2', parentId: '1', content: '反义词运用'),
-        OutlineNode(id: '1.3', parentId: '1', content: '词的形式'),
-      ]),
-      OutlineNode(id: '2', content: '写作手法', children: [
-        OutlineNode(id: '2.1', parentId: '2', content: '借物喻人'),
-        OutlineNode(id: '2.2', parentId: '2', content: '对比手法'),
-        OutlineNode(id: '2.3', parentId: '2', content: '拟人手法'),
-      ]),
-      OutlineNode(id: '3', content: '阅读理解', children: [
-        OutlineNode(id: '3.1', parentId: '3', content: '主旨归纳'),
-        OutlineNode(id: '3.2', parentId: '3', content: '推理判断'),
-      ]),
+      OutlineNode(
+        id: '1',
+        content: '词汇',
+        children: [
+          OutlineNode(id: '1.1', parentId: '1', content: '近义词辨析'),
+          OutlineNode(id: '1.2', parentId: '1', content: '反义词运用'),
+          OutlineNode(id: '1.3', parentId: '1', content: '词的形式'),
+        ],
+      ),
+      OutlineNode(
+        id: '2',
+        content: '写作手法',
+        children: [
+          OutlineNode(id: '2.1', parentId: '2', content: '借物喻人'),
+          OutlineNode(id: '2.2', parentId: '2', content: '对比手法'),
+          OutlineNode(id: '2.3', parentId: '2', content: '拟人手法'),
+        ],
+      ),
+      OutlineNode(
+        id: '3',
+        content: '阅读理解',
+        children: [
+          OutlineNode(id: '3.1', parentId: '3', content: '主旨归纳'),
+          OutlineNode(id: '3.2', parentId: '3', content: '推理判断'),
+        ],
+      ),
       OutlineNode(id: '4', content: '句法'),
       OutlineNode(id: '5', content: '文章'),
       OutlineNode(id: '6', content: '阅读'),
       OutlineNode(id: '7', content: '协作'),
       OutlineNode(id: '8', content: '聆听'),
       OutlineNode(id: '9', content: '口头'),
-      OutlineNode(id: '10', content: '历史人物', children: [
-        OutlineNode(id: '10.1', parentId: '10', content: '新文化时期的文学家'),
-        OutlineNode(id: '10.2', parentId: '10', content: '古代文学名人'),
-      ]),
+      OutlineNode(
+        id: '10',
+        content: '历史人物',
+        children: [
+          OutlineNode(id: '10.1', parentId: '10', content: '新文化时期的文学家'),
+          OutlineNode(id: '10.2', parentId: '10', content: '古代文学名人'),
+        ],
+      ),
       OutlineNode(id: '11', content: '名胜古迹'),
       OutlineNode(id: '12', content: '思想'),
       OutlineNode(id: '13', content: '曲艺'),
@@ -132,7 +151,11 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
       final db = await DatabaseHelper().database;
       final dao = KnowledgeOutlineDao(db);
 
-      await db.delete('knowledge_outlines', where: 'lang = ?', whereArgs: [widget.lang]);
+      await db.delete(
+        'knowledge_outlines',
+        where: 'lang = ?',
+        whereArgs: [widget.lang],
+      );
 
       List<KnowledgeOutline> outlines = [];
       _flattenNodes(nodes, outlines);
@@ -144,10 +167,12 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
       await ConfigImporter().exportKnowledgeOutlinesToConfig();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(widget.lang == 'cn' ? '大纲已保存' : 'Outline saved'),
-          duration: const Duration(seconds: 2),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(widget.lang == 'cn' ? '大纲已保存' : 'Outline saved'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
       }
 
       setState(() {
@@ -156,10 +181,12 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
     } catch (e) {
       print('[KnowledgeOutlinePage] 保存大纲失败: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(widget.lang == 'cn' ? '保存失败: $e' : 'Save failed: $e'),
-          backgroundColor: Colors.red,
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(widget.lang == 'cn' ? '保存失败: $e' : 'Save failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
@@ -180,13 +207,15 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
 
   void _flattenNodes(List<OutlineNode> nodes, List<KnowledgeOutline> result) {
     for (var node in nodes) {
-      result.add(KnowledgeOutline(
-        cid: node.id,
-        content: node.content,
-        lang: widget.lang,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      ));
+      result.add(
+        KnowledgeOutline(
+          cid: node.id,
+          content: node.content,
+          lang: widget.lang,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        ),
+      );
       _flattenNodes(node.children, result);
     }
   }
@@ -208,9 +237,11 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(widget.lang == 'cn' 
-                ? '从其他应用（如微信）转发CSV文件到本程序，文件将在收件箱中收到。' 
-                : 'Forward CSV files from other apps (e.g., WeChat) to this app. Files will be received in the inbox.'),
+            Text(
+              widget.lang == 'cn'
+                  ? '从其他应用（如微信）转发CSV文件到本程序，文件将在收件箱中收到。'
+                  : 'Forward CSV files from other apps (e.g., WeChat) to this app. Files will be received in the inbox.',
+            ),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: () async {
@@ -247,12 +278,16 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
           context: context,
           builder: (BuildContext context) {
             return AlertDialog(
-              title: Text(widget.lang == 'cn' ? '模板下载成功' : 'Template Downloaded'),
+              title: Text(
+                widget.lang == 'cn' ? '模板下载成功' : 'Template Downloaded',
+              ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(widget.lang == 'cn' ? '模板文件已保存到：' : 'Template saved to:'),
+                  Text(
+                    widget.lang == 'cn' ? '模板文件已保存到：' : 'Template saved to:',
+                  ),
                   const SizedBox(height: 8),
                   SelectableText(
                     filePath,
@@ -265,8 +300,16 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
                   const SizedBox(height: 12),
                   Text(widget.lang == 'cn' ? '你可以：' : 'You can:'),
                   const SizedBox(height: 4),
-                  Text(widget.lang == 'cn' ? '• 复制上方路径到文件管理器打开' : '• Copy the path above to open in file manager'),
-                  Text(widget.lang == 'cn' ? '• 通过文件管理器分享模板文件' : '• Share the template via file manager'),
+                  Text(
+                    widget.lang == 'cn'
+                        ? '• 复制上方路径到文件管理器打开'
+                        : '• Copy the path above to open in file manager',
+                  ),
+                  Text(
+                    widget.lang == 'cn'
+                        ? '• 通过文件管理器分享模板文件'
+                        : '• Share the template via file manager',
+                  ),
                 ],
               ),
               actions: [
@@ -284,10 +327,14 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
     } catch (e) {
       print('[KnowledgeOutlinePage] 下载模板失败: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(widget.lang == 'cn' ? '下载失败: $e' : 'Download failed: $e'),
-          backgroundColor: Colors.red,
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              widget.lang == 'cn' ? '下载失败: $e' : 'Download failed: $e',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
@@ -325,7 +372,11 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
     }
   }
 
-  void _findDirectChildren(String parentId, List<OutlineNode> nodes, List<OutlineNode> result) {
+  void _findDirectChildren(
+    String parentId,
+    List<OutlineNode> nodes,
+    List<OutlineNode> result,
+  ) {
     for (var node in nodes) {
       if (node.parentId == parentId) {
         result.add(node);
@@ -336,8 +387,8 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
 
   @override
   Widget build(BuildContext context) {
-    final tabs = widget.lang == 'cn' 
-        ? ['返回', '导入', '添加', '保存'] 
+    final tabs = widget.lang == 'cn'
+        ? ['返回', '导入', '添加', '保存']
         : ['Back', 'Import', 'Add', 'Save'];
 
     return Scaffold(
@@ -346,7 +397,9 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
         child: Column(
           children: [
             AppTitleBar(
-              title: widget.lang == 'cn' ? '我的AI语言学习助手-知识大纲' : 'My AI Language Tutor - Knowledge Outline',
+              title: widget.lang == 'cn'
+                  ? '我的AI语言学习助手-知识大纲'
+                  : 'My AI Language Tutor - Knowledge Outline',
             ),
             AIReplyBar(
               lang: widget.lang,
@@ -368,7 +421,9 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
                         padding: const EdgeInsets.all(16),
                         child: OutlineEditor(
                           key: _outlineEditorKey,
-                          title: widget.lang == 'cn' ? '知识点大纲' : 'Knowledge Outline',
+                          title: widget.lang == 'cn'
+                              ? '知识点大纲'
+                              : 'Knowledge Outline',
                           lang: widget.lang,
                           initialNodes: _nodes,
                           onSave: _saveOutline,
@@ -397,9 +452,7 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
               onHomeTap: _goHome,
               lang: widget.lang,
             ),
-            InputArea(
-              lang: widget.lang,
-            ),
+            InputArea(lang: widget.lang),
           ],
         ),
       ),

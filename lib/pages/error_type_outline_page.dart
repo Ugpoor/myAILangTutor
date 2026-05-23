@@ -12,6 +12,7 @@ import '../components/outline_editor.dart';
 import '../database/db_helper.dart';
 import '../database/models/error_type_outline.dart';
 import '../services/config_importer.dart';
+import 'main_screen.dart';
 
 class ErrorTypeOutlinePage extends StatefulWidget {
   final String lang;
@@ -29,10 +30,10 @@ class _ErrorTypeOutlinePageState extends State<ErrorTypeOutlinePage> {
       GlobalKey<OutlineEditorState>();
 
   void _goHome() {
-    Navigator.of(
-      context,
-      rootNavigator: true,
-    ).popUntil((route) => route.isFirst);
+    Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (context) => const MainScreen()),
+      (route) => false,
+    );
   }
 
   @override
