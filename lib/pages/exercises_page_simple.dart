@@ -311,10 +311,10 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
         // 生成错误本条目
         final nextNum = await errorRecordDao.nextErrorIdNumber();
         await errorRecordDao.insert(ErrorRecord(
-          content: exercise.question,
           errorId: 'T$nextNum',
           question: exercise.examPaper,
           wrongAnswer: exercise.answerSheet,
+          wrongWhere: '练习错题',
           progress: '待订正',
           createdAt: DateTime.now(),
           lang: widget.lang,

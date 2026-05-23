@@ -1,40 +1,45 @@
+import 'dart:convert';
+
 import 'package:sqflite/sqflite.dart';
 
+/// 错误本数据模型
+///
+/// 错误记录用于记录学生在学习过程中遇到的错题，支持错题订正和复习。
+/// 支持一个错误记录关联多个错类（多对多关系）。
+
 class ErrorRecord {
-  final int? id;
-  final String content;
-  final String? correctAnswer;
-  final DateTime? createdAt;
-  final String lang;
-  final String? contentPath;
-  final String? errorId;
-  final String? errorType;
-  final String progress;
-  final String? question;
-  final String? wrongAnswer;
-  final String? wrongWhere;
-  final String? whyWrong;
-  final String? howPrevent;
-  final String? notes;
-  final String? images;
-  final String? tid;
-  final String? qid;
-  final String? gradeMemo;
-  final String? correction;
-  final String? kid;
-  final String? unitNumber;
-  final String? lessonNumber;
-  final String? cid;
+  final int? id; // 数据库自增主键
+  final String? correctAnswer; // 正确答案
+  final DateTime? createdAt; // 创建时间
+  final String lang; // 语言标识（cn/en）
+  final String? contentPath; // 内容文件路径
+  final String? errorId; // 错误编号
+  final List<String> eids; // 关联错类ID列表（使用点分ID，如 ['1', '1.1']），支持多对多关系
+  final String progress; // 处理进度（待订正、已订正、已掌握、学习中）
+  final String? question; // 题目内容
+  final String? wrongAnswer; // 错误答案
+  final String? wrongWhere; // 错在哪里（错误原因的概括描述，用于条目标题）
+  final String? whyWrong; // 错误原因
+  final String? howPrevent; // 预防方法
+  final String? notes; // 备注
+  final String? images; // 图片路径列表（JSON格式）
+  final String? tid; // 关联试卷ID（格式：T+数字，如 T1）
+  final String? qid; // 关联题目ID
+  final String? gradeMemo; // 批改备注
+  final String? correction; // 订正内容
+  final String? kid; // 关联知识点ID（格式：K+数字，如 K1）
+  final String? unitNumber; // 单元号
+  final String? lessonNumber; // 课号
+  final String? cid; // 知识点大纲分类ID
 
   ErrorRecord({
     this.id,
-    required this.content,
     this.correctAnswer,
     this.createdAt,
     this.lang = 'cn',
     this.contentPath,
     this.errorId,
-    this.errorType,
+    this.eids = const [],
     this.progress = '待订正',
     this.question,
     this.wrongAnswer,
@@ -56,13 +61,12 @@ class ErrorRecord {
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'content': content,
       'correct_answer': correctAnswer,
       'created_at': createdAt?.toIso8601String(),
       'lang': lang,
       'content_path': contentPath,
       'error_id': errorId,
-      'error_type': errorType,
+      'error_type': eids.isNotEmpty ? json.encode(eids) : null,
       'progress': progress,
       'question': question,
       'wrong_answer': wrongAnswer,
@@ -83,9 +87,14 @@ class ErrorRecord {
   }
 
   static ErrorRecord fromMap(Map<String, dynamic> map) {
+    final errorTypeStr = map['error_type'] as String?;
+    final List<String> eidsList =
+        errorTypeStr != null && errorTypeStr.isNotEmpty
+        ? List<String>.from(json.decode(errorTypeStr))
+        : [];
+
     return ErrorRecord(
       id: map['id'] as int?,
-      content: map['content'] as String,
       correctAnswer: map['correct_answer'] as String?,
       createdAt: map['created_at'] != null
           ? DateTime.parse(map['created_at'] as String)
@@ -93,7 +102,7 @@ class ErrorRecord {
       lang: map['lang'] as String? ?? 'cn',
       contentPath: map['content_path'] as String?,
       errorId: map['error_id'] as String?,
-      errorType: map['error_type'] as String?,
+      eids: eidsList,
       progress: map['progress'] as String? ?? '待订正',
       question: map['question'] as String?,
       wrongAnswer: map['wrong_answer'] as String?,
@@ -115,13 +124,12 @@ class ErrorRecord {
 
   ErrorRecord copyWith({
     int? id,
-    String? content,
     String? correctAnswer,
     DateTime? createdAt,
     String? lang,
     String? contentPath,
     String? errorId,
-    String? errorType,
+    List<String>? eids,
     String? progress,
     String? question,
     String? wrongAnswer,
@@ -141,13 +149,12 @@ class ErrorRecord {
   }) {
     return ErrorRecord(
       id: id ?? this.id,
-      content: content ?? this.content,
       correctAnswer: correctAnswer ?? this.correctAnswer,
       createdAt: createdAt ?? this.createdAt,
       lang: lang ?? this.lang,
       contentPath: contentPath ?? this.contentPath,
       errorId: errorId ?? this.errorId,
-      errorType: errorType ?? this.errorType,
+      eids: eids ?? this.eids,
       progress: progress ?? this.progress,
       question: question ?? this.question,
       wrongAnswer: wrongAnswer ?? this.wrongAnswer,
@@ -179,7 +186,7 @@ class ErrorRecordDao {
 
   Future<List<ErrorRecord>> getAll({
     String? lang,
-    String? errorType,
+    String? eid,
     String? progress,
     String? keyword,
     String? kid,
@@ -194,9 +201,9 @@ class ErrorRecordDao {
       conditions.add('lang = ?');
       args.add(lang);
     }
-    if (errorType != null) {
+    if (eid != null) {
       conditions.add('error_type = ?');
-      args.add(errorType);
+      args.add(eid);
     }
     if (progress != null) {
       conditions.add('progress = ?');

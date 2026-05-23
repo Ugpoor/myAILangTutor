@@ -15,6 +15,23 @@ class CommonFields {
 }
 
 // ============================================================
+// 错类大纲模块 (Error Type Outline)
+// ============================================================
+
+class ErrorTypeOutlineSchema {
+  static const String tableName = 'error_type_outlines';
+  
+  static const Map<String, String> columns = {
+    'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
+    'eid': 'TEXT NOT NULL',
+    'content': 'TEXT NOT NULL',
+    'lang': "TEXT DEFAULT 'cn'",
+    'created_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+    'updated_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+  };
+}
+
+// ============================================================
 // 知识点大纲模块 (Knowledge Outline)
 // ============================================================
 
@@ -24,7 +41,6 @@ class KnowledgeOutlineSchema {
   static const Map<String, String> columns = {
     'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
     'cid': 'TEXT NOT NULL',
-    'fid': 'TEXT',
     'content': 'TEXT NOT NULL',
     'lang': "TEXT DEFAULT 'cn'",
     'created_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',

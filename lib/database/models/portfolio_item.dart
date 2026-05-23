@@ -1,19 +1,23 @@
 import 'package:sqflite/sqflite.dart';
 
+/// 作品集数据模型
+/// 
+/// 作品集记录以文档记录为主，每个作品是一个目录，包含md文档和富媒体文件。
+
 class PortfolioItem {
-  final int? id;
-  final String? wid;
-  final String title;
-  final String? contentPath;
-  final String? thumbnailPath;
-  final DateTime? createdAt;
-  final String lang;
-  final bool isOriginal;
-  final String? aiReview;
-  final String? brief;
-  final String? kid;
-  final String? unitNumber;
-  final String? lessonNumber;
+  final int? id;                    // 数据库自增主键
+  final String? wid;                // 作品唯一标识，格式为 "W" + id（如 W1, W2），用于跨模块引用
+  final String title;               // 作品标题
+  final String? contentPath;        // 内容目录路径，作品详细内容存储在文件系统中
+  final String? thumbnailPath;      // 缩略图路径
+  final DateTime? createdAt;        // 创建时间
+  final String lang;                // 语言标识（cn/en）
+  final bool isOriginal;            // 是否原创
+  final String? aiReview;           // AI评语
+  final String? brief;              // 作品摘要/简介
+  final String? kid;                // 关联知识点ID（格式：K+数字，如 K1）
+  final String? unitNumber;         // 单元号
+  final String? lessonNumber;       // 课号
 
   PortfolioItem({
     this.id,

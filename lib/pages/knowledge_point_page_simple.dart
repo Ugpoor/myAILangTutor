@@ -9,6 +9,7 @@ import '../components/chat_bubble_list.dart';
 import '../components/dynamic_tag_selector.dart';
 import '../database/db_helper.dart';
 import '../database/models/knowledge_point.dart';
+import '../database/models/knowledge_outline.dart';
 import '../database/models/exercise.dart';
 import '../services/llm_service.dart';
 import 'knowledge_outline_page.dart';
@@ -94,7 +95,6 @@ class _KnowledgePointPageSimpleState extends State<KnowledgePointPageSimple> {
         MaterialPageRoute(
           builder: (context) => KnowledgeOutlinePage(
             lang: widget.lang,
-            onHomeTap: widget.onHomeTap,
           ),
         ),
       );
@@ -628,16 +628,41 @@ class _SpectrumSearchDialogState extends State<_SpectrumSearchDialog> {
     // 延迟执行搜索，避免频繁查询
     Future.delayed(const Duration(milliseconds: 300), () async {
       final db = await DatabaseHelper().database;
-      final dao = KnowledgePointDao(db);
+      final pointDao = KnowledgePointDao(db);
       
       // 根据 keyword 模糊匹配 title 或 brief
-      final results = await dao.getAll(lang: widget.lang, keyword: query);
+      List<KnowledgePoint> results = await pointDao.getAll(lang: widget.lang, keyword: query);
+      
+      // 如果查询看起来像 cid（如 1.1, 2.3.1），同时搜索大纲表
+      if (_looksLikeCid(query)) {
+        final outlineDao = KnowledgeOutlineDao(db);
+        final outlines = await outlineDao.getAll(lang: widget.lang);
+        
+        // 查找匹配的 cid
+        final matchedCids = outlines
+            .where((o) => o.cid.startsWith(query) || o.cid == query)
+            .map((o) => o.cid)
+            .toList();
+        
+        // 如果找到匹配的大纲 cid，获取对应的知识点
+        if (matchedCids.isNotEmpty) {
+          for (final cid in matchedCids) {
+            final pointsByCid = await pointDao.getByCid(cid, lang: widget.lang);
+            results.addAll(pointsByCid);
+          }
+        }
+      }
       
       setState(() {
-        _searchResults = results;
+        _searchResults = results.toSet().toList(); // 去重
         _isSearching = false;
       });
     });
+  }
+
+  bool _looksLikeCid(String query) {
+    // 检测是否看起来像 cid 格式（如 1, 1.1, 1.1.1 等）
+    return RegExp(r'^\d+(\.\d+)*$').hasMatch(query);
   }
 
   @override

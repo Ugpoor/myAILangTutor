@@ -1,21 +1,25 @@
 import 'package:sqflite/sqflite.dart';
 
+/// 知识点数据模型
+///
+/// 知识点是学习内容的基本单元，用于存储和管理知识卡片信息。
+
 class KnowledgePoint {
-  final int? id;
-  final String? kid;
-  final String title;
-  final String? unitNumber;
-  final String? lessonNumber;
-  final String cid;
-  final DateTime? createdAt;
-  final String lang;
-  final String contentPath;
-  final String? knowledgeTag;
-  final int testTimes;
-  final int errorTimes;
-  final String? testRecs;
-  final String? errorRecs;
-  final String? brief;
+  final int? id; // 数据库自增主键
+  final String? kid; // 知识点唯一标识，格式为 "K" + id（如 K1, K2），用于跨模块引用
+  final String title; // 知识点标题
+  final String? unitNumber; // 单元号（如 "1" 表示第1单元）
+  final String? lessonNumber; // 课号（如 "3" 表示第3课）
+  final String cid; // 知识点大纲分类ID，用于关联知识点大纲
+  final DateTime? createdAt; // 创建时间
+  final String lang; // 语言标识（cn/en）
+  final String? contentPath; // 内容文件路径，知识点详细内容存储在文件系统中
+  final String? knowledgeTag; // 知识标签（冗余字段，用于兼容旧数据）
+  final int testTimes; // 测试次数
+  final int errorTimes; // 错误次数
+  final String? testRecs; // 测试记录（JSON格式存储）
+  final String? errorRecs; // 错误记录（JSON格式存储）
+  final String? brief; // 知识点摘要/简介
 
   KnowledgePoint({
     this.id,
@@ -26,7 +30,7 @@ class KnowledgePoint {
     required this.cid,
     this.createdAt,
     this.lang = 'cn',
-    required this.contentPath,
+    this.contentPath,
     this.knowledgeTag,
     this.testTimes = 0,
     this.errorTimes = 0,
@@ -63,11 +67,11 @@ class KnowledgePoint {
       unitNumber: map['unit_number'] as String?,
       lessonNumber: map['lesson_number'] as String?,
       cid: map['cid'] as String,
-      createdAt: map['created_at'] != null 
-          ? DateTime.parse(map['created_at'] as String) 
+      createdAt: map['created_at'] != null
+          ? DateTime.parse(map['created_at'] as String)
           : null,
       lang: map['lang'] as String? ?? 'cn',
-      contentPath: map['content_path'] as String,
+      contentPath: map['content_path'] as String?,
       knowledgeTag: map['knowledge_tag'] as String?,
       testTimes: map['test_times'] as int? ?? 0,
       errorTimes: map['error_times'] as int? ?? 0,
@@ -134,7 +138,7 @@ class KnowledgePointDao {
   }
 
   Future<List<KnowledgePoint>> getAll({
-    String? lang, 
+    String? lang,
     String? unitNumber,
     String? lessonNumber,
     List<String>? tags,
@@ -196,7 +200,7 @@ class KnowledgePointDao {
   Future<List<KnowledgePoint>> getByCid(String cid, {String? lang}) async {
     List<String> conditions = ['cid = ?'];
     List<dynamic> args = [cid];
-    
+
     if (lang != null) {
       conditions.add('lang = ?');
       args.add(lang);
@@ -211,12 +215,15 @@ class KnowledgePointDao {
     return maps.map((map) => KnowledgePoint.fromMap(map)).toList();
   }
 
-  Future<List<KnowledgePoint>> getByCids(List<String> cids, {String? lang}) async {
+  Future<List<KnowledgePoint>> getByCids(
+    List<String> cids, {
+    String? lang,
+  }) async {
     if (cids.isEmpty) return [];
-    
+
     List<String> conditions = ['cid IN (${cids.map((_) => '?').join(',')})'];
     List<dynamic> args = List.from(cids);
-    
+
     if (lang != null) {
       conditions.add('lang = ?');
       args.add(lang);
@@ -269,19 +276,26 @@ class KnowledgePointDao {
   }
 
   Future<List<String>> getAllUnitNumbers() async {
-    final result = await db.rawQuery('SELECT DISTINCT unit_number FROM knowledge_points WHERE unit_number IS NOT NULL');
+    final result = await db.rawQuery(
+      'SELECT DISTINCT unit_number FROM knowledge_points WHERE unit_number IS NOT NULL',
+    );
     return result.map((map) => map['unit_number'] as String).toList();
   }
 
   Future<List<String>> getAllCids() async {
-    final result = await db.rawQuery('SELECT DISTINCT cid FROM knowledge_points WHERE cid IS NOT NULL');
+    final result = await db.rawQuery(
+      'SELECT DISTINCT cid FROM knowledge_points WHERE cid IS NOT NULL',
+    );
     return result.map((map) => map['cid'] as String).toList();
   }
 
-  Future<List<KnowledgePoint>> searchByTitleOrBrief(String query, {String? lang}) async {
+  Future<List<KnowledgePoint>> searchByTitleOrBrief(
+    String query, {
+    String? lang,
+  }) async {
     List<String> conditions = ['(title LIKE ? OR brief LIKE ?)'];
     List<dynamic> args = ['%$query%', '%$query%'];
-    
+
     if (lang != null) {
       conditions.add('lang = ?');
       args.add(lang);
@@ -314,11 +328,11 @@ class KnowledgePointDao {
   Future<int> addTestRec(int id, String testId) async {
     final point = await getById(id);
     if (point == null) return 0;
-    
-    List<String> recs = point.testRecs != null 
+
+    List<String> recs = point.testRecs != null
         ? (point.testRecs!.isEmpty ? [] : point.testRecs!.split(','))
         : [];
-    
+
     if (!recs.contains(testId)) {
       recs.add(testId);
       return await db.rawUpdate(
@@ -332,11 +346,11 @@ class KnowledgePointDao {
   Future<int> addErrorRec(int id, String errorId) async {
     final point = await getById(id);
     if (point == null) return 0;
-    
-    List<String> recs = point.errorRecs != null 
+
+    List<String> recs = point.errorRecs != null
         ? (point.errorRecs!.isEmpty ? [] : point.errorRecs!.split(','))
         : [];
-    
+
     if (!recs.contains(errorId)) {
       recs.add(errorId);
       return await db.rawUpdate(
@@ -349,14 +363,32 @@ class KnowledgePointDao {
 
   Future<int> deleteMathKnowledgePoints() async {
     const mathKeywords = [
-      'π=', 'π值', '勾股定理', '二次方程', '一元二次方程', 'x²=', 'x^2=',
-      '∑', '∫', 'sin(', 'cos(', 'tan(', 'log(', 'ln(',
-      'matrix', 'determinant', '微积分', '导数', '积分',
-      '面积公式', '周长公式', '体积公式',
+      'π=',
+      'π值',
+      '勾股定理',
+      '二次方程',
+      '一元二次方程',
+      'x²=',
+      'x^2=',
+      '∑',
+      '∫',
+      'sin(',
+      'cos(',
+      'tan(',
+      'log(',
+      'ln(',
+      'matrix',
+      'determinant',
+      '微积分',
+      '导数',
+      '积分',
+      '面积公式',
+      '周长公式',
+      '体积公式',
     ];
 
     int deletedCount = 0;
-    
+
     for (final keyword in mathKeywords) {
       final result = await db.rawDelete(
         "DELETE FROM knowledge_points WHERE "

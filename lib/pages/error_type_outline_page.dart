@@ -10,28 +10,29 @@ import '../components/submenu_tabs.dart';
 import '../components/input_area.dart';
 import '../components/outline_editor.dart';
 import '../database/db_helper.dart';
-import '../database/models/knowledge_outline.dart';
+import '../database/models/error_type_outline.dart';
 import '../services/config_importer.dart';
 
-class KnowledgeOutlinePage extends StatefulWidget {
+class ErrorTypeOutlinePage extends StatefulWidget {
   final String lang;
 
-  const KnowledgeOutlinePage({
-    super.key,
-    this.lang = 'cn',
-  });
+  const ErrorTypeOutlinePage({super.key, this.lang = 'cn'});
 
   @override
-  State<KnowledgeOutlinePage> createState() => _KnowledgeOutlinePageState();
+  State<ErrorTypeOutlinePage> createState() => _ErrorTypeOutlinePageState();
 }
 
-class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
+class _ErrorTypeOutlinePageState extends State<ErrorTypeOutlinePage> {
   List<OutlineNode> _nodes = [];
   bool _isLoading = true;
-  final GlobalKey<OutlineEditorState> _outlineEditorKey = GlobalKey<OutlineEditorState>();
+  final GlobalKey<OutlineEditorState> _outlineEditorKey =
+      GlobalKey<OutlineEditorState>();
 
   void _goHome() {
-    Navigator.of(context, rootNavigator: true).popUntil((route) => route.isFirst);
+    Navigator.of(
+      context,
+      rootNavigator: true,
+    ).popUntil((route) => route.isFirst);
   }
 
   @override
@@ -43,15 +44,15 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
   Future<void> _loadOutline() async {
     try {
       // 先从配置文件同步到数据库（双向同步）
-      await ConfigImporter().syncKnowledgeOutlinesFromConfig();
-      
+      await ConfigImporter().syncErrorTypeOutlinesFromConfig();
+
       final db = await DatabaseHelper().database;
-      final dao = KnowledgeOutlineDao(db);
+      final dao = ErrorTypeOutlineDao(db);
       final outlines = await dao.getAll(lang: widget.lang);
-      
+
       _nodes = _convertToOutlineNodes(outlines);
     } catch (e) {
-      print('[KnowledgeOutlinePage] 加载大纲失败: $e');
+      print('[ErrorTypeOutlinePage] 加载错类大纲失败: $e');
       _nodes = _getDefaultNodes();
     }
     setState(() => _isLoading = false);
@@ -65,14 +66,14 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
     return parts.sublist(0, parts.length - 1).join('.');
   }
 
-  List<OutlineNode> _convertToOutlineNodes(List<KnowledgeOutline> outlines) {
+  List<OutlineNode> _convertToOutlineNodes(List<ErrorTypeOutline> outlines) {
     Map<String, OutlineNode> nodeMap = {};
     List<OutlineNode> roots = [];
 
     for (var outline in outlines) {
-      nodeMap[outline.cid] = OutlineNode(
-        id: outline.cid,
-        parentId: _getParentId(outline.cid) ?? '',
+      nodeMap[outline.eid] = OutlineNode(
+        id: outline.eid,
+        parentId: _getParentId(outline.eid) ?? '',
         content: outline.content,
       );
     }
@@ -97,69 +98,102 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
 
   List<OutlineNode> _getDefaultNodes() {
     return [
-      OutlineNode(id: '1', content: '词汇', children: [
-        OutlineNode(id: '1.1', parentId: '1', content: '近义词辨析'),
-        OutlineNode(id: '1.2', parentId: '1', content: '反义词运用'),
-        OutlineNode(id: '1.3', parentId: '1', content: '词的形式'),
-      ]),
-      OutlineNode(id: '2', content: '写作手法', children: [
-        OutlineNode(id: '2.1', parentId: '2', content: '借物喻人'),
-        OutlineNode(id: '2.2', parentId: '2', content: '对比手法'),
-        OutlineNode(id: '2.3', parentId: '2', content: '拟人手法'),
-      ]),
-      OutlineNode(id: '3', content: '阅读理解', children: [
-        OutlineNode(id: '3.1', parentId: '3', content: '主旨归纳'),
-        OutlineNode(id: '3.2', parentId: '3', content: '推理判断'),
-      ]),
-      OutlineNode(id: '4', content: '句法'),
-      OutlineNode(id: '5', content: '文章'),
-      OutlineNode(id: '6', content: '阅读'),
-      OutlineNode(id: '7', content: '协作'),
-      OutlineNode(id: '8', content: '聆听'),
-      OutlineNode(id: '9', content: '口头'),
-      OutlineNode(id: '10', content: '历史人物', children: [
-        OutlineNode(id: '10.1', parentId: '10', content: '新文化时期的文学家'),
-        OutlineNode(id: '10.2', parentId: '10', content: '古代文学名人'),
-      ]),
-      OutlineNode(id: '11', content: '名胜古迹'),
-      OutlineNode(id: '12', content: '思想'),
-      OutlineNode(id: '13', content: '曲艺'),
+      OutlineNode(
+        id: '1',
+        content: '概念混淆',
+        children: [
+          OutlineNode(id: '1.1', parentId: '1', content: '近义词辨析错误'),
+          OutlineNode(id: '1.2', parentId: '1', content: '形近字混淆'),
+          OutlineNode(id: '1.3', parentId: '1', content: '概念理解偏差'),
+        ],
+      ),
+      OutlineNode(
+        id: '2',
+        content: '审题不清',
+        children: [
+          OutlineNode(id: '2.1', parentId: '2', content: '关键词忽略'),
+          OutlineNode(id: '2.2', parentId: '2', content: '会错题意'),
+          OutlineNode(id: '2.3', parentId: '2', content: '条件遗漏'),
+        ],
+      ),
+      OutlineNode(
+        id: '3',
+        content: '计算失误',
+        children: [
+          OutlineNode(id: '3.1', parentId: '3', content: '计算错误'),
+          OutlineNode(id: '3.2', parentId: '3', content: '步骤跳失'),
+        ],
+      ),
+      OutlineNode(
+        id: '4',
+        content: '知识遗漏',
+        children: [
+          OutlineNode(id: '4.1', parentId: '4', content: '知识点遗忘'),
+          OutlineNode(id: '4.2', parentId: '4', content: '知识点混淆'),
+        ],
+      ),
+      OutlineNode(
+        id: '5',
+        content: '推理错误',
+        children: [
+          OutlineNode(id: '5.1', parentId: '5', content: '逻辑错误'),
+          OutlineNode(id: '5.2', parentId: '5', content: '归纳不当'),
+        ],
+      ),
+      OutlineNode(
+        id: '6',
+        content: '表达错误',
+        children: [
+          OutlineNode(id: '6.1', parentId: '6', content: '语法错误'),
+          OutlineNode(id: '6.2', parentId: '6', content: '用词不当'),
+        ],
+      ),
     ];
   }
 
   Future<void> _saveOutline(List<OutlineNode> nodes) async {
     try {
       final db = await DatabaseHelper().database;
-      final dao = KnowledgeOutlineDao(db);
+      final dao = ErrorTypeOutlineDao(db);
 
-      await db.delete('knowledge_outlines', where: 'lang = ?', whereArgs: [widget.lang]);
+      await db.delete(
+        'error_type_outlines',
+        where: 'lang = ?',
+        whereArgs: [widget.lang],
+      );
 
-      List<KnowledgeOutline> outlines = [];
+      List<ErrorTypeOutline> outlines = [];
       _flattenNodes(nodes, outlines);
 
       for (var outline in outlines) {
         await dao.insert(outline);
       }
 
-      await ConfigImporter().exportKnowledgeOutlinesToConfig();
+      await ConfigImporter().exportErrorTypeOutlinesToConfig();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(widget.lang == 'cn' ? '大纲已保存' : 'Outline saved'),
-          duration: const Duration(seconds: 2),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              widget.lang == 'cn' ? '错类大纲已保存' : 'Error Type Outline saved',
+            ),
+            duration: const Duration(seconds: 2),
+          ),
+        );
       }
 
       setState(() {
         _nodes = _deepCopyNodes(nodes);
       });
     } catch (e) {
-      print('[KnowledgeOutlinePage] 保存大纲失败: $e');
+      print('[ErrorTypeOutlinePage] 保存错类大纲失败: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(widget.lang == 'cn' ? '保存失败: $e' : 'Save failed: $e'),
-          backgroundColor: Colors.red,
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(widget.lang == 'cn' ? '保存失败: $e' : 'Save failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
@@ -178,15 +212,17 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
         .toList();
   }
 
-  void _flattenNodes(List<OutlineNode> nodes, List<KnowledgeOutline> result) {
+  void _flattenNodes(List<OutlineNode> nodes, List<ErrorTypeOutline> result) {
     for (var node in nodes) {
-      result.add(KnowledgeOutline(
-        cid: node.id,
-        content: node.content,
-        lang: widget.lang,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      ));
+      result.add(
+        ErrorTypeOutline(
+          eid: node.id,
+          content: node.content,
+          lang: widget.lang,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        ),
+      );
       _flattenNodes(node.children, result);
     }
   }
@@ -203,14 +239,18 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(widget.lang == 'cn' ? '导入大纲' : 'Import Outline'),
+        title: Text(
+          widget.lang == 'cn' ? '导入错类大纲' : 'Import Error Type Outline',
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(widget.lang == 'cn' 
-                ? '从其他应用（如微信）转发CSV文件到本程序，文件将在收件箱中收到。' 
-                : 'Forward CSV files from other apps (e.g., WeChat) to this app. Files will be received in the inbox.'),
+            Text(
+              widget.lang == 'cn'
+                  ? '从其他应用（如微信）转发CSV文件到本程序，文件将在收件箱中收到。'
+                  : 'Forward CSV files from other apps (e.g., WeChat) to this app. Files will be received in the inbox.',
+            ),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: () async {
@@ -234,11 +274,11 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
   Future<void> _downloadTemplate() async {
     try {
       final String csvContent = widget.lang == 'cn'
-          ? 'id,content\n1,词汇\n1.1,近义词辨析\n1.2,反义词运用\n2,写作手法\n2.1,借物喻人\n'
-          : 'id,content\n1,Vocabulary\n1.1,Synonym Analysis\n1.2,Antonym Usage\n2,Writing Techniques\n2.1,Metaphor\n';
+          ? 'id,content\n1,概念混淆\n1.1,近义词辨析错误\n1.2,形近字混淆\n2,审题不清\n2.1,关键词忽略\n'
+          : 'id,content\n1,Concept Confusion\n1.1,Synonym Error\n1.2,Character Confusion\n2,Misunderstanding\n2.1,Keyword Ignored\n';
 
       final directory = await getApplicationDocumentsDirectory();
-      final filePath = '${directory.path}/knowledge_outline_template.csv';
+      final filePath = '${directory.path}/error_type_outline_template.csv';
       final file = File(filePath);
       await file.writeAsString(csvContent);
 
@@ -247,12 +287,16 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
           context: context,
           builder: (BuildContext context) {
             return AlertDialog(
-              title: Text(widget.lang == 'cn' ? '模板下载成功' : 'Template Downloaded'),
+              title: Text(
+                widget.lang == 'cn' ? '模板下载成功' : 'Template Downloaded',
+              ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(widget.lang == 'cn' ? '模板文件已保存到：' : 'Template saved to:'),
+                  Text(
+                    widget.lang == 'cn' ? '模板文件已保存到：' : 'Template saved to:',
+                  ),
                   const SizedBox(height: 8),
                   SelectableText(
                     filePath,
@@ -265,8 +309,16 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
                   const SizedBox(height: 12),
                   Text(widget.lang == 'cn' ? '你可以：' : 'You can:'),
                   const SizedBox(height: 4),
-                  Text(widget.lang == 'cn' ? '• 复制上方路径到文件管理器打开' : '• Copy the path above to open in file manager'),
-                  Text(widget.lang == 'cn' ? '• 通过文件管理器分享模板文件' : '• Share the template via file manager'),
+                  Text(
+                    widget.lang == 'cn'
+                        ? '• 复制上方路径到文件管理器打开'
+                        : '• Copy the path above to open in file manager',
+                  ),
+                  Text(
+                    widget.lang == 'cn'
+                        ? '• 通过文件管理器分享模板文件'
+                        : '• Share the template via file manager',
+                  ),
                 ],
               ),
               actions: [
@@ -282,12 +334,16 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
         );
       }
     } catch (e) {
-      print('[KnowledgeOutlinePage] 下载模板失败: $e');
+      print('[ErrorTypeOutlinePage] 下载模板失败: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(widget.lang == 'cn' ? '下载失败: $e' : 'Download failed: $e'),
-          backgroundColor: Colors.red,
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              widget.lang == 'cn' ? '下载失败: $e' : 'Download failed: $e',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
@@ -325,7 +381,11 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
     }
   }
 
-  void _findDirectChildren(String parentId, List<OutlineNode> nodes, List<OutlineNode> result) {
+  void _findDirectChildren(
+    String parentId,
+    List<OutlineNode> nodes,
+    List<OutlineNode> result,
+  ) {
     for (var node in nodes) {
       if (node.parentId == parentId) {
         result.add(node);
@@ -336,21 +396,23 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
 
   @override
   Widget build(BuildContext context) {
-    final tabs = widget.lang == 'cn' 
-        ? ['返回', '导入', '添加', '保存'] 
+    final tabs = widget.lang == 'cn'
+        ? ['返回', '导入', '添加', '保存']
         : ['Back', 'Import', 'Add', 'Save'];
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFFE4E9),
+      backgroundColor: const Color(0xFFFFF5E6),
       body: SafeArea(
         child: Column(
           children: [
             AppTitleBar(
-              title: widget.lang == 'cn' ? '我的AI语言学习助手-知识大纲' : 'My AI Language Tutor - Knowledge Outline',
+              title: widget.lang == 'cn'
+                  ? '我的AI语言学习助手-错类大纲'
+                  : 'My AI Language Tutor - Error Type Outline',
             ),
             AIReplyBar(
               lang: widget.lang,
-              topic: 'outline',
+              topic: 'error_type',
               onPullDown: _goHome,
               onAvatarTap: _goHome,
             ),
@@ -368,13 +430,15 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
                         padding: const EdgeInsets.all(16),
                         child: OutlineEditor(
                           key: _outlineEditorKey,
-                          title: widget.lang == 'cn' ? '知识点大纲' : 'Knowledge Outline',
+                          title: widget.lang == 'cn'
+                              ? '错类大纲'
+                              : 'Error Type Outline',
                           lang: widget.lang,
                           initialNodes: _nodes,
                           onSave: _saveOutline,
                           onCancel: _cancel,
-                          accentColor: const Color(0xFFFF69B4),
-                          icon: Icons.menu_book,
+                          accentColor: Colors.orange,
+                          icon: Icons.category,
                         ),
                       ),
                     ),
@@ -397,9 +461,7 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
               onHomeTap: _goHome,
               lang: widget.lang,
             ),
-            InputArea(
-              lang: widget.lang,
-            ),
+            InputArea(lang: widget.lang),
           ],
         ),
       ),

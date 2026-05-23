@@ -5,6 +5,8 @@ import '../database/models/error_record.dart';
 import '../database/models/exercise.dart';
 import '../database/models/portfolio_item.dart';
 import '../database/models/knowledge_point.dart';
+import '../database/models/error_type_outline.dart';
+import '../database/models/knowledge_outline.dart';
 
 class DemoDataInitializer {
   static final DemoDataInitializer _instance = DemoDataInitializer._internal();
@@ -27,6 +29,8 @@ class DemoDataInitializer {
     }
 
     await _insertSampleSkills(db);
+    await _insertSampleErrorTypeOutlines(db);
+    await _insertSampleKnowledgeOutlines(db);
     await _insertSampleErrorRecords(db);
     await _insertSampleExercises(db);
     await _insertSamplePortfolioItems(db);
@@ -147,14 +151,13 @@ class DemoDataInitializer {
     final dao = ErrorRecordDao(db);
 
     await dao.insert(ErrorRecord(
-      content: '小学语文四年级形近字辨析',
-      errorId: 'T1',
-      errorType: '概念混淆',
+      errorId: 'E001',
+      eids: ['1', '1.1'],
       progress: '待订正',
       question: '选择正确的字填空：安静/宁静/平静\n(1) 教室里非常______\n(2) 夜晚的湖面非常______\n(3) 她______地坐在角落看书',
       wrongAnswer: '(1) 宁静 (2) 平静 (3) 安静',
       correctAnswer: '(1) 安静 (2) 平静 (3) 安静',
-      wrongWhere: '第(1)题将"安静"和"宁静"混淆',
+      wrongWhere: '将"安静"和"宁静"混淆使用',
       whyWrong: '概念混淆——"安静"强调没有声音、不吵闹，用于形容环境；"宁静"更侧重心境平和、环境幽雅',
       howPrevent: '1. 记住三个近义词的程度和用法差异；2. "安静"最常用于日常环境描写；3. "宁静"多用于描写自然环境中的幽静',
       notes: '三个词的区别：安静=没有声响；平静=没有波动；宁静=幽雅安静（程度较深）',
@@ -168,14 +171,13 @@ class DemoDataInitializer {
     ));
 
     await dao.insert(ErrorRecord(
-      content: '阅读理解主旨归纳偏差',
-      errorId: 'T3',
-      errorType: '审题不清',
+      errorId: 'E002',
+      eids: ['2'],
       progress: '待订正',
       question: '阅读《落花生》一文，概括文章主旨。',
       wrongAnswer: '文章写了一家人种花生、收花生、吃花生的事情。',
       correctAnswer: '文章借落花生"虽然不好看，可是很有用"的特点，表达了"人要做有用的人，不要做只讲体面而对别人没有好处的人"的主旨。',
-      wrongWhere: '只概括了表面事件，没有提炼深层主旨',
+      wrongWhere: '只概括表面事件，未提炼深层主旨',
       whyWrong: '审题不清——只关注了叙事层面，忽略了"借物喻人"的写作手法和作者的议论抒情',
       howPrevent: '1. 阅读理解题先通读全文，重点看议论和抒情段落；2. 注意"借物喻人""托物言志"等手法的识别；3. 主旨通常在结尾议论部分点明',
       tid: 'T2',
@@ -184,6 +186,65 @@ class DemoDataInitializer {
       unitNumber: '5',
       lessonNumber: '1',
       createdAt: DateTime.now().subtract(const Duration(days: 1)),
+      lang: 'cn',
+    ));
+
+    await dao.insert(ErrorRecord(
+      errorId: 'E003',
+      eids: ['3'],
+      progress: '已订正',
+      question: '解方程：2x + 5 = 15',
+      wrongAnswer: 'x = 10',
+      correctAnswer: 'x = 5',
+      wrongWhere: '移项时符号处理错误',
+      whyWrong: '计算失误——移项时忘记改变符号，将+5移到右边应该变成-5，正确应为2x = 15 - 5 = 10，所以x = 5',
+      howPrevent: '1. 移项时要注意变号；2. 解方程后要代入检验；3. 书写步骤要清晰，避免跳步',
+      notes: '移项规则：移项要变号',
+      tid: 'T3',
+      qid: 'Q3',
+      kid: 'K3',
+      unitNumber: '3',
+      lessonNumber: '2',
+      createdAt: DateTime.now().subtract(const Duration(days: 5)),
+      lang: 'cn',
+    ));
+
+    await dao.insert(ErrorRecord(
+      errorId: 'E004',
+      eids: ['4', '5'],
+      progress: '学习中',
+      question: '"春风又绿江南岸"中"绿"字好在哪里？',
+      wrongAnswer: '用得很好，很生动',
+      correctAnswer: '"绿"字是形容词作动词用，把春风吹拂后江南岸一片新绿的景象写活了，既有色彩感又有动态感，表现了春天的生机盎然。',
+      wrongWhere: '未能准确分析炼字妙处',
+      whyWrong: '知识遗漏——缺乏对古诗炼字手法的理解，不知道形容词动用这一修辞技巧',
+      howPrevent: '1. 学习古诗时注意词性活用现象；2. 积累常见的炼字手法；3. 分析诗句时从词性、修辞、表达效果三方面入手',
+      tid: 'T4',
+      qid: 'Q4',
+      kid: 'K4',
+      unitNumber: '6',
+      lessonNumber: '3',
+      createdAt: DateTime.now().subtract(const Duration(days: 3)),
+      lang: 'cn',
+    ));
+
+    await dao.insert(ErrorRecord(
+      errorId: 'E005',
+      eids: ['1', '2'],
+      progress: '已掌握',
+      question: '选词填空：必须/必需\n(1) 我们______遵守交通规则\n(2) 水是生命______的物质',
+      wrongAnswer: '(1) 必需 (2) 必须',
+      correctAnswer: '(1) 必须 (2) 必需',
+      wrongWhere: '混淆"必须"和"必需"的用法',
+      whyWrong: '概念混淆——"必须"是副词，表示一定要；"必需"是形容词，表示不可缺少的',
+      howPrevent: '1. 记住词性差异："必须"是副词，修饰动词；"必需"是形容词，修饰名词；2. 通过造句练习巩固',
+      notes: '必须=一定要（副词）；必需=不可缺少（形容词）',
+      tid: 'T5',
+      qid: 'Q5',
+      kid: 'K5',
+      unitNumber: '2',
+      lessonNumber: '4',
+      createdAt: DateTime.now().subtract(const Duration(days: 7)),
       lang: 'cn',
     ));
   }
@@ -343,10 +404,10 @@ class DemoDataInitializer {
   Future<void> _insertSampleKnowledgePoints(Database db) async {
     final dao = KnowledgePointDao(db);
 
-    // 根节点:词汇
+    // 词汇 (cid: 1)
     await dao.insert(KnowledgePoint(
       title: '近义词辨析方法',
-      cid: 'vocabulary',
+      cid: '1',
       contentPath: 'knowledge/synonym_analysis',
       brief: '近义词辨析的四种方法：语素分析、语境代入、搭配习惯、程度轻重',
       createdAt: DateTime.now().subtract(const Duration(days: 3)),
@@ -355,10 +416,9 @@ class DemoDataInitializer {
       lessonNumber: '1',
     ));
 
-    // 子节点:语素分析法 (父级为近义词辨析方法)
     await dao.insert(KnowledgePoint(
       title: '语素分析法示例',
-      cid: 'vocabulary',
+      cid: '1.1',
       contentPath: 'knowledge/morpheme_analysis',
       brief: '通过分析不同语素理解近义词差异',
       createdAt: DateTime.now().subtract(const Duration(days: 3)),
@@ -367,10 +427,9 @@ class DemoDataInitializer {
       lessonNumber: '1',
     ));
 
-    // 子节点:语境代入法
     await dao.insert(KnowledgePoint(
       title: '语境代入法示例',
-      cid: 'vocabulary',
+      cid: '1.2',
       contentPath: 'knowledge/context_method',
       brief: '通过语境代入辨析近义词',
       createdAt: DateTime.now().subtract(const Duration(days: 3)),
@@ -379,10 +438,10 @@ class DemoDataInitializer {
       lessonNumber: '1',
     ));
 
-    // 根节点:写作手法
+    // 写作手法 (cid: 2)
     await dao.insert(KnowledgePoint(
       title: '借物喻人写作手法',
-      cid: 'writing_method',
+      cid: '2',
       contentPath: 'knowledge/metaphor_writing',
       brief: '借物喻人：通过描写事物特征来比喻人的品格、志向或道理。',
       createdAt: DateTime.now().subtract(const Duration(days: 2)),
@@ -391,10 +450,9 @@ class DemoDataInitializer {
       lessonNumber: '1',
     ));
 
-    // 子节点:借物喻人识别
     await dao.insert(KnowledgePoint(
       title: '借物喻人的识别方法',
-      cid: 'writing_method',
+      cid: '2.1',
       contentPath: 'knowledge/metaphor_recognition',
       brief: '识别借物喻人写作手法的五个步骤。',
       createdAt: DateTime.now().subtract(const Duration(days: 2)),
@@ -403,16 +461,177 @@ class DemoDataInitializer {
       lessonNumber: '1',
     ));
 
-    // 子节点:经典篇目
     await dao.insert(KnowledgePoint(
       title: '《落花生》赏析',
-      cid: 'writing_method',
+      cid: '2.2',
       contentPath: 'knowledge/peanut_analysis',
       brief: '《落花生》借物喻人赏析，表达做人要做有用的人。',
       createdAt: DateTime.now().subtract(const Duration(days: 2)),
       lang: 'cn',
       unitNumber: '5',
       lessonNumber: '1',
+    ));
+  }
+
+  Future<void> _insertSampleErrorTypeOutlines(Database db) async {
+    final dao = ErrorTypeOutlineDao(db);
+
+    await dao.insert(ErrorTypeOutline(
+      eid: '1',
+      content: '概念混淆',
+      lang: 'cn',
+      createdAt: DateTime.now(),
+    ));
+
+    await dao.insert(ErrorTypeOutline(
+      eid: '1.1',
+      content: '近义词辨析错误',
+      lang: 'cn',
+      createdAt: DateTime.now(),
+    ));
+
+    await dao.insert(ErrorTypeOutline(
+      eid: '1.2',
+      content: '形近字混淆',
+      lang: 'cn',
+      createdAt: DateTime.now(),
+    ));
+
+    await dao.insert(ErrorTypeOutline(
+      eid: '2',
+      content: '审题不清',
+      lang: 'cn',
+      createdAt: DateTime.now(),
+    ));
+
+    await dao.insert(ErrorTypeOutline(
+      eid: '2.1',
+      content: '关键词忽略',
+      lang: 'cn',
+      createdAt: DateTime.now(),
+    ));
+
+    await dao.insert(ErrorTypeOutline(
+      eid: '2.2',
+      content: '会错题意',
+      lang: 'cn',
+      createdAt: DateTime.now(),
+    ));
+
+    await dao.insert(ErrorTypeOutline(
+      eid: '3',
+      content: '计算失误',
+      lang: 'cn',
+      createdAt: DateTime.now(),
+    ));
+
+    await dao.insert(ErrorTypeOutline(
+      eid: '4',
+      content: '知识遗漏',
+      lang: 'cn',
+      createdAt: DateTime.now(),
+    ));
+
+    await dao.insert(ErrorTypeOutline(
+      eid: '5',
+      content: '推理错误',
+      lang: 'cn',
+      createdAt: DateTime.now(),
+    ));
+
+    await dao.insert(ErrorTypeOutline(
+      eid: '6',
+      content: '表达错误',
+      lang: 'cn',
+      createdAt: DateTime.now(),
+    ));
+  }
+
+  Future<void> _insertSampleKnowledgeOutlines(Database db) async {
+    final dao = KnowledgeOutlineDao(db);
+
+    await dao.insert(KnowledgeOutline(
+      cid: '1',
+      content: '词汇',
+      lang: 'cn',
+      createdAt: DateTime.now(),
+    ));
+
+    await dao.insert(KnowledgeOutline(
+      cid: '1.1',
+      content: '近义词辨析',
+      lang: 'cn',
+      createdAt: DateTime.now(),
+    ));
+
+    await dao.insert(KnowledgeOutline(
+      cid: '1.2',
+      content: '反义词运用',
+      lang: 'cn',
+      createdAt: DateTime.now(),
+    ));
+
+    await dao.insert(KnowledgeOutline(
+      cid: '2',
+      content: '写作手法',
+      lang: 'cn',
+      createdAt: DateTime.now(),
+    ));
+
+    await dao.insert(KnowledgeOutline(
+      cid: '2.1',
+      content: '借物喻人',
+      lang: 'cn',
+      createdAt: DateTime.now(),
+    ));
+
+    await dao.insert(KnowledgeOutline(
+      cid: '2.2',
+      content: '对比手法',
+      lang: 'cn',
+      createdAt: DateTime.now(),
+    ));
+
+    await dao.insert(KnowledgeOutline(
+      cid: '3',
+      content: '阅读理解',
+      lang: 'cn',
+      createdAt: DateTime.now(),
+    ));
+
+    await dao.insert(KnowledgeOutline(
+      cid: '3.1',
+      content: '主旨归纳',
+      lang: 'cn',
+      createdAt: DateTime.now(),
+    ));
+
+    await dao.insert(KnowledgeOutline(
+      cid: '3.2',
+      content: '推理判断',
+      lang: 'cn',
+      createdAt: DateTime.now(),
+    ));
+
+    await dao.insert(KnowledgeOutline(
+      cid: '4',
+      content: '句法',
+      lang: 'cn',
+      createdAt: DateTime.now(),
+    ));
+
+    await dao.insert(KnowledgeOutline(
+      cid: '5',
+      content: '文章',
+      lang: 'cn',
+      createdAt: DateTime.now(),
+    ));
+
+    await dao.insert(KnowledgeOutline(
+      cid: '6',
+      content: '阅读',
+      lang: 'cn',
+      createdAt: DateTime.now(),
     ));
   }
 

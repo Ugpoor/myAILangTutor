@@ -27,58 +27,62 @@ class ErrorRecordDetailPage extends StatefulWidget {
 }
 
 class _ErrorRecordDetailPageState extends State<ErrorRecordDetailPage> {
-  late TextEditingController _contentController;
   late TextEditingController _questionController;
   late TextEditingController _wrongAnswerController;
   late TextEditingController _correctAnswerController;
   late TextEditingController _whyWrongController;
   late TextEditingController _howPreventController;
-  late TextEditingController _knowledgeTagController;
-  late TextEditingController _errorTypeController;
-  late TextEditingController _progressController;
+  late TextEditingController _wrongWhereController;
+  late TextEditingController _eidsController;
+  late TextEditingController _kidController;
 
   bool _isDirty = false;
   late String _lang;
   late String _progress;
-  late String? _errorType;
-  late String? _knowledgeTag;
+  late List<String> _eids;
+  late String? _kid;
 
   @override
   void initState() {
     super.initState();
     _lang = widget.lang;
     _progress = widget.record.progress;
-    _errorType = widget.record.errorType;
-    _contentController = TextEditingController(text: widget.record.content);
+    _eids = widget.record.eids;
+    _kid = widget.record.kid;
     _questionController = TextEditingController(text: widget.record.question ?? '');
     _wrongAnswerController = TextEditingController(text: widget.record.wrongAnswer ?? '');
     _correctAnswerController = TextEditingController(text: widget.record.correctAnswer ?? '');
     _whyWrongController = TextEditingController(text: widget.record.whyWrong ?? '');
     _howPreventController = TextEditingController(text: widget.record.howPrevent ?? '');
-    _errorTypeController = TextEditingController(text: widget.record.errorType ?? '');
+    _wrongWhereController = TextEditingController(text: widget.record.wrongWhere ?? '');
+    _eidsController = TextEditingController(text: widget.record.eids.join(','));
+    _kidController = TextEditingController(text: widget.record.kid ?? '');
   }
 
   @override
   void dispose() {
-    _contentController.dispose();
     _questionController.dispose();
     _wrongAnswerController.dispose();
     _correctAnswerController.dispose();
     _whyWrongController.dispose();
     _howPreventController.dispose();
-    _errorTypeController.dispose();
+    _wrongWhereController.dispose();
+    _eidsController.dispose();
+    _kidController.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
+    final eidsList = _eidsController.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
     final updated = widget.record.copyWith(
-      content: _contentController.text.trim(),
       question: _questionController.text.isEmpty ? null : _questionController.text.trim(),
       wrongAnswer: _wrongAnswerController.text.isEmpty ? null : _wrongAnswerController.text.trim(),
       correctAnswer: _correctAnswerController.text.isEmpty ? null : _correctAnswerController.text.trim(),
       whyWrong: _whyWrongController.text.isEmpty ? null : _whyWrongController.text.trim(),
       howPrevent: _howPreventController.text.isEmpty ? null : _howPreventController.text.trim(),
-      errorType: _errorTypeController.text.isEmpty ? null : _errorTypeController.text.trim(),
+      wrongWhere: _wrongWhereController.text.isEmpty ? null : _wrongWhereController.text.trim(),
+      eids: eidsList,
+      kid: _kidController.text.isEmpty ? null : _kidController.text.trim(),
       progress: _progress,
     );
     await widget.dao.update(updated);
@@ -150,10 +154,10 @@ class _ErrorRecordDetailPageState extends State<ErrorRecordDetailPage> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: TextField(
-                              controller: _contentController,
-                              maxLines: 3,
+                              controller: _wrongWhereController,
+                              maxLines: 2,
                               decoration: InputDecoration(
-                                labelText: widget.lang == 'cn' ? '错题内容' : 'Content',
+                                labelText: widget.lang == 'cn' ? '错在哪里' : 'Wrong Where',
                                 border: const OutlineInputBorder(),
                                 alignLabelWithHint: true,
                               ),
@@ -232,13 +236,13 @@ class _ErrorRecordDetailPageState extends State<ErrorRecordDetailPage> {
                         children: [
                           Expanded(
                             child: TextField(
-                              controller: _knowledgeTagController,
+                              controller: _kidController,
                               decoration: InputDecoration(
-                                labelText: widget.lang == 'cn' ? '知识标签' : 'Knowledge Tag',
+                                labelText: widget.lang == 'cn' ? '知识点ID (kid)' : 'Knowledge ID',
                                 border: const OutlineInputBorder(),
                               ),
                               onChanged: (v) {
-                                _knowledgeTag = v.isEmpty ? null : v;
+                                _kid = v.isEmpty ? null : v;
                                 setState(() => _isDirty = true);
                               },
                             ),
@@ -246,13 +250,13 @@ class _ErrorRecordDetailPageState extends State<ErrorRecordDetailPage> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: TextField(
-                              controller: _errorTypeController,
+                              controller: _eidsController,
                               decoration: InputDecoration(
-                                labelText: widget.lang == 'cn' ? '错误类别' : 'Error Type',
+                                labelText: widget.lang == 'cn' ? '错类ID (eid,逗号分隔)' : 'Error Types',
                                 border: const OutlineInputBorder(),
                               ),
                               onChanged: (v) {
-                                _errorType = v.isEmpty ? null : v;
+                                _eids = v.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
                                 setState(() => _isDirty = true);
                               },
                             ),

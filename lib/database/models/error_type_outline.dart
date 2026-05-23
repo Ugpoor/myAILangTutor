@@ -1,20 +1,24 @@
 import 'package:sqflite/sqflite.dart';
 
-/// 知识点大纲数据模型
+/// 错类大纲数据模型
 /// 
-/// 知识点大纲用于组织和管理知识点的层级结构，支持多级分类。
+/// 错类大纲用于组织和管理错误类型的层级结构，支持多级分类。
+/// 使用点分ID体系表示层级关系，如：
+/// 1. 概念混淆
+///   1.1 近义词辨析错误
+///   1.2 形近字混淆
 
-class KnowledgeOutline {
+class ErrorTypeOutline {
   final int? id;                    // 数据库自增主键
-  final String cid;                 // 大纲分类ID，使用点分ID（如 1, 1.1, 1.2.1）
-  final String content;             // 大纲内容
+  final String eid;                 // 错类唯一标识，使用点分ID（如 1, 1.1, 1.2）
+  final String content;             // 错类内容
   final String lang;                // 语言标识（cn/en）
   final DateTime? createdAt;        // 创建时间
   final DateTime? updatedAt;        // 更新时间
 
-  KnowledgeOutline({
+  ErrorTypeOutline({
     this.id,
-    required this.cid,
+    required this.eid,
     required this.content,
     this.lang = 'cn',
     this.createdAt,
@@ -24,7 +28,7 @@ class KnowledgeOutline {
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'cid': cid,
+      'eid': eid,
       'content': content,
       'lang': lang,
       'created_at': createdAt?.toIso8601String(),
@@ -32,10 +36,10 @@ class KnowledgeOutline {
     };
   }
 
-  static KnowledgeOutline fromMap(Map<String, dynamic> map) {
-    return KnowledgeOutline(
+  static ErrorTypeOutline fromMap(Map<String, dynamic> map) {
+    return ErrorTypeOutline(
       id: map['id'] as int?,
-      cid: map['cid'] as String,
+      eid: map['eid'] as String,
       content: map['content'] as String,
       lang: map['lang'] as String? ?? 'cn',
       createdAt: map['created_at'] != null ? DateTime.parse(map['created_at'] as String) : null,
@@ -44,24 +48,24 @@ class KnowledgeOutline {
   }
 }
 
-class KnowledgeOutlineDao {
+class ErrorTypeOutlineDao {
   final Database db;
 
-  KnowledgeOutlineDao(this.db);
+  ErrorTypeOutlineDao(this.db);
 
-  Future<int> insert(KnowledgeOutline outline) async {
+  Future<int> insert(ErrorTypeOutline outline) async {
     final now = DateTime.now();
-    final outlineWithTimestamps = KnowledgeOutline(
-      cid: outline.cid,
+    final outlineWithTimestamps = ErrorTypeOutline(
+      eid: outline.eid,
       content: outline.content,
       lang: outline.lang,
       createdAt: now,
       updatedAt: now,
     );
-    return await db.insert('knowledge_outlines', outlineWithTimestamps.toMap());
+    return await db.insert('error_type_outlines', outlineWithTimestamps.toMap());
   }
 
-  Future<List<KnowledgeOutline>> getAll({String? lang}) async {
+  Future<List<ErrorTypeOutline>> getAll({String? lang}) async {
     List<String> conditions = [];
     List<dynamic> args = [];
 
@@ -71,26 +75,26 @@ class KnowledgeOutlineDao {
     }
 
     final maps = await db.query(
-      'knowledge_outlines',
+      'error_type_outlines',
       where: conditions.isNotEmpty ? conditions.join(' AND ') : null,
       whereArgs: args.isNotEmpty ? args : null,
-      orderBy: 'cid ASC',
+      orderBy: 'eid ASC',
     );
-    return maps.map((map) => KnowledgeOutline.fromMap(map)).toList();
+    return maps.map((map) => ErrorTypeOutline.fromMap(map)).toList();
   }
 
-  Future<KnowledgeOutline?> getById(int id) async {
+  Future<ErrorTypeOutline?> getById(int id) async {
     final maps = await db.query(
-      'knowledge_outlines',
+      'error_type_outlines',
       where: 'id = ?',
       whereArgs: [id],
     );
-    return maps.isNotEmpty ? KnowledgeOutline.fromMap(maps.first) : null;
+    return maps.isNotEmpty ? ErrorTypeOutline.fromMap(maps.first) : null;
   }
 
-  Future<KnowledgeOutline?> getByCid(String cid, {String? lang}) async {
-    List<String> conditions = ['cid = ?'];
-    List<dynamic> args = [cid];
+  Future<ErrorTypeOutline?> getByEid(String eid, {String? lang}) async {
+    List<String> conditions = ['eid = ?'];
+    List<dynamic> args = [eid];
 
     if (lang != null) {
       conditions.add('lang = ?');
@@ -98,24 +102,24 @@ class KnowledgeOutlineDao {
     }
 
     final maps = await db.query(
-      'knowledge_outlines',
+      'error_type_outlines',
       where: conditions.join(' AND '),
       whereArgs: args,
     );
-    return maps.isNotEmpty ? KnowledgeOutline.fromMap(maps.first) : null;
+    return maps.isNotEmpty ? ErrorTypeOutline.fromMap(maps.first) : null;
   }
 
-  Future<int> update(KnowledgeOutline outline) async {
-    final updatedOutline = KnowledgeOutline(
+  Future<int> update(ErrorTypeOutline outline) async {
+    final updatedOutline = ErrorTypeOutline(
       id: outline.id,
-      cid: outline.cid,
+      eid: outline.eid,
       content: outline.content,
       lang: outline.lang,
       createdAt: outline.createdAt,
       updatedAt: DateTime.now(),
     );
     return await db.update(
-      'knowledge_outlines',
+      'error_type_outlines',
       updatedOutline.toMap(),
       where: 'id = ?',
       whereArgs: [outline.id],
@@ -124,17 +128,17 @@ class KnowledgeOutlineDao {
 
   Future<int> delete(int id) async {
     return await db.delete(
-      'knowledge_outlines',
+      'error_type_outlines',
       where: 'id = ?',
       whereArgs: [id],
     );
   }
 
-  Future<int> deleteByCid(String cid) async {
+  Future<int> deleteByEid(String eid) async {
     return await db.delete(
-      'knowledge_outlines',
-      where: 'cid = ?',
-      whereArgs: [cid],
+      'error_type_outlines',
+      where: 'eid = ?',
+      whereArgs: [eid],
     );
   }
 }

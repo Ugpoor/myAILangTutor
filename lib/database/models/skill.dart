@@ -1,18 +1,22 @@
 import 'package:sqflite/sqflite.dart';
 
+/// 技能库数据模型
+/// 
+/// 技能库用于存储AI助手的技能定义，支持内部函数调用和外部提示语两种类型。
+
 class Skill {
-  final int? id;
-  final String name;
-  final DateTime? createdAt;
-  final String lang;
-  final String? skillId;
-  final String? category;
-  final String? prerequisite;
-  final String? promptText;
-  final String? internalFunction;
-  final String? parameters;
-  final String? returnType;
-  final String? description;
+  final int? id;                    // 数据库自增主键
+  final String name;                // 技能名称
+  final DateTime? createdAt;        // 创建时间
+  final String lang;                // 语言标识（cn/en）
+  final String? skillId;            // 技能唯一标识
+  final String? category;           // 技能分类（内部/外部）
+  final String? prerequisite;       // 前置技能要求
+  final String? promptText;         // 提示语文本（外部技能使用）
+  final String? internalFunction;   // 内部函数名称（内部技能使用）
+  final String? parameters;         // 参数定义（JSON格式）
+  final String? returnType;         // 返回值类型
+  final String? description;        // 技能描述
 
   Skill({
     this.id,

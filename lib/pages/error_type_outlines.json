@@ -1,0 +1,24 @@
+{
+  "error_type_outlines": [
+    {"eid": "1", "content": "概念混淆", "lang": "cn"},
+    {"eid": "1.1", "content": "近义词辨析错误", "lang": "cn"},
+    {"eid": "1.2", "content": "形近字混淆", "lang": "cn"},
+    {"eid": "1.3", "content": "概念理解偏差", "lang": "cn"},
+    {"eid": "2", "content": "审题不清", "lang": "cn"},
+    {"eid": "2.1", "content": "关键词忽略", "lang": "cn"},
+    {"eid": "2.2", "content": "会错题意", "lang": "cn"},
+    {"eid": "2.3", "content": "条件遗漏", "lang": "cn"},
+    {"eid": "3", "content": "计算失误", "lang": "cn"},
+    {"eid": "3.1", "content": "计算错误", "lang": "cn"},
+    {"eid": "3.2", "content": "步骤跳失", "lang": "cn"},
+    {"eid": "4", "content": "知识遗漏", "lang": "cn"},
+    {"eid": "4.1", "content": "知识点遗忘", "lang": "cn"},
+    {"eid": "4.2", "content": "知识点混淆", "lang": "cn"},
+    {"eid": "5", "content": "推理错误", "lang": "cn"},
+    {"eid": "5.1", "content": "逻辑错误", "lang": "cn"},
+    {"eid": "5.2", "content": "归纳不当", "lang": "cn"},
+    {"eid": "6", "content": "表达错误", "lang": "cn"},
+    {"eid": "6.1", "content": "语法错误", "lang": "cn"},
+    {"eid": "6.2", "content": "用词不当", "lang": "cn"}
+  ]
+}

@@ -93,7 +93,7 @@ class _HierarchicalErrorViewState extends State<HierarchicalErrorView> {
       
       // 构建错题内容（只使用关键信息）
       final errorContent = selectedRecords.map((r) {
-        return '''【题目】${r.question ?? r.content}
+        return '''【题目】${r.question ?? r.wrongWhere ?? ''}
 【我的答案】${r.wrongAnswer ?? ''}
 【正确答案】${r.correctAnswer ?? ''}
 【错因分析】${r.whyWrong ?? ''}''';
@@ -354,7 +354,7 @@ $errorContent
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _truncateText(record.errorId ?? "", 10) + ' ' + _truncateText(record.question ?? record.content, 30),
+                      _truncateText(record.wrongWhere ?? record.question ?? record.errorId ?? "", 50),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 12),

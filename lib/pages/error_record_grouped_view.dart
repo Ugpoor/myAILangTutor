@@ -65,7 +65,7 @@ class _ErrorRecordGroupedViewState extends State<ErrorRecordGroupedView> {
       case _GroupMode.knowledgeTag:
         return r.kid ?? '';
       case _GroupMode.errorType:
-        return r.errorType ?? '';
+        return r.eids.isNotEmpty ? r.eids[0] : '';
     }
   }
 
@@ -376,10 +376,8 @@ class _ErrorRecordGroupedViewState extends State<ErrorRecordGroupedView> {
                 // Extract question to avoid null promotion issue with public field
                 Text(
                   (() {
-                    final q = record.question;
-                    if (q == null) return '';
-                    final display = q.length > 40 ? '${q.substring(0, 40)}...' : q;
-                    return '${record.errorId ?? ""} $display';
+                    final title = record.wrongWhere ?? record.question ?? record.errorId ?? '';
+                    return title.length > 40 ? '${title.substring(0, 40)}...' : title;
                   })(),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -400,9 +398,9 @@ class _ErrorRecordGroupedViewState extends State<ErrorRecordGroupedView> {
                         side: BorderSide.none,
                       ),
                     // 错误类型标签（可选排除）
-                    if (!excludeErrorType && record.errorType != null)
+                    if (!excludeErrorType && record.eids.isNotEmpty)
                       Chip(
-                        label: Text(record.errorType!, style: const TextStyle(fontSize: 9)),
+                        label: Text(record.eids.join(','), style: const TextStyle(fontSize: 9)),
                         backgroundColor: Colors.orange[100],
                         visualDensity: VisualDensity.compact,
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -491,7 +489,10 @@ class _ErrorRecordGroupedViewState extends State<ErrorRecordGroupedView> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                '${record.errorId ?? ""} ${record.content.substring(0, 60)}${record.content.length > 60 ? '...' : ''}',
+                                (() {
+                                  final title = record.wrongWhere ?? record.question ?? record.errorId ?? '';
+                                  return title.length > 60 ? '${title.substring(0, 60)}...' : title;
+                                })(),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(fontSize: 13),
@@ -512,11 +513,11 @@ class _ErrorRecordGroupedViewState extends State<ErrorRecordGroupedView> {
                                           materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                         ),
                                       ),
-                                    if (record.errorType != null)
+                                    if (record.eids.isNotEmpty)
                                       Padding(
                                         padding: const EdgeInsets.only(right: 4),
                                         child: Chip(
-                                          label: Text(record.errorType!,
+                                          label: Text(record.eids.join(','),
                                               style: const TextStyle(fontSize: 10)),
                                           backgroundColor: Colors.orange[100],
                                           labelStyle: const TextStyle(fontSize: 10),

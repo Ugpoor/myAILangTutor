@@ -938,10 +938,9 @@ $content
     final nextNum = await dao.nextErrorIdNumber();
 
     final record = ErrorRecord(
-      content: data['content'] ?? data['question'] ?? '',
       errorId: 'T$nextNum',
       correctAnswer: data['correctAnswer'] as String?,
-      errorType: data['errorType'] as String?,
+      eids: (data['errorType'] as String?) != null ? [data['errorType'] as String] : [],
       progress: data['progress'] ?? '待订正',
       question: data['question'] as String?,
       wrongAnswer: data['wrongAnswer'] as String?,
@@ -1038,8 +1037,8 @@ $content
         final dao = ErrorRecordDao(db);
         final nextNum = await dao.nextErrorIdNumber();
         await dao.insert(ErrorRecord(
-          content: item.title,
           errorId: 'T$nextNum',
+          wrongWhere: item.title,
           contentPath: item.filePath,
           progress: '待订正',
           createdAt: item.createdAt,

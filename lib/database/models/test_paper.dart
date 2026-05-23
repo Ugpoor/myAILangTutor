@@ -1,19 +1,23 @@
 import 'package:sqflite/sqflite.dart';
 
+/// 题目项数据模型
+/// 
+/// 题目项是试卷中的基本单元，包含题目内容、答案、解释等信息。
+
 class QuestionItem {
-  final String qid;
-  final String question;
-  final List<String> correctAnswer;
-  final List<String> answerSheet;
-  final String? explanation;
-  final int difficulty;
-  final bool completed;
-  final DateTime? createdAt;
-  final String lang;
-  final List<Map<String, List<List<int>>>> imageCont;
-  final String? kid;
-  final String? unitNumber;
-  final String? lessonNumber;
+  final String qid;                           // 题目唯一标识
+  final String question;                      // 题目内容
+  final List<String> correctAnswer;           // 正确答案列表
+  final List<String> answerSheet;             // 答题纸（学生答案）
+  final String? explanation;                  // 答案解析
+  final int difficulty;                       // 难度级别（1-5）
+  final bool completed;                       // 是否已完成
+  final DateTime? createdAt;                  // 创建时间
+  final String lang;                          // 语言标识（cn/en）
+  final List<Map<String, List<List<int>>>> imageCont; // 图片内容（结构化数据）
+  final String? kid;                          // 关联知识点ID（格式：K+数字，如 K1）
+  final String? unitNumber;                   // 单元号
+  final String? lessonNumber;                 // 课号
 
   QuestionItem({
     required this.qid,
@@ -98,18 +102,22 @@ class QuestionItem {
   }
 }
 
+/// 试卷数据模型
+/// 
+/// 试卷是题目项的集合，支持多层级结构，包含试卷标题、题目列表等信息。
+
 class TestPaper {
-  final int? id;
-  final String testTitle;
-  final String? tid;
-  final List<String> images;
-  final List<QuestionItem> questionList;
-  final String contentPath;
-  final String? unitNumber;
-  final String? lessonNumber;
-  final String? source;
-  final DateTime? createdAt;
-  final String lang;
+  final int? id;                    // 数据库自增主键
+  final String testTitle;           // 试卷标题
+  final String? tid;                // 试卷唯一标识，格式为 "T" + id（如 T1, T2）
+  final List<String> images;        // 图片路径列表
+  final List<QuestionItem> questionList; // 题目列表
+  final String contentPath;         // 内容文件路径
+  final String? unitNumber;         // 单元号
+  final String? lessonNumber;       // 课号
+  final String? source;             // 来源（如：收件箱、错题本、知识点、作品集）
+  final DateTime? createdAt;        // 创建时间
+  final String lang;                // 语言标识（cn/en）
 
   TestPaper({
     this.id,

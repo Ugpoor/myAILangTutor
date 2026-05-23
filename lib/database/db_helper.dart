@@ -8,7 +8,7 @@ class DatabaseHelper {
   DatabaseHelper._internal();
 
   static Database? _database;
-  static const int _version = 21;
+  static const int _version = 22;
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -26,6 +26,7 @@ class DatabaseHelper {
   }
 
   Future<void> _onCreate(Database db, int version) async {
+    await _createErrorTypeOutlinesTable(db);
     await _createKnowledgeOutlinesTable(db);
     await _createKnowledgePointsTable(db);
     await _createErrorRecordsTable(db);
@@ -37,12 +38,24 @@ class DatabaseHelper {
     await _createOtherTables(db);
   }
 
+  Future<void> _createErrorTypeOutlinesTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE ${ErrorTypeOutlineSchema.tableName} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        eid TEXT NOT NULL,
+        content TEXT NOT NULL,
+        lang TEXT DEFAULT 'cn',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+  }
+
   Future<void> _createKnowledgeOutlinesTable(Database db) async {
     await db.execute('''
       CREATE TABLE ${KnowledgeOutlineSchema.tableName} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         cid TEXT NOT NULL,
-        fid TEXT,
         content TEXT NOT NULL,
         lang TEXT DEFAULT 'cn',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -304,6 +317,9 @@ class DatabaseHelper {
     if (oldVersion < 21) {
       await _upgradeToV21(db);
     }
+    if (oldVersion < 22) {
+      await _upgradeToV22(db);
+    }
   }
 
   Future<void> _upgradeToV16(Database db) async {
@@ -389,6 +405,14 @@ class DatabaseHelper {
     try {
       await db.execute("ALTER TABLE skills DROP COLUMN content_path");
     } catch (e) {}
+  }
+
+  Future<void> _upgradeToV21(Database db) async {
+    await _createKnowledgeOutlinesTable(db);
+  }
+
+  Future<void> _upgradeToV22(Database db) async {
+    await _createErrorTypeOutlinesTable(db);
   }
 
   Future<int> insert(String table, Map<String, dynamic> data) async {

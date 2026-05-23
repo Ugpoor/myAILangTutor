@@ -29,7 +29,7 @@ class _ErrorDetailPageState extends State<ErrorDetailPage> {
   late TextEditingController _whyWrongController;
   late TextEditingController _howPreventController;
   late TextEditingController _notesController;
-  String? _errorType;
+  List<String> _eids = [];
   String? _kid;
   String _progress = '待订正';
 
@@ -47,7 +47,7 @@ class _ErrorDetailPageState extends State<ErrorDetailPage> {
     _whyWrongController = TextEditingController(text: _record.whyWrong ?? '');
     _howPreventController = TextEditingController(text: _record.howPrevent ?? '');
     _notesController = TextEditingController(text: _record.notes ?? '');
-    _errorType = _record.errorType;
+    _eids = _record.eids;
     _kid = _record.kid;
     _progress = _record.progress;
   }
@@ -71,7 +71,7 @@ class _ErrorDetailPageState extends State<ErrorDetailPage> {
       whyWrong: _whyWrongController.text.trim(),
       howPrevent: _howPreventController.text.trim(),
       notes: _notesController.text.trim(),
-      errorType: _errorType,
+      eids: _eids,
       kid: _kid,
       progress: _progress,
     );
@@ -128,7 +128,7 @@ class _ErrorDetailPageState extends State<ErrorDetailPage> {
       builder: (context) => AlertDialog(
         title: Text(widget.lang == 'cn' ? '确认删除' : 'Confirm Delete'),
         content: Text(widget.lang == 'cn'
-            ? '确定要删除错误记录 "${_record.errorId ?? _record.content}" 吗？'
+            ? '确定要删除错误记录 "${_record.errorId ?? _record.wrongWhere}" 吗？'
             : 'Delete this error record?'),
         actions: [
           TextButton(
@@ -282,15 +282,15 @@ class _ErrorDetailPageState extends State<ErrorDetailPage> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      // 错类标签
-                      DropdownButtonFormField<String>(
-                        initialValue: _errorType,
+                      // 错类标签（支持多选，用逗号分隔）
+                      TextField(
+                        controller: TextEditingController(text: _eids.join(',')),
                         decoration: InputDecoration(
-                          labelText: widget.lang == 'cn' ? '错类' : 'Error Type',
+                          labelText: widget.lang == 'cn' ? '错类ID（逗号分隔）' : 'Error Types',
                           border: const OutlineInputBorder(),
+                          hintText: '如: 1,1.1',
                         ),
-                        items: _errorTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                        onChanged: (v) => setState(() => _errorType = v),
+                        onChanged: (v) => setState(() => _eids = v.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList()),
                       ),
                       const SizedBox(height: 12),
                       // 知识点ID

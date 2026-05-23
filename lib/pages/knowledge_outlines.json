@@ -1,0 +1,27 @@
+{
+  "knowledge_outlines": [
+    {"cid": "1", "content": "词汇", "lang": "cn"},
+    {"cid": "1.1", "content": "近义词辨析", "lang": "cn"},
+    {"cid": "1.2", "content": "反义词运用", "lang": "cn"},
+    {"cid": "1.3", "content": "词的形式", "lang": "cn"},
+    {"cid": "2", "content": "写作手法", "lang": "cn"},
+    {"cid": "2.1", "content": "借物喻人", "lang": "cn"},
+    {"cid": "2.2", "content": "对比手法", "lang": "cn"},
+    {"cid": "2.3", "content": "拟人手法", "lang": "cn"},
+    {"cid": "3", "content": "阅读理解", "lang": "cn"},
+    {"cid": "3.1", "content": "主旨归纳", "lang": "cn"},
+    {"cid": "3.2", "content": "推理判断", "lang": "cn"},
+    {"cid": "4", "content": "句法", "lang": "cn"},
+    {"cid": "5", "content": "文章", "lang": "cn"},
+    {"cid": "6", "content": "阅读", "lang": "cn"},
+    {"cid": "7", "content": "协作", "lang": "cn"},
+    {"cid": "8", "content": "聆听", "lang": "cn"},
+    {"cid": "9", "content": "口头", "lang": "cn"},
+    {"cid": "10", "content": "历史人物", "lang": "cn"},
+    {"cid": "10.1", "content": "新文化时期的文学家", "lang": "cn"},
+    {"cid": "10.2", "content": "古代文学名人", "lang": "cn"},
+    {"cid": "11", "content": "名胜古迹", "lang": "cn"},
+    {"cid": "12", "content": "思想", "lang": "cn"},
+    {"cid": "13", "content": "曲艺", "lang": "cn"}
+  ]
+}

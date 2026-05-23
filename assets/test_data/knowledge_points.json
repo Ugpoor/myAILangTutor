@@ -1,0 +1,58 @@
+{
+  "knowledge_points": [
+    {
+      "title": "近义词辨析方法",
+      "cid": "vocabulary",
+      "contentPath": "knowledge/synonym_analysis",
+      "brief": "近义词辨析的四种方法：语素分析、语境代入、搭配习惯、程度轻重",
+      "unitNumber": "4",
+      "lessonNumber": "1",
+      "lang": "cn"
+    },
+    {
+      "title": "语素分析法示例",
+      "cid": "vocabulary",
+      "contentPath": "knowledge/morpheme_analysis",
+      "brief": "通过分析不同语素理解近义词差异",
+      "unitNumber": "4",
+      "lessonNumber": "1",
+      "lang": "cn"
+    },
+    {
+      "title": "语境代入法示例",
+      "cid": "vocabulary",
+      "contentPath": "knowledge/context_method",
+      "brief": "通过语境代入辨析近义词",
+      "unitNumber": "4",
+      "lessonNumber": "1",
+      "lang": "cn"
+    },
+    {
+      "title": "借物喻人写作手法",
+      "cid": "writing_method",
+      "contentPath": "knowledge/metaphor_writing",
+      "brief": "借物喻人：通过描写事物特征来比喻人的品格、志向或道理。",
+      "unitNumber": "5",
+      "lessonNumber": "1",
+      "lang": "cn"
+    },
+    {
+      "title": "借物喻人的识别方法",
+      "cid": "writing_method",
+      "contentPath": "knowledge/metaphor_recognition",
+      "brief": "识别借物喻人写作手法的五个步骤。",
+      "unitNumber": "5",
+      "lessonNumber": "1",
+      "lang": "cn"
+    },
+    {
+      "title": "《落花生》赏析",
+      "cid": "writing_method",
+      "contentPath": "knowledge/peanut_analysis",
+      "brief": "《落花生》借物喻人赏析，表达做人要做有用的人。",
+      "unitNumber": "5",
+      "lessonNumber": "1",
+      "lang": "cn"
+    }
+  ]
+}

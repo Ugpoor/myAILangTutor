@@ -16,6 +16,7 @@ import '../services/app_service.dart';
 import 'error_detail_page.dart';
 import 'error_record_grouped_view.dart';
 import 'hierarchical_error_view.dart';
+import 'error_type_outline_page.dart';
 
 class ErrorRecordPageSimple extends StatefulWidget {
   final String lang;
@@ -42,8 +43,8 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
   Set<String> _filterProgressSet = {};
   
   Set<String> get _allErrorTypes => {
-        ..._allRecords.map((r) => r.errorType).whereType<String>(),
-        '审题不清', '概念混淆', '计算失误', '知识遗漏', '推理错误', '表达不当',
+        ..._allRecords.expand((r) => r.eids),
+        '1', '1.1', '1.2', '2', '2.1', '2.2', '3', '4', '5', '6',
       };
   
   String _errorTypeOutline = '''1. 审题
@@ -106,7 +107,7 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
 
   void _applyFilter() {
     List<ErrorRecord> filtered = _allRecords.where((r) {
-      if (_filterErrorType != null && r.errorType != _filterErrorType) return false;
+      if (_filterErrorType != null && !r.eids.contains(_filterErrorType)) return false;
       if (_filterKnowledgeTags.isNotEmpty && !_filterKnowledgeTags.any((tag) => r.kid?.contains(tag) ?? false)) return false;
       if (_filterProgressSet.isNotEmpty && !_filterProgressSet.contains(r.progress)) return false;
       return true;
@@ -114,10 +115,10 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
     
     // Apply view mode sorting after filter
     switch (_viewMode) {
-      case 0: // 按知识点大纲排列（errorType→kid分组）
+      case 0: // 按知识点大纲排列（eids→kid分组）
         filtered.sort((a, b) {
-          final typeA = a.errorType ?? '';
-          final typeB = b.errorType ?? '';
+          final typeA = a.eids.isNotEmpty ? a.eids[0] : '';
+          final typeB = b.eids.isNotEmpty ? b.eids[0] : '';
           if (typeA != typeB) return typeA.compareTo(typeB);
           final tagA = a.kid ?? '';
           final tagB = b.kid ?? '';
@@ -191,15 +192,17 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
   }
 
   void _showHierarchicalView() {
-    // 按错类和知识点分组
+    // 按错类和知识点分组（支持多错类）
     Map<String, Map<String, List<ErrorRecord>>> grouped = {};
     for (final record in _allRecords) {
-      final errorType = record.errorType ?? '未分类';
+      final eids = record.eids.isNotEmpty ? record.eids : ['未分类'];
       final kid = record.kid ?? '未分类';
       
-      grouped.putIfAbsent(errorType, () => {});
-      grouped[errorType]![kid] = 
-          (grouped[errorType]![kid] ?? []) + [record];
+      for (final eid in eids) {
+        grouped.putIfAbsent(eid, () => {});
+        grouped[eid]![kid] = 
+            (grouped[eid]![kid] ?? []) + [record];
+      }
     }
     
     Navigator.push(
@@ -304,7 +307,7 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
 
       final selectedRecords = _allRecords.where((r) => _selectedIds.contains(r.id)).toList();
       final errorContent = selectedRecords.map((r) {
-        return '${r.errorId} ${r.question ?? r.content}\n错因：${r.whyWrong ?? ''}\n预防：${r.howPrevent ?? ''}';
+        return '${r.errorId} ${r.question ?? r.wrongWhere ?? ''}\n错因：${r.whyWrong ?? ''}\n预防：${r.howPrevent ?? ''}';
       }).join('\n\n');
 
       final prompt = '''你是一位语文教育专家。请根据以下错误记录内容，出一组针对性的练习题来帮助学生巩固薄弱知识点。
@@ -548,38 +551,12 @@ $errorContent
   }
 
   void _showOutlineDialog() {
-    final controller = TextEditingController(text: _errorTypeOutline);
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(widget.lang == 'cn' ? '错类大纲' : 'Error Type Outline'),
-        content: SizedBox(
-          width: 400,
-          height: 400,
-          child: TextField(
-            controller: controller,
-            maxLines: null,
-            expands: true,
-            decoration: const InputDecoration(border: InputBorder.none),
-            onChanged: (text) => _errorTypeOutline = text,
-          ),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ErrorTypeOutlinePage(
+          lang: widget.lang,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(widget.lang == 'cn' ? '取消' : 'Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              _errorTypeOutline = controller.text;
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(widget.lang == 'cn' ? '大纲已保存' : 'Outline saved')),
-              );
-            },
-            child: Text(widget.lang == 'cn' ? '保存' : 'Save'),
-          ),
-        ],
       ),
     );
   }
@@ -701,7 +678,7 @@ $errorContent
                         ),
                         Expanded(
                           child: Text(
-                            record.question ?? record.content,
+                            record.wrongWhere ?? record.question ?? record.errorId ?? "",
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontWeight: FontWeight.w500),
@@ -719,11 +696,11 @@ $errorContent
                             decoration: BoxDecoration(color: const Color(0xFF87CEEB), borderRadius: BorderRadius.circular(4)),
                             child: Text('知识: ${record.kid}', style: const TextStyle(fontSize: 11)),
                           ),
-                        if (record.errorType != null)
+                        if (record.eids.isNotEmpty)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(color: const Color(0xFFFFA07A), borderRadius: BorderRadius.circular(4)),
-                            child: Text(record.errorType!, style: const TextStyle(fontSize: 11, color: Colors.deepOrange)),
+                            child: Text('错类: ${record.eids.join(',')}', style: const TextStyle(fontSize: 11, color: Colors.deepOrange)),
                           ),
                         if (record.qid != null)
                           Container(
