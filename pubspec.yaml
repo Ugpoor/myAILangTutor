@@ -35,4 +35,6 @@ flutter:
 
   assets:
     - assets/images/
+    - assets/test_data/
+    - lib/pages/
     - .env

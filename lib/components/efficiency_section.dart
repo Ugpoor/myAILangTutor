@@ -222,31 +222,34 @@ class _EfficiencySectionState extends State<EfficiencySection> {
           ],
         ),
         padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                ),
-                if (onTap != null)
-                  const Icon(
-                    Icons.arrow_forward_ios,
-                    color: Colors.white70,
-                    size: 16,
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            ...children,
-          ],
+                  if (onTap != null)
+                    const Icon(
+                      Icons.arrow_forward_ios,
+                      color: Colors.white70,
+                      size: 16,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ...children,
+            ],
+          ),
         ),
       ),
     );

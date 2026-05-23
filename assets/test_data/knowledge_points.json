@@ -2,7 +2,8 @@
   "knowledge_points": [
     {
       "title": "近义词辨析方法",
-      "cid": "vocabulary",
+      "cid": "1.1",
+      "kid": "K1",
       "contentPath": "knowledge/synonym_analysis",
       "brief": "近义词辨析的四种方法：语素分析、语境代入、搭配习惯、程度轻重",
       "unitNumber": "4",
@@ -11,7 +12,8 @@
     },
     {
       "title": "语素分析法示例",
-      "cid": "vocabulary",
+      "cid": "1.1",
+      "kid": "K2",
       "contentPath": "knowledge/morpheme_analysis",
       "brief": "通过分析不同语素理解近义词差异",
       "unitNumber": "4",
@@ -20,7 +22,8 @@
     },
     {
       "title": "语境代入法示例",
-      "cid": "vocabulary",
+      "cid": "1.1",
+      "kid": "K3",
       "contentPath": "knowledge/context_method",
       "brief": "通过语境代入辨析近义词",
       "unitNumber": "4",
@@ -29,7 +32,8 @@
     },
     {
       "title": "借物喻人写作手法",
-      "cid": "writing_method",
+      "cid": "2.1",
+      "kid": "K4",
       "contentPath": "knowledge/metaphor_writing",
       "brief": "借物喻人：通过描写事物特征来比喻人的品格、志向或道理。",
       "unitNumber": "5",
@@ -38,7 +42,8 @@
     },
     {
       "title": "借物喻人的识别方法",
-      "cid": "writing_method",
+      "cid": "2.1",
+      "kid": "K5",
       "contentPath": "knowledge/metaphor_recognition",
       "brief": "识别借物喻人写作手法的五个步骤。",
       "unitNumber": "5",
@@ -47,11 +52,62 @@
     },
     {
       "title": "《落花生》赏析",
-      "cid": "writing_method",
+      "cid": "2.1",
+      "kid": "K6",
       "contentPath": "knowledge/peanut_analysis",
       "brief": "《落花生》借物喻人赏析，表达做人要做有用的人。",
       "unitNumber": "5",
       "lessonNumber": "1",
+      "lang": "cn"
+    },
+    {
+      "title": "对比手法运用",
+      "cid": "2.2",
+      "kid": "K7",
+      "contentPath": "knowledge/contrast_method",
+      "brief": "对比手法：通过对比突出事物特征和表达效果。",
+      "unitNumber": "5",
+      "lessonNumber": "2",
+      "lang": "cn"
+    },
+    {
+      "title": "拟人手法运用",
+      "cid": "2.3",
+      "kid": "K8",
+      "contentPath": "knowledge/personification_method",
+      "brief": "拟人手法：赋予事物以人的性格、思想、感情和动作。",
+      "unitNumber": "5",
+      "lessonNumber": "3",
+      "lang": "cn"
+    },
+    {
+      "title": "主旨归纳技巧",
+      "cid": "3.1",
+      "kid": "K9",
+      "contentPath": "knowledge/main_idea_summary",
+      "brief": "归纳文章主旨的三种方法：找中心句、分析标题、概括段意。",
+      "unitNumber": "6",
+      "lessonNumber": "1",
+      "lang": "cn"
+    },
+    {
+      "title": "推理判断方法",
+      "cid": "3.2",
+      "kid": "K10",
+      "contentPath": "knowledge/inference_judgment",
+      "brief": "阅读理解中的推理判断技巧。",
+      "unitNumber": "6",
+      "lessonNumber": "2",
+      "lang": "cn"
+    },
+    {
+      "title": "反义词运用技巧",
+      "cid": "1.2",
+      "kid": "K11",
+      "contentPath": "knowledge/antonym_usage",
+      "brief": "反义词在写作中的运用技巧。",
+      "unitNumber": "4",
+      "lessonNumber": "2",
       "lang": "cn"
     }
   ]

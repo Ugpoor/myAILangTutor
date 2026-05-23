@@ -1,0 +1,74 @@
+{
+  "skills": [
+    {
+      "name": "近义词辨析",
+      "skillId": "skill_synonym_analysis",
+      "category": "external",
+      "promptText": "请帮助用户辨析近义词的区别，包括含义、用法、搭配等方面。",
+      "description": "帮助用户分析近义词之间的细微差别",
+      "lang": "cn"
+    },
+    {
+      "name": "阅读理解分析",
+      "skillId": "skill_reading_analysis",
+      "category": "external",
+      "promptText": "请帮助用户分析阅读理解题目，包括主旨归纳、推理判断、细节理解等。",
+      "description": "帮助用户分析和解答阅读理解题目",
+      "lang": "cn"
+    },
+    {
+      "name": "写作手法识别",
+      "skillId": "skill_writing_technique",
+      "category": "external",
+      "promptText": "请帮助用户识别文章中的写作手法，如借物喻人、对比、拟人等。",
+      "description": "帮助用户识别和分析写作手法",
+      "lang": "cn"
+    },
+    {
+      "name": "错因分析",
+      "skillId": "skill_error_analysis",
+      "category": "external",
+      "promptText": "请帮助用户分析错误原因，包括概念混淆、审题不清、计算失误等。",
+      "description": "帮助用户分析错题原因并提供改进建议",
+      "lang": "cn"
+    },
+    {
+      "name": "学习计划制定",
+      "skillId": "skill_study_plan",
+      "category": "external",
+      "promptText": "请根据用户的学习情况，帮助制定合理的学习计划。",
+      "description": "帮助用户制定个性化学习计划",
+      "lang": "cn"
+    },
+    {
+      "name": "知识谱搜索",
+      "skillId": "skill_knowledge_search",
+      "category": "internal",
+      "internalFunction": "searchKnowledgePoints",
+      "parameters": "{\"keyword\": \"string\", \"cid\": \"string\"}",
+      "returnType": "List<KnowledgePoint>",
+      "description": "搜索知识库中的知识点",
+      "lang": "cn"
+    },
+    {
+      "name": "错题记录",
+      "skillId": "skill_error_record",
+      "category": "internal",
+      "internalFunction": "recordError",
+      "parameters": "{\"question\": \"string\", \"wrongAnswer\": \"string\", \"correctAnswer\": \"string\", \"eids\": \"List<String>\"}",
+      "returnType": "ErrorRecord",
+      "description": "记录错题信息",
+      "lang": "cn"
+    },
+    {
+      "name": "进度查询",
+      "skillId": "skill_progress_query",
+      "category": "internal",
+      "internalFunction": "getProgress",
+      "parameters": "{\"type\": \"string\", \"period\": \"string\"}",
+      "returnType": "ProgressData",
+      "description": "查询学习进度数据",
+      "lang": "cn"
+    }
+  ]
+}

@@ -633,23 +633,40 @@ class _SpectrumSearchDialogState extends State<_SpectrumSearchDialog> {
       // 根据 keyword 模糊匹配 title 或 brief
       List<KnowledgePoint> results = await pointDao.getAll(lang: widget.lang, keyword: query);
       
-      // 如果查询看起来像 cid（如 1.1, 2.3.1），同时搜索大纲表
+      // 搜索大纲表
+      final outlineDao = KnowledgeOutlineDao(db);
+      final outlines = await outlineDao.getAll(lang: widget.lang);
+      
+      // 1. 如果查询看起来像 cid（如 1.1, 2.3.1），查找匹配的 cid
+      List<String> matchedCids = [];
       if (_looksLikeCid(query)) {
-        final outlineDao = KnowledgeOutlineDao(db);
-        final outlines = await outlineDao.getAll(lang: widget.lang);
-        
-        // 查找匹配的 cid
-        final matchedCids = outlines
+        matchedCids = outlines
             .where((o) => o.cid.startsWith(query) || o.cid == query)
             .map((o) => o.cid)
             .toList();
+      } else {
+        // 2. 如果不是 cid 格式，搜索大纲内容
+        final matchedOutlines = outlines
+            .where((o) => o.content.contains(query))
+            .toList();
         
-        // 如果找到匹配的大纲 cid，获取对应的知识点
-        if (matchedCids.isNotEmpty) {
-          for (final cid in matchedCids) {
-            final pointsByCid = await pointDao.getByCid(cid, lang: widget.lang);
-            results.addAll(pointsByCid);
-          }
+        // 获取匹配大纲的 cid，以及所有子级 cid
+        for (final outline in matchedOutlines) {
+          matchedCids.add(outline.cid);
+          // 查找所有子级大纲
+          final childCids = outlines
+              .where((o) => o.cid.startsWith('${outline.cid}.') && o.cid != outline.cid)
+              .map((o) => o.cid)
+              .toList();
+          matchedCids.addAll(childCids);
+        }
+      }
+      
+      // 如果找到匹配的大纲 cid，获取对应的知识点
+      if (matchedCids.isNotEmpty) {
+        for (final cid in matchedCids) {
+          final pointsByCid = await pointDao.getByCid(cid, lang: widget.lang);
+          results.addAll(pointsByCid);
         }
       }
       

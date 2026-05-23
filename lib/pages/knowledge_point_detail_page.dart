@@ -50,12 +50,14 @@ class _KnowledgePointDetailPageState extends State<KnowledgePointDetailPage> {
     _point = widget.point;
     _titleController = TextEditingController(text: _point.title);
     _cidController = TextEditingController(text: _point.cid ?? '');
+    _contentController = TextEditingController(text: '');
   }
 
   @override
   void dispose() {
     _titleController.dispose();
     _cidController.dispose();
+    _contentController.dispose();
     super.dispose();
   }
 

@@ -338,13 +338,11 @@ class _SkillDetailPageState extends State<SkillDetailPage> {
                         TextField(
                           controller: _descriptionController,
                           maxLines: 4,
-                          readOnly: true,
                           decoration: InputDecoration(
                             labelText: widget.lang == 'cn' ? '使用说明' : 'Usage Instructions',
                             border: const OutlineInputBorder(),
-                            filled: true,
-                            fillColor: Colors.grey[100],
                           ),
+                          onChanged: (_) => setState(() => _isDirty = true),
                         ),
                       ],
                     ],

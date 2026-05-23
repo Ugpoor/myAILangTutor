@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'pages/main_screen.dart';
+import 'pages/entry_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,7 +19,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: '我的AI语言学习助手',
       theme: ThemeData(primarySwatch: Colors.pink, useMaterial3: true),
-      home: const MainScreen(),
+      home: const EntryPage(),
       debugShowCheckedModeBanner: false,
     );
   }

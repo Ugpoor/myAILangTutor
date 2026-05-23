@@ -8,7 +8,7 @@ class DatabaseHelper {
   DatabaseHelper._internal();
 
   static Database? _database;
-  static const int _version = 22;
+  static const int _version = 25;
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -90,7 +90,7 @@ class DatabaseHelper {
     await db.execute('''
       CREATE TABLE ${ErrorRecordSchema.tableName} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        content TEXT NOT NULL,
+        content TEXT,
         correct_answer TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         lang TEXT DEFAULT 'cn',
@@ -154,7 +154,11 @@ class DatabaseHelper {
         answer_sheet TEXT,
         answer_key TEXT,
         grading TEXT,
-        source TEXT
+        source TEXT,
+        exercise_id TEXT,
+        paper_id TEXT,
+        lesson_unit TEXT,
+        knowledge_tag TEXT
       )
     ''');
   }
@@ -320,6 +324,96 @@ class DatabaseHelper {
     if (oldVersion < 22) {
       await _upgradeToV22(db);
     }
+    if (oldVersion < 23) {
+      await _upgradeToV23(db);
+    }
+    if (oldVersion < 24) {
+      await _upgradeToV24(db);
+    }
+    if (oldVersion < 25) {
+      await _upgradeToV25(db);
+    }
+  }
+
+  Future<void> _upgradeToV24(Database db) async {
+    try {
+      await db.execute('ALTER TABLE exercises ADD COLUMN exercise_id TEXT');
+    } catch (_) {}
+    try {
+      await db.execute('ALTER TABLE exercises ADD COLUMN paper_id TEXT');
+    } catch (_) {}
+    try {
+      await db.execute('ALTER TABLE exercises ADD COLUMN lesson_unit TEXT');
+    } catch (_) {}
+    try {
+      await db.execute('ALTER TABLE exercises ADD COLUMN knowledge_tag TEXT');
+    } catch (_) {}
+  }
+
+  Future<void> _upgradeToV25(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS efficiency_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        record_id TEXT,
+        title TEXT NOT NULL,
+        unit_count INTEGER DEFAULT 0,
+        unit_efficiency REAL DEFAULT 0,
+        record_time TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        lang TEXT DEFAULT 'cn'
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS schedule_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        schedule_id TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        repeat_type TEXT DEFAULT 'none',
+        repeat_days TEXT,
+        date TEXT NOT NULL DEFAULT CURRENT_DATE,
+        completed INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        lang TEXT DEFAULT 'cn'
+      )
+    ''');
+  }
+
+  Future<void> _upgradeToV23(Database db) async {
+    // SQLite不支持DROP NOT NULL，需要创建新表并迁移数据
+    await db.execute('''
+      CREATE TABLE error_records_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        content TEXT,
+        correct_answer TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        lang TEXT DEFAULT 'cn',
+        content_path TEXT,
+        error_id TEXT,
+        error_type TEXT,
+        progress TEXT DEFAULT '待订正',
+        question TEXT,
+        wrong_answer TEXT,
+        wrong_where TEXT,
+        why_wrong TEXT,
+        how_prevent TEXT,
+        notes TEXT,
+        images TEXT,
+        tid TEXT,
+        qid TEXT,
+        grade_memo TEXT,
+        correction TEXT,
+        kid TEXT,
+        unit_number TEXT,
+        lesson_number TEXT,
+        cid TEXT
+      )
+    ''');
+    await db.execute('INSERT INTO error_records_new SELECT * FROM error_records');
+    await db.execute('DROP TABLE error_records');
+    await db.execute('ALTER TABLE error_records_new RENAME TO error_records');
   }
 
   Future<void> _upgradeToV16(Database db) async {

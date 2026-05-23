@@ -278,7 +278,17 @@ class _ErrorTypeOutlinePageState extends State<ErrorTypeOutlinePage> {
           ? 'id,content\n1,概念混淆\n1.1,近义词辨析错误\n1.2,形近字混淆\n2,审题不清\n2.1,关键词忽略\n'
           : 'id,content\n1,Concept Confusion\n1.1,Synonym Error\n1.2,Character Confusion\n2,Misunderstanding\n2.1,Keyword Ignored\n';
 
-      final directory = await getApplicationDocumentsDirectory();
+      Directory directory;
+      try {
+        // 优先使用外部存储的公共 Documents 目录（Android）
+        directory = Directory('/storage/emulated/0/Documents');
+        if (!await directory.exists()) {
+          directory = await getApplicationDocumentsDirectory();
+        }
+      } catch (e) {
+        // 如果外部存储不可用，回退到应用私有目录
+        directory = await getApplicationDocumentsDirectory();
+      }
       final filePath = '${directory.path}/error_type_outline_template.csv';
       final file = File(filePath);
       await file.writeAsString(csvContent);

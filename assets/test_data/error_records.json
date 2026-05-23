@@ -36,24 +36,6 @@
       "lang": "cn"
     },
     {
-      "errorId": "E003",
-      "eids": ["3"],
-      "progress": "已订正",
-      "question": "解方程：2x + 5 = 15",
-      "wrongAnswer": "x = 10",
-      "correctAnswer": "x = 5",
-      "wrongWhere": "移项时符号处理错误",
-      "whyWrong": "计算失误——移项时忘记改变符号，将+5移到右边应该变成-5，正确应为2x = 15 - 5 = 10，所以x = 5",
-      "howPrevent": "1. 移项时要注意变号；2. 解方程后要代入检验；3. 书写步骤要清晰，避免跳步",
-      "notes": "移项规则：移项要变号",
-      "tid": "T3",
-      "qid": "Q3",
-      "kid": "K3",
-      "unitNumber": "3",
-      "lessonNumber": "2",
-      "lang": "cn"
-    },
-    {
       "errorId": "E004",
       "eids": ["4", "5"],
       "progress": "学习中",

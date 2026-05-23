@@ -268,7 +268,17 @@ class _KnowledgeOutlinePageState extends State<KnowledgeOutlinePage> {
           ? 'id,content\n1,词汇\n1.1,近义词辨析\n1.2,反义词运用\n2,写作手法\n2.1,借物喻人\n'
           : 'id,content\n1,Vocabulary\n1.1,Synonym Analysis\n1.2,Antonym Usage\n2,Writing Techniques\n2.1,Metaphor\n';
 
-      final directory = await getApplicationDocumentsDirectory();
+      Directory directory;
+      try {
+        // 优先使用外部存储的公共 Documents 目录（Android）
+        directory = Directory('/storage/emulated/0/Documents');
+        if (!await directory.exists()) {
+          directory = await getApplicationDocumentsDirectory();
+        }
+      } catch (e) {
+        // 如果外部存储不可用，回退到应用私有目录
+        directory = await getApplicationDocumentsDirectory();
+      }
       final filePath = '${directory.path}/knowledge_outline_template.csv';
       final file = File(filePath);
       await file.writeAsString(csvContent);
