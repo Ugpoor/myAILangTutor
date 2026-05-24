@@ -8,6 +8,7 @@ import '../components/ai_reply_bar.dart';
 import '../components/input_area.dart';
 import '../components/dynamic_tag_selector.dart';
 import '../components/tag_styles.dart';
+import '../components/generic_filter_dialog.dart';
 import '../database/db_helper.dart';
 import '../database/models/error_record.dart';
 import '../database/models/question.dart';
@@ -108,6 +109,14 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
     });
   }
 
+  bool _matchesHierarchicalId(String id, Set<String> filters) {
+    for (final filter in filters) {
+      if (id == filter) return true;
+      if (id.startsWith('$filter.')) return true;
+    }
+    return false;
+  }
+
   List<ErrorRecord> _applyFilter() {
     print('[Filter] Applying filters:');
     print('[Filter] errorTypes: $_filterErrorTypes');
@@ -120,7 +129,7 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
       if (_filterErrorTypes.isNotEmpty) {
         bool hasMatchingErrorType = false;
         for (final eid in r.eids) {
-          if (_filterErrorTypes.contains(eid)) {
+          if (_matchesHierarchicalId(eid, _filterErrorTypes)) {
             hasMatchingErrorType = true;
             break;
           }
@@ -129,10 +138,9 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
       }
       if (_filterKnowledgeTags.isNotEmpty) {
         bool hasMatchingTag = false;
-        for (final tag in _filterKnowledgeTags) {
-          if (r.kid?.contains(tag) ?? false) {
+        if (r.kid != null) {
+          if (_matchesHierarchicalId(r.kid!, _filterKnowledgeTags)) {
             hasMatchingTag = true;
-            break;
           }
         }
         if (!hasMatchingTag) return false;
@@ -828,14 +836,6 @@ $errorContent
   }
 
   void _showFilterDialog() async {
-    Set<String> selectedErrorTypes = Set<String>.from(_filterErrorTypes);
-    Set<String> selectedKnowledgeTags = Set<String>.from(_filterKnowledgeTags);
-    Set<String> selectedProgresses = Set<String>.from(_filterProgressSet);
-    Set<String> selectedExerciseIds = Set<String>.from(_filterExerciseIds);
-    
-    String? selectedFilterType;
-    String searchKeyword = '';
-    
     final allErrorTypes = _allErrorTypes.toList()..sort();
     final allKnowledgeTags = _allRecords.map((r) => r.kid).whereType<String>().toList()..sort();
     final allProgresses = ['待订正', '已订正'];
@@ -843,232 +843,42 @@ $errorContent
       return '${r.tid ?? ''}${r.qid != null ? 'Q${r.qid}' : ''}';
     }).where((e) => e.isNotEmpty).toList()..sort();
 
-    final result = await showDialog<Map<String, Set<String>>>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) {
-          String getHintText() {
-            switch (selectedFilterType) {
-              case 'errorType':
-                return '输入ID号（如1.1）或关键词...';
-              case 'knowledge':
-                return '输入ID号（如K1）或关键词...';
-              case 'exercise':
-                return '输入TnQm格式（如T1Q1）或关键词...';
-              case 'progress':
-                return '输入关键词（待订正、已订正）...';
-              default:
-                return '请先选择筛选类型';
-            }
-          }
-
-          List<String> getSuggestions() {
-            if (searchKeyword.isEmpty || selectedFilterType == null) return [];
-            switch (selectedFilterType) {
-              case 'errorType':
-                return allErrorTypes.where((e) => e.contains(searchKeyword)).take(3).toList();
-              case 'knowledge':
-                return allKnowledgeTags.where((k) => k.contains(searchKeyword)).take(3).toList();
-              case 'exercise':
-                return allExerciseIds.where((e) => e.contains(searchKeyword)).take(3).toList();
-              case 'progress':
-                return allProgresses.where((p) => p.contains(searchKeyword)).take(3).toList();
-              default:
-                return [];
-            }
-          }
-
-          void addTag(String tag) {
-            switch (selectedFilterType) {
-              case 'errorType':
-                if (!selectedErrorTypes.contains(tag)) {
-                  setState(() => selectedErrorTypes.add(tag));
-                }
-                break;
-              case 'knowledge':
-                if (!selectedKnowledgeTags.contains(tag)) {
-                  setState(() => selectedKnowledgeTags.add(tag));
-                }
-                break;
-              case 'exercise':
-                if (!selectedExerciseIds.contains(tag)) {
-                  setState(() => selectedExerciseIds.add(tag));
-                }
-                break;
-              case 'progress':
-                if (!selectedProgresses.contains(tag)) {
-                  setState(() => selectedProgresses.add(tag));
-                }
-                break;
-            }
-            searchKeyword = '';
-          }
-
-          void removeTag(String tag, String type) {
-            switch (type) {
-              case 'errorType':
-                setState(() => selectedErrorTypes.remove(tag));
-                break;
-              case 'knowledge':
-                setState(() => selectedKnowledgeTags.remove(tag));
-                break;
-              case 'exercise':
-                setState(() => selectedExerciseIds.remove(tag));
-                break;
-              case 'progress':
-                setState(() => selectedProgresses.remove(tag));
-                break;
-            }
-          }
-
-          void clearAll() {
-            setState(() {
-              selectedErrorTypes.clear();
-              selectedKnowledgeTags.clear();
-              selectedProgresses.clear();
-              selectedExerciseIds.clear();
-              selectedFilterType = null;
-              searchKeyword = '';
-            });
-          }
-
-          return AlertDialog(
-            title: Text(widget.lang == 'cn' ? '筛选错误记录' : 'Filter Error Records'),
-            content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 第一行：筛选类型下拉框
-                    Text(widget.lang == 'cn' ? '选择筛选类型：' : 'Select filter type:',
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: DropdownButtonFormField<String?>(
-                        value: selectedFilterType,
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                        isExpanded: true,
-                        items: [
-                          const DropdownMenuItem<String?>(
-                            value: null,
-                            child: Text('请选择筛选类型'),
-                          ),
-                          const DropdownMenuItem<String>(
-                            value: 'errorType',
-                            child: Text('错类'),
-                          ),
-                          const DropdownMenuItem<String>(
-                            value: 'knowledge',
-                            child: Text('知识点'),
-                          ),
-                          const DropdownMenuItem<String>(
-                            value: 'exercise',
-                            child: Text('习题号'),
-                          ),
-                          const DropdownMenuItem<String>(
-                            value: 'progress',
-                            child: Text('进度'),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          setState(() {
-                            selectedFilterType = value;
-                            searchKeyword = '';
-                          });
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // 第二行：搜索框
-                    Text(widget.lang == 'cn' ? '搜索：' : 'Search:',
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    TextField(
-                      onChanged: (value) => setState(() => searchKeyword = value),
-                      enabled: selectedFilterType != null,
-                      decoration: InputDecoration(
-                        hintText: getHintText(),
-                        border: const OutlineInputBorder(),
-                        suffixIcon: const Icon(Icons.search),
-                      ),
-                    ),
-                    
-                    // 搜索提示下拉（最多3个）
-                    if (getSuggestions().isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        children: getSuggestions().map((item) => ActionChip(
-                          label: Text(item),
-                          onPressed: () => addTag(item),
-                          backgroundColor: Colors.grey[200],
-                        )).toList(),
-                      ),
-                    ],
-                    
-                    // 复选池控件
-                    const SizedBox(height: 16),
-                    Text(widget.lang == 'cn' ? '已选标签：' : 'Selected tags:',
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey[300]!),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      constraints: const BoxConstraints(minHeight: 120, maxHeight: 200),
-                      child: SingleChildScrollView(
-                        child: _buildSelectedTagsPool(
-                          selectedErrorTypes, 
-                          selectedKnowledgeTags, 
-                          selectedExerciseIds, 
-                          selectedProgresses, 
-                          removeTag
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            actions: [
-              TextButton(
-                onPressed: clearAll,
-                child: Text(widget.lang == 'cn' ? '清空' : 'Clear'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context, {
-                    'errorTypes': selectedErrorTypes,
-                    'knowledgeTags': selectedKnowledgeTags,
-                    'progressSet': selectedProgresses,
-                    'exerciseIds': selectedExerciseIds,
-                  });
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF69B4)),
-                child: Text(widget.lang == 'cn' ? '确定' : 'Confirm'),
-              ),
-            ],
-          );
-        },
-      ),
+    final config = FilterConfig(
+      filterTypes: ['errorType', 'knowledge', 'exercise', 'progress'],
+      optionsByType: {
+        'errorType': allErrorTypes.map((e) => FilterOption(value: e, label: e)).toList(),
+        'knowledge': allKnowledgeTags.map((k) => FilterOption(value: k, label: k)).toList(),
+        'exercise': allExerciseIds.map((e) => FilterOption(value: e, label: e)).toList(),
+        'progress': allProgresses.map((p) => FilterOption(value: p, label: p)).toList(),
+      },
+      initialValues: {
+        'errorType': _filterErrorTypes,
+        'knowledge': _filterKnowledgeTags,
+        'exercise': _filterExerciseIds,
+        'progress': _filterProgressSet,
+      },
+      typeLabels: {
+        'errorType': widget.lang == 'cn' ? '错类' : 'Error Type',
+        'knowledge': widget.lang == 'cn' ? '知识点' : 'Knowledge',
+        'exercise': widget.lang == 'cn' ? '习题号' : 'Exercise',
+        'progress': widget.lang == 'cn' ? '进度' : 'Progress',
+      },
+      hintTexts: {
+        'errorType': widget.lang == 'cn' ? '输入ID号（如1.1）或关键词...' : 'Enter ID (e.g., 1.1)...',
+        'knowledge': widget.lang == 'cn' ? '输入ID号（如K1）或关键词...' : 'Enter ID (e.g., K1)...',
+        'exercise': widget.lang == 'cn' ? '输入TnQm格式（如T1Q1）或关键词...' : 'Enter TnQm format (e.g., T1Q1)...',
+        'progress': widget.lang == 'cn' ? '输入关键词（待订正、已订正）...' : 'Enter keyword...',
+      },
     );
+
+    final result = await GenericFilterDialog.show(context, config: config, lang: widget.lang);
 
     if (result != null) {
       setState(() {
-        _filterErrorTypes = Set<String>.from(result['errorTypes'] ?? {});
-        _filterKnowledgeTags = Set<String>.from(result['knowledgeTags'] ?? {});
-        _filterProgressSet = Set<String>.from(result['progressSet'] ?? {});
-        _filterExerciseIds = Set<String>.from(result['exerciseIds'] ?? {});
+        _filterErrorTypes = Set<String>.from(result['errorType'] ?? {});
+        _filterKnowledgeTags = Set<String>.from(result['knowledge'] ?? {});
+        _filterProgressSet = Set<String>.from(result['progress'] ?? {});
+        _filterExerciseIds = Set<String>.from(result['exercise'] ?? {});
         _displayRecords = _applyFilter();
       });
     }
