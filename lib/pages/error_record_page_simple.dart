@@ -46,6 +46,11 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
   Set<String> _filterProgressSet = {};
   Set<String> _filterExerciseIds = {};
   
+  MatchMode _filterErrorTypeMatchMode = MatchMode.hierarchical;
+  MatchMode _filterKnowledgeMatchMode = MatchMode.hierarchical;
+  MatchMode _filterExerciseMatchMode = MatchMode.contains;
+  MatchMode _filterProgressMatchMode = MatchMode.equals;
+  
   Set<String> get _allErrorTypes => {
         ..._allRecords.expand((r) => r.eids),
         '1', '1.1', '1.2', '2', '2.1', '2.2', '3', '4', '5', '6',
@@ -109,27 +114,76 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
     });
   }
 
-  bool _matchesHierarchicalId(String id, Set<String> filters) {
+  bool _matches(String value, Set<String> filters, MatchMode mode) {
+    if (value.isEmpty || filters.isEmpty) return true;
+    
     for (final filter in filters) {
-      if (id == filter) return true;
-      if (id.startsWith('$filter.')) return true;
+      switch (mode) {
+        case MatchMode.hierarchical:
+          if (value == filter || value.startsWith('$filter.')) {
+            return true;
+          }
+          break;
+        case MatchMode.contains:
+          if (value.contains(filter)) {
+            return true;
+          }
+          break;
+        case MatchMode.equals:
+          if (value == filter) {
+            return true;
+          }
+          break;
+        case MatchMode.greaterThan: {
+          final numValue = num.tryParse(value);
+          final numFilter = num.tryParse(filter);
+          if (numValue != null && numFilter != null && numValue > numFilter) {
+            return true;
+          }
+          break;
+        }
+        case MatchMode.lessThan: {
+          final numValue = num.tryParse(value);
+          final numFilter = num.tryParse(filter);
+          if (numValue != null && numFilter != null && numValue < numFilter) {
+            return true;
+          }
+          break;
+        }
+        case MatchMode.greaterOrEqual: {
+          final numValue = num.tryParse(value);
+          final numFilter = num.tryParse(filter);
+          if (numValue != null && numFilter != null && numValue >= numFilter) {
+            return true;
+          }
+          break;
+        }
+        case MatchMode.lessOrEqual: {
+          final numValue = num.tryParse(value);
+          final numFilter = num.tryParse(filter);
+          if (numValue != null && numFilter != null && numValue <= numFilter) {
+            return true;
+          }
+          break;
+        }
+      }
     }
     return false;
   }
 
   List<ErrorRecord> _applyFilter() {
     print('[Filter] Applying filters:');
-    print('[Filter] errorTypes: $_filterErrorTypes');
-    print('[Filter] knowledgeTags: $_filterKnowledgeTags');
-    print('[Filter] progressSet: $_filterProgressSet');
-    print('[Filter] exerciseIds: $_filterExerciseIds');
+    print('[Filter] errorTypes: $_filterErrorTypes, mode: $_filterErrorTypeMatchMode');
+    print('[Filter] knowledgeTags: $_filterKnowledgeTags, mode: $_filterKnowledgeMatchMode');
+    print('[Filter] progressSet: $_filterProgressSet, mode: $_filterProgressMatchMode');
+    print('[Filter] exerciseIds: $_filterExerciseIds, mode: $_filterExerciseMatchMode');
     print('[Filter] total records: ${_allRecords.length}');
     
     List<ErrorRecord> filtered = _allRecords.where((r) {
       if (_filterErrorTypes.isNotEmpty) {
         bool hasMatchingErrorType = false;
         for (final eid in r.eids) {
-          if (_matchesHierarchicalId(eid, _filterErrorTypes)) {
+          if (_matches(eid, _filterErrorTypes, _filterErrorTypeMatchMode)) {
             hasMatchingErrorType = true;
             break;
           }
@@ -137,21 +191,21 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
         if (!hasMatchingErrorType) return false;
       }
       if (_filterKnowledgeTags.isNotEmpty) {
-        bool hasMatchingTag = false;
         if (r.kid != null) {
-          if (_matchesHierarchicalId(r.kid!, _filterKnowledgeTags)) {
-            hasMatchingTag = true;
+          if (!_matches(r.kid!, _filterKnowledgeTags, _filterKnowledgeMatchMode)) {
+            return false;
           }
+        } else {
+          return false;
         }
-        if (!hasMatchingTag) return false;
       }
       if (_filterProgressSet.isNotEmpty) {
         final progress = r.progress ?? '';
-        if (!_filterProgressSet.contains(progress)) return false;
+        if (!_matches(progress, _filterProgressSet, _filterProgressMatchMode)) return false;
       }
       if (_filterExerciseIds.isNotEmpty) {
         final exerciseKey = '${r.tid ?? ''}${r.qid != null ? 'Q${r.qid}' : ''}';
-        if (!_filterExerciseIds.contains(exerciseKey)) return false;
+        if (!_matches(exerciseKey, _filterExerciseIds, _filterExerciseMatchMode)) return false;
       }
       return true;
     }).toList();
@@ -845,29 +899,35 @@ $errorContent
 
     final config = FilterConfig(
       filterTypes: ['errorType', 'knowledge', 'exercise', 'progress'],
-      optionsByType: {
-        'errorType': allErrorTypes.map((e) => FilterOption(value: e, label: e)).toList(),
-        'knowledge': allKnowledgeTags.map((k) => FilterOption(value: k, label: k)).toList(),
-        'exercise': allExerciseIds.map((e) => FilterOption(value: e, label: e)).toList(),
-        'progress': allProgresses.map((p) => FilterOption(value: p, label: p)).toList(),
-      },
-      initialValues: {
-        'errorType': _filterErrorTypes,
-        'knowledge': _filterKnowledgeTags,
-        'exercise': _filterExerciseIds,
-        'progress': _filterProgressSet,
-      },
-      typeLabels: {
-        'errorType': widget.lang == 'cn' ? '错类' : 'Error Type',
-        'knowledge': widget.lang == 'cn' ? '知识点' : 'Knowledge',
-        'exercise': widget.lang == 'cn' ? '习题号' : 'Exercise',
-        'progress': widget.lang == 'cn' ? '进度' : 'Progress',
-      },
-      hintTexts: {
-        'errorType': widget.lang == 'cn' ? '输入ID号（如1.1）或关键词...' : 'Enter ID (e.g., 1.1)...',
-        'knowledge': widget.lang == 'cn' ? '输入ID号（如K1）或关键词...' : 'Enter ID (e.g., K1)...',
-        'exercise': widget.lang == 'cn' ? '输入TnQm格式（如T1Q1）或关键词...' : 'Enter TnQm format (e.g., T1Q1)...',
-        'progress': widget.lang == 'cn' ? '输入关键词（待订正、已订正）...' : 'Enter keyword...',
+      typeConfigs: {
+        'errorType': FilterTypeConfig(
+          options: allErrorTypes.map((e) => FilterOption(value: e, label: e)).toList(),
+          initialValues: _filterErrorTypes,
+          label: widget.lang == 'cn' ? '错类' : 'Error Type',
+          hintText: widget.lang == 'cn' ? '输入ID号（如1.1）或关键词...' : 'Enter ID (e.g., 1.1)...',
+          defaultMatchMode: MatchMode.hierarchical,
+        ),
+        'knowledge': FilterTypeConfig(
+          options: allKnowledgeTags.map((k) => FilterOption(value: k, label: k)).toList(),
+          initialValues: _filterKnowledgeTags,
+          label: widget.lang == 'cn' ? '知识点' : 'Knowledge',
+          hintText: widget.lang == 'cn' ? '输入ID号（如K1）或关键词...' : 'Enter ID (e.g., K1)...',
+          defaultMatchMode: MatchMode.hierarchical,
+        ),
+        'exercise': FilterTypeConfig(
+          options: allExerciseIds.map((e) => FilterOption(value: e, label: e)).toList(),
+          initialValues: _filterExerciseIds,
+          label: widget.lang == 'cn' ? '习题号' : 'Exercise',
+          hintText: widget.lang == 'cn' ? '输入TnQm格式（如T1Q1）或关键词...' : 'Enter TnQm format (e.g., T1Q1)...',
+          defaultMatchMode: MatchMode.contains,
+        ),
+        'progress': FilterTypeConfig(
+          options: allProgresses.map((p) => FilterOption(value: p, label: p)).toList(),
+          initialValues: _filterProgressSet,
+          label: widget.lang == 'cn' ? '进度' : 'Progress',
+          hintText: widget.lang == 'cn' ? '输入关键词（待订正、已订正）...' : 'Enter keyword...',
+          defaultMatchMode: MatchMode.equals,
+        ),
       },
     );
 
@@ -875,10 +935,16 @@ $errorContent
 
     if (result != null) {
       setState(() {
-        _filterErrorTypes = Set<String>.from(result['errorType'] ?? {});
-        _filterKnowledgeTags = Set<String>.from(result['knowledge'] ?? {});
-        _filterProgressSet = Set<String>.from(result['progress'] ?? {});
-        _filterExerciseIds = Set<String>.from(result['exercise'] ?? {});
+        _filterErrorTypes = Set<String>.from((result['errorType'] as Map?)?['values'] ?? {});
+        _filterKnowledgeTags = Set<String>.from((result['knowledge'] as Map?)?['values'] ?? {});
+        _filterProgressSet = Set<String>.from((result['progress'] as Map?)?['values'] ?? {});
+        _filterExerciseIds = Set<String>.from((result['exercise'] as Map?)?['values'] ?? {});
+        
+        _filterErrorTypeMatchMode = MatchMode.values[(result['errorType'] as Map?)?['matchMode'] as int? ?? 0];
+        _filterKnowledgeMatchMode = MatchMode.values[(result['knowledge'] as Map?)?['matchMode'] as int? ?? 0];
+        _filterExerciseMatchMode = MatchMode.values[(result['exercise'] as Map?)?['matchMode'] as int? ?? 0];
+        _filterProgressMatchMode = MatchMode.values[(result['progress'] as Map?)?['matchMode'] as int? ?? 0];
+        
         _displayRecords = _applyFilter();
       });
     }
