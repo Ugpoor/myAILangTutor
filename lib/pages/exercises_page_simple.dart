@@ -3,11 +3,11 @@ import '../components/app_title_bar.dart';
 import '../components/submenu_tabs.dart';
 import '../components/ai_reply_bar.dart';
 import '../components/input_area.dart';
-import '../components/dynamic_tag_selector.dart';
 import '../database/db_helper.dart';
 import '../database/models/question.dart';
-import '../database/models/error_record.dart';
+import '../database/models/test_paper.dart';
 import '../services/llm_service.dart';
+import 'test_paper_detail_page.dart';
 import 'question_detail_page.dart';
 
 class ExercisesPageSimple extends StatefulWidget {
@@ -27,17 +27,13 @@ class ExercisesPageSimple extends StatefulWidget {
 }
 
 class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
-  List<Question> _allExercises = [];
-  List<Question> _displayExercises = [];
+  List<TestPaper> _allTestPapers = [];
+  List<TestPaper> _displayTestPapers = [];
   final Set<int> _selectedIds = {};
-  String? _filterProgress;
-  Set<String> _filterKnowledgeTags = {};
-  Set<String> _filterSources = {};
-  String? _filterLessonUnitInput;
   bool _isGrading = false;
   bool _isCorrecting = false;
-  bool _isCleaning = false;
-  late QuestionDao _exerciseDao;
+  late TestPaperDao _testPaperDao;
+  late QuestionDao _questionDao;
   final LlmService _llmService = LlmService();
 
   @override
@@ -48,183 +44,32 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
 
   Future<void> _initDao() async {
     final db = await DatabaseHelper().database;
-    _exerciseDao = QuestionDao(db);
+    _testPaperDao = TestPaperDao(db);
+    _questionDao = QuestionDao(db);
     await _llmService.init();
-    await _loadExercises();
+    await _loadTestPapers();
   }
 
-  Future<void> _loadExercises() async {
-    final exercises = await _exerciseDao.getAll(lang: widget.lang);
+  Future<void> _loadTestPapers() async {
+    final papers = await _testPaperDao.getAll(lang: widget.lang);
     setState(() {
-      _allExercises = exercises;
-      _applyFilter();
+      _allTestPapers = papers;
+      _displayTestPapers = papers;
     });
   }
 
-  void _applyFilter() {
-    _displayExercises = _allExercises.where((e) {
-      if (_filterProgress != null && e.progress != _filterProgress) return false;
-      if (_filterKnowledgeTags.isNotEmpty && !_filterKnowledgeTags.any((tag) => e.kid?.contains(tag) ?? false)) return false;
-      if (_filterSources.isNotEmpty && !(_filterSources.contains(e.source) || (e.source == null && _filterSources.contains('未设置')))) return false;
-      if (_filterLessonUnitInput?.isNotEmpty == true && !(e.lessonUnit?.contains(_filterLessonUnitInput!) ?? false)) return false;
-      return true;
-    }).toList();
-  }
-
-  /// 获取所有唯一的知识点标签
-  Set<String> get _allKnowledgeTags => _allExercises.map((e) => e.kid).whereType<String>().toSet();
-  /// 获取所有唯一的来源
-  Set<String> get _allSources => _allExercises.map((e) => e.source).where((s) => s != null).cast<String>().toSet();
-
   Future<void> _handleTabSelected(String tab) async {
-    if (tab == (widget.lang == 'cn' ? '筛选' : 'Filter')) {
-      _showFilterDialog();
-    } else if (tab == (widget.lang == 'cn' ? '批阅' : 'Grade')) {
+    if (tab == (widget.lang == 'cn' ? '批阅' : 'Grade')) {
       await _gradeSelected();
     } else if (tab == (widget.lang == 'cn' ? '订正' : 'Correct')) {
       await _correctSelected();
     }
   }
 
-  /// 清空所有习题
-  Future<void> _cleanExercises() async {
-    // 显示确认对话框
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(widget.lang == 'cn' ? '确认清理' : 'Confirm Clean'),
-        content: Text(widget.lang == 'cn' 
-            ? '此操作将删除重复条目和无效数据。此操作不可撤销！' 
-            : 'This will delete duplicate entries and invalid data. This cannot be undone!'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(widget.lang == 'cn' ? '取消' : 'Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF69B4)),
-            child: Text(widget.lang == 'cn' ? '确认清理' : 'Confirm'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    setState(() => _isCleaning = true);
-
-    try {
-      final result = await _exerciseDao.cleanQuestions();
-      
-      await _loadExercises();
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              widget.lang == 'cn' 
-                  ? '清理完成：删除重复习题 ${result['duplicate_deleted']} 条'
-                  : 'Clean complete: deleted ${result['duplicate_deleted']} duplicate entries',
-            ),
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(widget.lang == 'cn' ? '清理失败: $e' : 'Clean failed: $e'),
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-    } finally {
-      setState(() => _isCleaning = false);
-    }
-  }
-
-  /// 清空所有习题
-  Future<void> _clearAllExercises() async {
-    // 显示确认对话框
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(widget.lang == 'cn' ? '确认清空' : 'Confirm Clear All'),
-        content: Text(widget.lang == 'cn' 
-            ? '此操作将删除所有习题（包括LLM生成的）。此操作不可撤销！' 
-            : 'This will delete ALL exercises. This cannot be undone!'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(widget.lang == 'cn' ? '取消' : 'Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: Text(widget.lang == 'cn' ? '确认清空' : 'Clear All'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    setState(() => _isCleaning = true);
-
-    try {
-      // 先保留3条习题
-      final allExercises = await _exerciseDao.getAll(lang: widget.lang);
-      if (allExercises.length <= 3) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(widget.lang == 'cn' ? '习题数量已≤3条，无需清空' : 'Already ≤ 3 exercises')),
-        );
-        setState(() => _isCleaning = false);
-        return;
-      }
-
-      // 删除所有习题中除了最早的3条
-      final sorted = List.from(allExercises)..sort((a, b) {
-        final aTime = a.createdAt ?? DateTime(2020);
-        final bTime = b.createdAt ?? DateTime(2020);
-        return aTime.compareTo(bTime);
-      });
-      int deletedCount = 0;
-      for (int i = 3; i < sorted.length; i++) {
-        await _exerciseDao.delete(sorted[i].id!);
-        deletedCount++;
-      }
-
-      await _loadExercises();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              widget.lang == 'cn' 
-                  ? '已清空，保留3条习题，删除 $deletedCount 条'
-                  : 'Cleared, kept 3 exercises, deleted $deletedCount',
-            ),
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(widget.lang == 'cn' ? '清空失败: $e' : 'Clear failed: $e')),
-        );
-      }
-    } finally {
-      setState(() => _isCleaning = false);
-    }
-  }
-
   Future<void> _gradeSelected() async {
     if (_selectedIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.lang == 'cn' ? '请先选择习题' : 'Select exercises first')),
+        SnackBar(content: Text(widget.lang == 'cn' ? '请先选择试卷' : 'Select test papers first')),
       );
       return;
     }
@@ -236,31 +81,28 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
       return;
     }
 
-    final toGrade = _allExercises.where((e) => _selectedIds.contains(e.id) && e.progress == '未批阅').toList();
-    if (toGrade.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.lang == 'cn' ? '没有可批阅的习题（需要"未批阅"状态）' : 'No exercises to grade')),
-      );
-      return;
-    }
-
     setState(() => _isGrading = true);
 
     try {
-      for (final exercise in toGrade) {
-        final prompt = '请批阅以下习题：\n题目：${exercise.question}\n答卷：${exercise.answerSheet ?? "未作答"}\n答案：${exercise.answerKey ?? ""}';
-        final response = await _llmService.generateResponse(prompt);
-        final gradingResult = response['response'] ?? '';
+      final questions = await _questionDao.getAll(lang: widget.lang);
+      final selectedPapers = _allTestPapers.where((p) => _selectedIds.contains(p.id)).toList();
+      
+      for (final paper in selectedPapers) {
+        final paperQuestions = questions.where((q) => q.tid == paper.tid).toList();
+        final toGrade = paperQuestions.where((q) => q.progress == '未批阅').toList();
+        
+        for (final question in toGrade) {
+          final prompt = '请批阅以下习题：\n题目：${question.question}\n答卷：${question.correctAnswer ?? "未作答"}';
+          final response = await _llmService.generateResponse(prompt);
+          final gradingResult = response['response'] ?? '';
 
-        await _exerciseDao.update(exercise.copyWith(
-          grading: gradingResult,
-          progress: '已批阅',
-        ));
-
-        // Batch update complete, continue to next exercise
+          await _questionDao.update(question.copyWith(
+            grading: gradingResult,
+            progress: '已批阅',
+          ));
+        }
       }
 
-      await _loadExercises();
       setState(() => _selectedIds.clear());
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -270,7 +112,7 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(widget.lang == 'cn' ? '批阅失败' : 'Grading failed')),
+          SnackBar(content: Text(widget.lang == 'cn' ? '批阅失败: $e' : 'Grading failed: $e')),
         );
       }
     } finally {
@@ -281,7 +123,7 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
   Future<void> _correctSelected() async {
     if (_selectedIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.lang == 'cn' ? '请先选择习题' : 'Select exercises first')),
+        SnackBar(content: Text(widget.lang == 'cn' ? '请先选择试卷' : 'Select test papers first')),
       );
       return;
     }
@@ -293,49 +135,33 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
       return;
     }
 
-    final toCorrect = _allExercises.where((e) => _selectedIds.contains(e.id) && e.progress == '已批阅').toList();
-    if (toCorrect.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.lang == 'cn' ? '没有可订正的习题（需要"已批阅"状态）' : 'No exercises to correct')),
-      );
-      return;
-    }
-
     setState(() => _isCorrecting = true);
 
     try {
-      final db = await DatabaseHelper().database;
-      final errorRecordDao = ErrorRecordDao(db);
-
-      for (final exercise in toCorrect) {
-        // 生成错误本条目
-        final nextNum = await errorRecordDao.nextErrorIdNumber();
-        await errorRecordDao.insert(ErrorRecord(
-          errorId: 'T$nextNum',
-          question: exercise.question,
-          wrongAnswer: exercise.correctAnswer,
-          wrongWhere: '练习错题',
-          progress: '待订正',
-          createdAt: DateTime.now(),
-          lang: widget.lang,
-        ));
-
-        await _exerciseDao.update(exercise.copyWith(progress: '已订正'));
-
-        // Batch update complete, continue to next exercise
+      final questions = await _questionDao.getAll(lang: widget.lang);
+      final selectedPapers = _allTestPapers.where((p) => _selectedIds.contains(p.id)).toList();
+      
+      for (final paper in selectedPapers) {
+        final paperQuestions = questions.where((q) => q.tid == paper.tid).toList();
+        final toCorrect = paperQuestions.where((q) => q.progress == '已批阅').toList();
+        
+        for (final question in toCorrect) {
+          await _questionDao.update(question.copyWith(
+            progress: '已订正',
+          ));
+        }
       }
 
-      await _loadExercises();
       setState(() => _selectedIds.clear());
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(widget.lang == 'cn' ? '订正完成，错题已写入错误本' : 'Correction done, errors written')),
+          SnackBar(content: Text(widget.lang == 'cn' ? '订正完成' : 'Correction complete')),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(widget.lang == 'cn' ? '订正失败' : 'Correction failed')),
+          SnackBar(content: Text(widget.lang == 'cn' ? '订正失败: $e' : 'Correction failed: $e')),
         );
       }
     } finally {
@@ -343,149 +169,22 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
     }
   }
 
-  void _showFilterDialog() {
-    // Deep copy current selections
-    Set<String> selectedTags = Set<String>.from(_filterKnowledgeTags);
-    Set<String> selectedSources = Set<String>.from(_filterSources);
-    String? tempProgress = _filterProgress;
-    String lessonUnitInput = _filterLessonUnitInput ?? '';
-
-    showDialog<void>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: Text(widget.lang == 'cn' ? '筛选习题' : 'Filter Exercises'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 进度筛选（下拉选择）
-                  Text(widget.lang == 'cn' ? '按进度：' : 'By progress:',
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: DropdownButtonFormField<String?>(
-                      value: tempProgress,
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      items: [
-                        const DropdownMenuItem<String?>(
-                          value: null,
-                          child: Text('全部 / All'),
-                        ),
-                        ...['未答题', '未批阅', '已批阅', '已订正'].map((p) => DropdownMenuItem<String>(
-                          value: p,
-                          child: Text(p),
-                        )),
-                      ],
-                      onChanged: (value) {
-                        setState(() => tempProgress = value);
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // 知识点标签筛选（使用动态标签选择器）
-                  DynamicTagSelector(
-                    label: widget.lang == 'cn' ? '知识点标签' : 'Knowledge tags',
-                    currentTags: selectedTags,
-                    availableOptions: _allKnowledgeTags,
-                    onTagsChanged: (newTags) {
-                      setState(() => selectedTags = newTags);
-                    },
-                    accentColor: const Color(0xFF2196F3),
-                  ),
-                  const SizedBox(height: 16),
-                  // 课内标签筛选（输入匹配）
-                  Text(widget.lang == 'cn' ? '课内标签（输入关键词）：' : 'Lesson unit (keyword):',
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  TextField(
-                    decoration: InputDecoration(
-                      hintText: widget.lang == 'cn' ? '如：四年级上' : 'e.g. Grade 4',
-                      border: const OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    onChanged: (v) {
-                      lessonUnitInput = v;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  // 来源筛选（使用动态标签选择器）
-                  DynamicTagSelector(
-                    label: widget.lang == 'cn' ? '来源' : 'Source',
-                    currentTags: selectedSources,
-                    availableOptions: _allSources,
-                    onTagsChanged: (newTags) {
-                      setState(() => selectedSources = newTags);
-                    },
-                    accentColor: const Color(0xFFFF9800),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _filterProgress = null;
-                  _filterKnowledgeTags.clear();
-                  _filterSources.clear();
-                  _filterLessonUnitInput = null;
-                  _applyFilter();
-                });
-                Navigator.pop(context);
-              },
-              child: Text(widget.lang == 'cn' ? '清空' : 'Clear'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  _filterProgress = tempProgress;
-                  _filterKnowledgeTags = selectedTags;
-                  _filterSources = selectedSources;
-                  _filterLessonUnitInput = lessonUnitInput.isNotEmpty ? lessonUnitInput : null;
-                  _applyFilter();
-                });
-                Navigator.pop(context);
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF69B4)),
-              child: Text(widget.lang == 'cn' ? '确定' : 'Confirm'),
-            ),
-          ],
+  void _openTestPaperDetail(TestPaper paper) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TestPaperDetailPage(
+          lang: widget.lang,
+          testPaper: paper,
+          onHomeTap: widget.onHomeTap,
         ),
       ),
     );
   }
 
-  Color _getProgressColor(String progress) {
-    switch (progress) {
-      case '未答题':
-        return const Color(0xFFD3D3D3);
-      case '未批阅':
-        return const Color(0xFFFFE4E9);
-      case '已批阅':
-        return const Color(0xFFFFA07A);
-      case '已订正':
-        return const Color(0xFF90EE90);
-      default:
-        return Colors.grey;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final tabs = widget.lang == 'cn' ? ['筛选', '批阅', '订正'] : ['Filter', 'Grade', 'Correct'];
+    final tabs = widget.lang == 'cn' ? ['批阅', '订正'] : ['Grade', 'Correct'];
 
     return Scaffold(
       backgroundColor: const Color(0xFFFFE4E9),
@@ -508,16 +207,16 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.grey),
                 ),
-                child: _displayExercises.isEmpty
+                child: _displayTestPapers.isEmpty
                     ? Center(
-                        child: Text(widget.lang == 'cn' ? '暂无习题' : 'No exercises'),
+                        child: Text(widget.lang == 'cn' ? '暂无试卷' : 'No test papers'),
                       )
                     : ListView.builder(
                         padding: const EdgeInsets.all(8),
-                        itemCount: _displayExercises.length,
+                        itemCount: _displayTestPapers.length,
                         itemBuilder: (context, index) {
-                          final exercise = _displayExercises[index];
-                          return _buildExerciseItem(exercise);
+                          final paper = _displayTestPapers[index];
+                          return _buildTestPaperItem(paper);
                         },
                       ),
               ),
@@ -538,25 +237,25 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
     );
   }
 
-  Widget _buildExerciseItem(Question exercise) {
-    final isSelected = _selectedIds.contains(exercise.id);
-    final progressColor = _getProgressColor(exercise.progress);
+  Widget _buildTestPaperItem(TestPaper paper) {
+    final isSelected = _selectedIds.contains(paper.id);
 
     return InkWell(
-      onTap: () => _showExerciseDetail(exercise),
+      onTap: () => _openTestPaperDetail(paper),
       child: Card(
-        margin: const EdgeInsets.symmetric(vertical: 4),
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        elevation: 2,
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           child: Row(
             children: [
               GestureDetector(
                 onTap: (() {
                   setState(() {
                     if (isSelected) {
-                      _selectedIds.remove(exercise.id!);
+                      _selectedIds.remove(paper.id!);
                     } else {
-                      _selectedIds.add(exercise.id!);
+                      _selectedIds.add(paper.id!);
                     }
                   });
                 }),
@@ -565,6 +264,7 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
                   onChanged: null,
                 ),
               ),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -572,51 +272,46 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
                     Row(
                       children: [
                         Text(
-                          '${exercise.exerciseId ?? ""} ',
+                          '${paper.tid ?? ""} ',
                           style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF651FFF)),
                         ),
                         Expanded(
                           child: Text(
-                            exercise.question,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w500),
+                            paper.testTitle,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 8),
                     Wrap(
-                      spacing: 6,
+                      spacing: 8,
                       children: [
-                        if (exercise.source != null)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(color: const Color(0xFFDDA0DD), borderRadius: BorderRadius.circular(4)),
-                            child: Text('来源: ${exercise.source}', style: const TextStyle(fontSize: 11)),
-                          ),
-                        if (exercise.lessonUnit != null)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(color: const Color(0xFFFFE4E9), borderRadius: BorderRadius.circular(4)),
-                            child: Text('课内: ${exercise.lessonUnit}', style: const TextStyle(fontSize: 11)),
-                          ),
-                        if (exercise.kid != null)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(color: const Color(0xFF87CEEB), borderRadius: BorderRadius.circular(4)),
-                            child: Text('知识: ${exercise.kid}', style: const TextStyle(fontSize: 11)),
-                          ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(color: progressColor, borderRadius: BorderRadius.circular(4)),
-                          child: Text(exercise.progress, style: const TextStyle(fontSize: 11)),
-                        ),
+                        if (paper.unitNumber != null)
+                          _buildTag('${widget.lang == 'cn' ? '单元' : 'Unit'} ${paper.unitNumber}', Colors.blue),
+                        if (paper.lessonNumber != null)
+                          _buildTag('${widget.lang == 'cn' ? '课号' : 'Lesson'} ${paper.lessonNumber}', Colors.orange),
+                        if (paper.source != null)
+                          _buildTag('${widget.lang == 'cn' ? '来源' : 'Source'}: ${paper.source}', Colors.purple),
                       ],
+                    ),
+                    const SizedBox(height: 8),
+                    FutureBuilder<int>(
+                      future: _getQuestionCount(paper.tid),
+                      builder: (context, snapshot) {
+                        if (snapshot.hasData) {
+                          return Text(
+                            '${widget.lang == 'cn' ? '题目数量' : 'Question count'}: ${snapshot.data}',
+                            style: const TextStyle(fontSize: 14, color: Colors.grey),
+                          );
+                        }
+                        return const SizedBox();
+                      },
                     ),
                   ],
                 ),
               ),
+              const Icon(Icons.arrow_forward_ios, color: Colors.grey),
             ],
           ),
         ),
@@ -624,16 +319,24 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
     );
   }
 
-  Future<void> _showExerciseDetail(Question exercise) async {
-    final result = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (context) => QuestionDetailPage(
-          lang: widget.lang,
-          question: exercise,
-          onHomeTap: widget.onHomeTap,
-        ),
+  Widget _buildTag(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.bold),
       ),
     );
+  }
+
+  Future<int> _getQuestionCount(String? tid) async {
+    if (tid == null) return 0;
+    final questions = await _questionDao.getAll(lang: widget.lang);
+    return questions.where((q) => q.tid == tid).length;
   }
 }

@@ -8,6 +8,7 @@ import '../components/input_area.dart';
 import '../components/chat_bubble_list.dart';
 import '../components/dynamic_tag_selector.dart';
 import '../components/tag_styles.dart';
+import '../components/generic_filter_dialog.dart';
 import '../database/db_helper.dart';
 import '../database/models/knowledge_point.dart';
 import '../database/models/knowledge_outline.dart';
@@ -41,8 +42,20 @@ class _KnowledgePointPageSimpleState extends State<KnowledgePointPageSimple> {
   List<KnowledgePoint> _allPoints = [];
   List<KnowledgePoint> _displayPoints = [];
   final Set<int> _selectedIds = {};
+  
+  // 筛选条件
   Set<String> _filterCategories = {};
-  Set<String> _filterLessonUnits = {};
+  Set<String> _filterUnitNumbers = {};
+  Set<String> _filterLessonNumbers = {};
+  Set<String> _filterErrorTimes = {};
+  Set<String> _filterTestTimes = {};
+  
+  // 匹配模式
+  MatchMode _filterCategoryMatchMode = MatchMode.hierarchical;
+  MatchMode _filterUnitMatchMode = MatchMode.contains;
+  MatchMode _filterLessonMatchMode = MatchMode.contains;
+  MatchMode _filterErrorTimesMatchMode = MatchMode.equals;
+  MatchMode _filterTestTimesMatchMode = MatchMode.equals;
   late KnowledgePointDao _knowledgePointDao;
   late QuestionDao _exerciseDao;
   late ErrorRecordDao _errorRecordDao;
@@ -129,10 +142,91 @@ class _KnowledgePointPageSimpleState extends State<KnowledgePointPageSimple> {
     });
   }
 
+  bool _matches(String value, Set<String> filters, MatchMode mode) {
+    if (value.isEmpty || filters.isEmpty) return true;
+    
+    for (final filter in filters) {
+      switch (mode) {
+        case MatchMode.hierarchical:
+          if (value == filter || value.startsWith('$filter.')) {
+            return true;
+          }
+          break;
+        case MatchMode.contains:
+          if (value.contains(filter)) {
+            return true;
+          }
+          break;
+        case MatchMode.equals:
+          if (value == filter) {
+            return true;
+          }
+          break;
+        case MatchMode.greaterThan: {
+          final numValue = num.tryParse(value);
+          final numFilter = num.tryParse(filter);
+          if (numValue != null && numFilter != null && numValue > numFilter) {
+            return true;
+          }
+          break;
+        }
+        case MatchMode.lessThan: {
+          final numValue = num.tryParse(value);
+          final numFilter = num.tryParse(filter);
+          if (numValue != null && numFilter != null && numValue < numFilter) {
+            return true;
+          }
+          break;
+        }
+        case MatchMode.greaterOrEqual: {
+          final numValue = num.tryParse(value);
+          final numFilter = num.tryParse(filter);
+          if (numValue != null && numFilter != null && numValue >= numFilter) {
+            return true;
+          }
+          break;
+        }
+        case MatchMode.lessOrEqual: {
+          final numValue = num.tryParse(value);
+          final numFilter = num.tryParse(filter);
+          if (numValue != null && numFilter != null && numValue <= numFilter) {
+            return true;
+          }
+          break;
+        }
+      }
+    }
+    return false;
+  }
+
   void _applyFilter() {
     _displayPoints = _allPoints.where((p) {
-      if (_filterCategories.isNotEmpty && !(_filterCategories.contains(p.cid) || p.cid == null)) return false;
-      if (_filterLessonUnits.isNotEmpty && !_filterLessonUnits.any((u) => p.unitNumber?.contains(u) ?? false)) return false;
+      if (_filterCategories.isNotEmpty && p.cid != null) {
+        if (!_matches(p.cid!, _filterCategories, _filterCategoryMatchMode)) return false;
+      } else if (_filterCategories.isNotEmpty && p.cid == null) {
+        return false;
+      }
+      
+      if (_filterUnitNumbers.isNotEmpty && p.unitNumber != null) {
+        if (!_matches(p.unitNumber!, _filterUnitNumbers, _filterUnitMatchMode)) return false;
+      } else if (_filterUnitNumbers.isNotEmpty && p.unitNumber == null) {
+        return false;
+      }
+      
+      if (_filterLessonNumbers.isNotEmpty && p.lessonNumber != null) {
+        if (!_matches(p.lessonNumber!, _filterLessonNumbers, _filterLessonMatchMode)) return false;
+      } else if (_filterLessonNumbers.isNotEmpty && p.lessonNumber == null) {
+        return false;
+      }
+      
+      if (_filterErrorTimes.isNotEmpty) {
+        if (!_matches(p.errorTimes.toString(), _filterErrorTimes, _filterErrorTimesMatchMode)) return false;
+      }
+      
+      if (_filterTestTimes.isNotEmpty) {
+        if (!_matches(p.testTimes.toString(), _filterTestTimes, _filterTestTimesMatchMode)) return false;
+      }
+      
       return true;
     }).toList();
   }
@@ -559,125 +653,75 @@ ${combinedContent.toString()}
     );
   }
 
-  void _showFilterDialog() {
+  void _showFilterDialog() async {
     final categories = _allPoints.map((p) => p.cid).whereType<String>().toSet();
-    final lessonUnits = _allPoints.map((p) => p.unitNumber).whereType<String>().toSet();
-    final kidList = _allPoints.map((p) => p.kid).whereType<String>().toSet();
-    Set<String> selectedCategories = Set<String>.from(_filterCategories);
-    Set<String> selectedLessonUnits = Set<String>.from(_filterLessonUnits);
-    
-    String? selectedKid;
-    String keyword = '';
+    final unitNumbers = _allPoints.map((p) => p.unitNumber).whereType<String>().toSet();
+    final lessonNumbers = _allPoints.map((p) => p.lessonNumber).whereType<String>().toSet();
+    final errorTimes = _allPoints.map((p) => p.errorTimes.toString()).toSet();
+    final testTimes = _allPoints.map((p) => p.testTimes.toString()).toSet();
 
-    showDialog<void>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: Text(widget.lang == 'cn' ? '筛选知识点' : 'Filter Knowledge'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 关键词搜索
-                  Text(widget.lang == 'cn' ? '关键词搜索' : 'Keyword Search',
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  TextField(
-                    onChanged: (value) => setState(() => keyword = value),
-                    decoration: InputDecoration(
-                      hintText: widget.lang == 'cn' ? '搜索标题或简介...' : 'Search title or brief...',
-                      border: const OutlineInputBorder(),
-                      isDense: true,
-                      prefixIcon: const Icon(Icons.search, size: 18),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // Kid下拉框
-                  Text(widget.lang == 'cn' ? '知识点ID' : 'Knowledge ID',
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: DropdownButtonFormField<String?>(
-                      value: selectedKid,
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      items: [
-                        const DropdownMenuItem<String?>(
-                          value: null,
-                          child: Text('全部 / All'),
-                        ),
-                        ...kidList.map((kid) => DropdownMenuItem<String>(
-                          value: kid,
-                          child: Text(kid),
-                        )),
-                      ],
-                      onChanged: (value) => setState(() => selectedKid = value),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // 分类筛选（cid）
-                  DynamicTagSelector(
-                    label: widget.lang == 'cn' ? '类ID (CID)' : 'Class ID',
-                    currentTags: selectedCategories,
-                    availableOptions: categories,
-                    onTagsChanged: (newTags) {
-                      setState(() => selectedCategories = newTags);
-                    },
-                    accentColor: const Color(0xFF2196F3),
-                  ),
-                  const SizedBox(height: 16),
-                  // 课内单元筛选
-                  DynamicTagSelector(
-                    label: widget.lang == 'cn' ? '课内标签' : 'Lesson Units',
-                    currentTags: selectedLessonUnits,
-                    availableOptions: lessonUnits,
-                    onTagsChanged: (newTags) {
-                      setState(() => selectedLessonUnits = newTags);
-                    },
-                    accentColor: const Color(0xFFFF9800),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _filterCategories.clear();
-                  _filterLessonUnits.clear();
-                  _applyFilter();
-                });
-                Navigator.pop(context);
-              },
-              child: Text(widget.lang == 'cn' ? '清空' : 'Clear'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  _filterCategories = selectedCategories;
-                  _filterLessonUnits = selectedLessonUnits;
-                  _applyFilter();
-                });
-                Navigator.pop(context);
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF69B4)),
-              child: Text(widget.lang == 'cn' ? '确定' : 'Confirm'),
-            ),
-          ],
+    final config = FilterConfig(
+      filterTypes: ['cid', 'unit', 'lesson', 'errorTimes', 'testTimes'],
+      typeConfigs: {
+        'cid': FilterTypeConfig(
+          options: categories.map((c) => FilterOption(value: c, label: c)).toList(),
+          initialValues: _filterCategories,
+          label: widget.lang == 'cn' ? '知识点分类' : 'Category',
+          hintText: widget.lang == 'cn' ? '输入分类ID（如1.1）...' : 'Enter category ID...',
+          defaultMatchMode: MatchMode.hierarchical,
         ),
-      ),
+        'unit': FilterTypeConfig(
+          options: unitNumbers.map((u) => FilterOption(value: u, label: u)).toList(),
+          initialValues: _filterUnitNumbers,
+          label: widget.lang == 'cn' ? '单元号' : 'Unit Number',
+          hintText: widget.lang == 'cn' ? '输入单元号...' : 'Enter unit number...',
+          defaultMatchMode: MatchMode.contains,
+        ),
+        'lesson': FilterTypeConfig(
+          options: lessonNumbers.map((l) => FilterOption(value: l, label: l)).toList(),
+          initialValues: _filterLessonNumbers,
+          label: widget.lang == 'cn' ? '课号' : 'Lesson Number',
+          hintText: widget.lang == 'cn' ? '输入课号...' : 'Enter lesson number...',
+          defaultMatchMode: MatchMode.contains,
+        ),
+        'errorTimes': FilterTypeConfig(
+          options: errorTimes.map((e) => FilterOption(value: e, label: e)).toList(),
+          initialValues: _filterErrorTimes,
+          label: widget.lang == 'cn' ? '错误次数' : 'Error Count',
+          hintText: widget.lang == 'cn' ? '输入错误次数...' : 'Enter error count...',
+          defaultMatchMode: MatchMode.equals,
+          isNumeric: true,
+        ),
+        'testTimes': FilterTypeConfig(
+          options: testTimes.map((t) => FilterOption(value: t, label: t)).toList(),
+          initialValues: _filterTestTimes,
+          label: widget.lang == 'cn' ? '测试次数' : 'Test Count',
+          hintText: widget.lang == 'cn' ? '输入测试次数...' : 'Enter test count...',
+          defaultMatchMode: MatchMode.equals,
+          isNumeric: true,
+        ),
+      },
     );
+
+    final result = await GenericFilterDialog.show(context, config: config, lang: widget.lang);
+
+    if (result != null) {
+      setState(() {
+        _filterCategories = Set<String>.from((result['cid'] as Map?)?['values'] ?? {});
+        _filterUnitNumbers = Set<String>.from((result['unit'] as Map?)?['values'] ?? {});
+        _filterLessonNumbers = Set<String>.from((result['lesson'] as Map?)?['values'] ?? {});
+        _filterErrorTimes = Set<String>.from((result['errorTimes'] as Map?)?['values'] ?? {});
+        _filterTestTimes = Set<String>.from((result['testTimes'] as Map?)?['values'] ?? {});
+        
+        _filterCategoryMatchMode = MatchMode.values[(result['cid'] as Map?)?['matchMode'] as int? ?? 0];
+        _filterUnitMatchMode = MatchMode.values[(result['unit'] as Map?)?['matchMode'] as int? ?? 0];
+        _filterLessonMatchMode = MatchMode.values[(result['lesson'] as Map?)?['matchMode'] as int? ?? 0];
+        _filterErrorTimesMatchMode = MatchMode.values[(result['errorTimes'] as Map?)?['matchMode'] as int? ?? 0];
+        _filterTestTimesMatchMode = MatchMode.values[(result['testTimes'] as Map?)?['matchMode'] as int? ?? 0];
+        
+        _applyFilter();
+      });
+    }
   }
 
   @override

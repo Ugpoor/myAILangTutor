@@ -7,6 +7,7 @@ import 'package:sqflite/sqflite.dart';
 import '../database/db_helper.dart';
 import '../database/models/error_record.dart';
 import '../database/models/question.dart';
+import '../database/models/test_paper.dart';
 import '../database/models/portfolio_item.dart';
 import '../database/models/knowledge_point.dart';
 import '../database/models/error_type_outline.dart';
@@ -347,30 +348,54 @@ class ConfigImporter {
     final data = json.decode(jsonString);
     final exercises = data['exercises'] as List;
 
-    final dao = QuestionDao(db);
+    final questionDao = QuestionDao(db);
+    final testPaperDao = TestPaperDao(db);
+
     for (final item in exercises) {
-      int? lessonNumber;
-      int? unitNumber;
+      String? unitNumber;
+      String? lessonNumber;
       if (item['lessonUnit'] != null) {
-        final lessonMatch = RegExp(
-          r'(\d+)单元(\d+)课',
-        ).firstMatch(item['lessonUnit']);
+        final unitMatch = RegExp(r'(\d+)年级').firstMatch(item['lessonUnit']);
+        if (unitMatch != null) {
+          unitNumber = unitMatch.group(1);
+        }
+        final lessonMatch = RegExp(r'第(\d+)单元').firstMatch(item['lessonUnit']);
         if (lessonMatch != null) {
-          lessonNumber = int.tryParse(lessonMatch.group(1)!);
-          unitNumber = int.tryParse(lessonMatch.group(2)!);
+          lessonNumber = lessonMatch.group(1);
         }
       }
 
-      await dao.insert(
-        Question(
-          question: item['question'],
-          exerciseId: item['exerciseId'],
-          lessonNumber: lessonNumber,
+      final tid = item['exerciseId'];
+
+      await testPaperDao.insert(
+        TestPaper(
+          tid: tid,
+          testTitle: item['question'],
+          images: [],
+          questionList: [],
+          contentPath: 'test_data/exercises',
           unitNumber: unitNumber,
+          lessonNumber: lessonNumber,
+          source: '测试数据',
+          createdAt: DateTime.now(),
+          lang: item['lang'] ?? 'cn',
+        ),
+      );
+
+      await questionDao.insert(
+        Question(
+          question: item['examPaper'] ?? item['question'],
+          exerciseId: tid,
+          tid: tid,
+          lessonNumber: lessonNumber != null
+              ? int.tryParse(lessonNumber)
+              : null,
+          unitNumber: unitNumber != null ? int.tryParse(unitNumber) : null,
           kid: item['knowledgeTag'],
           progress: item['progress'],
           category: item['category'],
           grading: item['grading'],
+          correctAnswer: item['answerKey'],
           createdAt: DateTime.now(),
           lang: item['lang'] ?? 'cn',
         ),

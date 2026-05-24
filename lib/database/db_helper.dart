@@ -8,7 +8,7 @@ class DatabaseHelper {
   DatabaseHelper._internal();
 
   static Database? _database;
-  static const int _version = 25;
+  static const int _version = 27;
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -32,6 +32,7 @@ class DatabaseHelper {
     await _createErrorRecordsTable(db);
     await _createTestPapersTable(db);
     await _createExercisesTable(db);
+    await _createQuestionsTable(db);
     await _createPortfolioItemsTable(db);
     await _createSkillsTable(db);
     await _createInboxItemsTable(db);
@@ -75,6 +76,7 @@ class DatabaseHelper {
         cid TEXT NOT NULL,
         content_path TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_practice_time TEXT,
         lang TEXT DEFAULT 'cn',
         knowledge_tag TEXT,
         test_times INTEGER DEFAULT 0,
@@ -159,6 +161,34 @@ class DatabaseHelper {
         paper_id TEXT,
         lesson_unit TEXT,
         knowledge_tag TEXT
+      )
+    ''');
+  }
+
+  Future<void> _createQuestionsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE questions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        question TEXT NOT NULL,
+        correct_answer TEXT,
+        explanation TEXT,
+        category TEXT,
+        difficulty INTEGER DEFAULT 1,
+        completed INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        lang TEXT DEFAULT 'cn',
+        content_path TEXT,
+        exercise_id TEXT,
+        tid TEXT,
+        lesson_number INTEGER,
+        unit_number INTEGER,
+        kid TEXT,
+        progress TEXT DEFAULT '未答题',
+        exam_paper TEXT,
+        answer_sheet TEXT,
+        answer_key TEXT,
+        grading TEXT,
+        source TEXT
       )
     ''');
   }
@@ -333,6 +363,12 @@ class DatabaseHelper {
     if (oldVersion < 25) {
       await _upgradeToV25(db);
     }
+    if (oldVersion < 26) {
+      await _upgradeToV26(db);
+    }
+    if (oldVersion < 27) {
+      await _upgradeToV27(db);
+    }
   }
 
   Future<void> _upgradeToV24(Database db) async {
@@ -379,6 +415,40 @@ class DatabaseHelper {
         lang TEXT DEFAULT 'cn'
       )
     ''');
+  }
+
+  Future<void> _upgradeToV26(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS questions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        question TEXT NOT NULL,
+        correct_answer TEXT,
+        explanation TEXT,
+        category TEXT,
+        difficulty INTEGER DEFAULT 1,
+        completed INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        lang TEXT DEFAULT 'cn',
+        content_path TEXT,
+        exercise_id TEXT,
+        tid TEXT,
+        lesson_number INTEGER,
+        unit_number INTEGER,
+        kid TEXT,
+        progress TEXT DEFAULT '未答题',
+        exam_paper TEXT,
+        answer_sheet TEXT,
+        answer_key TEXT,
+        grading TEXT,
+        source TEXT
+      )
+    ''');
+  }
+
+  Future<void> _upgradeToV27(Database db) async {
+    try {
+      await db.execute('ALTER TABLE knowledge_points ADD COLUMN last_practice_time TEXT');
+    } catch (_) {}
   }
 
   Future<void> _upgradeToV23(Database db) async {

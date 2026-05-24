@@ -12,6 +12,7 @@ import '../components/generic_filter_dialog.dart';
 import '../database/db_helper.dart';
 import '../database/models/error_record.dart';
 import '../database/models/question.dart';
+import '../database/models/test_paper.dart';
 import '../database/models/chat_message.dart';
 import '../database/models/portfolio_item.dart';
 import '../services/llm_service.dart';
@@ -641,14 +642,29 @@ $errorContent
       int skippedCount = 0;
       int expectedCount = 7;
 
+      final testPaperDao = TestPaperDao(db);
+      final nextNum = await exerciseDao.nextExerciseIdNumber();
+      final tid = 'T$nextNum';
+      
+      await testPaperDao.insert(
+        TestPaper(
+          tid: tid,
+          testTitle: widget.lang == 'cn' ? '错误本练习 - 第${nextNum}套' : 'Error Practice - Set $nextNum',
+          images: [],
+          questionList: [],
+          contentPath: 'error_record',
+          source: '错误本生成',
+          createdAt: DateTime.now(),
+          lang: widget.lang,
+        ),
+      );
+
       for (final exData in exercisesJson) {
         if (!_validateExerciseData(exData)) {
           skippedCount++;
           print('[GenerateExercises] 跳过无效题目: $exData');
           continue;
         }
-
-        final nextNum = await exerciseDao.nextExerciseIdNumber();
         
         String category = '';
         final type = exData['type']?.toString().toLowerCase();
@@ -668,6 +684,8 @@ $errorContent
 
         final question = Question(
           question: questionText,
+          tid: tid,
+          exerciseId: tid,
           correctAnswer: exData['correctAnswer'] as String?,
           explanation: exData['explanation'] as String?,
           category: category,
