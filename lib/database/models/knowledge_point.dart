@@ -12,6 +12,7 @@ class KnowledgePoint {
   final String? lessonNumber; // 课号（如 "3" 表示第3课）
   final String cid; // 知识点大纲分类ID，用于关联知识点大纲
   final DateTime? createdAt; // 创建时间
+  final DateTime? lastPracticeTime; // 最后练习时间
   final String lang; // 语言标识（cn/en）
   final String? contentPath; // 内容文件路径，知识点详细内容存储在文件系统中
   final String? knowledgeTag; // 知识标签（冗余字段，用于兼容旧数据）
@@ -29,6 +30,7 @@ class KnowledgePoint {
     this.lessonNumber,
     required this.cid,
     this.createdAt,
+    this.lastPracticeTime,
     this.lang = 'cn',
     this.contentPath,
     this.knowledgeTag,
@@ -48,6 +50,7 @@ class KnowledgePoint {
       'lesson_number': lessonNumber,
       'cid': cid,
       'created_at': createdAt?.toIso8601String(),
+      'last_practice_time': lastPracticeTime?.toIso8601String(),
       'lang': lang,
       'content_path': contentPath,
       'knowledge_tag': knowledgeTag,
@@ -70,6 +73,9 @@ class KnowledgePoint {
       createdAt: map['created_at'] != null
           ? DateTime.parse(map['created_at'] as String)
           : null,
+      lastPracticeTime: map['last_practice_time'] != null
+          ? DateTime.parse(map['last_practice_time'] as String)
+          : null,
       lang: map['lang'] as String? ?? 'cn',
       contentPath: map['content_path'] as String?,
       knowledgeTag: map['knowledge_tag'] as String?,
@@ -89,6 +95,7 @@ class KnowledgePoint {
     String? lessonNumber,
     String? cid,
     DateTime? createdAt,
+    DateTime? lastPracticeTime,
     String? lang,
     String? contentPath,
     String? knowledgeTag,
@@ -106,6 +113,7 @@ class KnowledgePoint {
       lessonNumber: lessonNumber ?? this.lessonNumber,
       cid: cid ?? this.cid,
       createdAt: createdAt ?? this.createdAt,
+      lastPracticeTime: lastPracticeTime ?? this.lastPracticeTime,
       lang: lang ?? this.lang,
       contentPath: contentPath ?? this.contentPath,
       knowledgeTag: knowledgeTag ?? this.knowledgeTag,
@@ -359,6 +367,13 @@ class KnowledgePointDao {
       );
     }
     return 0;
+  }
+
+  Future<int> updateLastPracticeTime(int id, DateTime time) async {
+    return await db.rawUpdate(
+      'UPDATE knowledge_points SET last_practice_time = ? WHERE id = ?',
+      [time.toIso8601String(), id],
+    );
   }
 
   Future<int> deleteMathKnowledgePoints() async {

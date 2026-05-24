@@ -4,7 +4,7 @@ import '../database/models/document.dart';
 import '../database/models/todo_item.dart';
 import '../database/models/error_record.dart';
 import '../database/models/knowledge_point.dart';
-import '../database/models/exercise.dart';
+import '../database/models/question.dart';
 import '../database/models/portfolio_item.dart';
 import '../database/models/skill.dart';
 import '../database/models/setting.dart';
@@ -35,7 +35,7 @@ class AppService {
   TodoDao? _todoDao;
   ErrorRecordDao? _errorRecordDao;
   KnowledgePointDao? _knowledgePointDao;
-  ExerciseDao? _exerciseDao;
+  QuestionDao? _exerciseDao;
   PortfolioDao? _portfolioDao;
   SkillDao? _skillDao;
   SettingsDao? _settingsDao;
@@ -47,7 +47,7 @@ class AppService {
     _todoDao = TodoDao(db);
     _errorRecordDao = ErrorRecordDao(db);
     _knowledgePointDao = KnowledgePointDao(db);
-    _exerciseDao = ExerciseDao(db);
+    _exerciseDao = QuestionDao(db);
     _portfolioDao = PortfolioDao(db);
     _skillDao = SkillDao(db);
     _settingsDao = SettingsDao(db);
@@ -223,13 +223,12 @@ class AppService {
     return 0;
   }
 
-  Future<List<Exercise>> getExercises({String? lang, String? category, bool? completed}) async {
+  Future<List<Question>> getExercises({String? lang, String? category, bool? completed}) async {
     await _ensureInitialized();
     return await _exerciseDao!.getAll(lang: lang, category: category, completed: completed);
   }
 
   Future<int> createExercise(String question, {
-    String? options,
     String? correctAnswer,
     String? explanation,
     String? category,
@@ -237,9 +236,8 @@ class AppService {
     String lang = 'cn',
   }) async {
     await _ensureInitialized();
-    final exercise = Exercise(
+    final exercise = Question(
       question: question,
-      options: options,
       correctAnswer: correctAnswer,
       explanation: explanation,
       category: category,
@@ -561,9 +559,8 @@ $content
         '请将以下内容作为练习题进行简要总结，提取题目和选项：',
       );
 
-      final exercise = Exercise(
+      final exercise = Question(
         question: summary,
-        options: null,
         correctAnswer: null,
         explanation: null,
         category: customCategory,
@@ -618,7 +615,7 @@ $content
   Future<Map<String, dynamic>> cleanExercises() async {
     await _ensureInitialized();
     try {
-      final result = await _exerciseDao!.cleanExercises();
+      final result = await _exerciseDao!.cleanQuestions();
       return {
         'success': true,
         'duplicate_deleted': result['duplicate_deleted'],

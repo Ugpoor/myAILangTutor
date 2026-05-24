@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import '../components/app_title_bar.dart';
 import '../components/submenu_tabs.dart';
+import '../components/tag_styles.dart';
 import '../database/models/knowledge_point.dart';
+import '../database/models/knowledge_outline.dart';
 import '../database/db_helper.dart';
 
-/// 知识点详情页面（可编辑表单式）
 class KnowledgePointDetailPage extends StatefulWidget {
   final String lang;
   final KnowledgePoint point;
@@ -26,31 +27,41 @@ class _KnowledgePointDetailPageState extends State<KnowledgePointDetailPage> {
   late TextEditingController _titleController;
   late TextEditingController _contentController;
   late TextEditingController _cidController;
+  late TextEditingController _unitNumberController;
+  late TextEditingController _lessonNumberController;
   
-  String? _category;
-  String? _lessonUnit;
-  String? _errorType;
-  int _fatherId = 0;
-  int _difficulty = 1;
-  bool _mastered = false;
-  String? _knowledgeTag;
-
-  final List<String> _categories = [
-    '字词书写', '成语运用', '古诗文默写', '阅读理解',
-    '作文写作', '修辞手法', '文体知识', '文学常识',
-  ];
-
-  final List<String> _errorTypes = [
-    '审题不清', '概念混淆', '计算失误', '知识遗漏', '推理错误', '表达不当',
-  ];
+  String? _cidTitle;
+  TextEditingController _cidSearchController = TextEditingController();
+  String _cidSearchText = '';
+  List<KnowledgeOutline> _cidOptions = [];
 
   @override
   void initState() {
     super.initState();
     _point = widget.point;
     _titleController = TextEditingController(text: _point.title);
-    _cidController = TextEditingController(text: _point.cid ?? '');
+    _cidController = TextEditingController(text: _point.cid);
     _contentController = TextEditingController(text: '');
+    _unitNumberController = TextEditingController(text: _point.unitNumber ?? '');
+    _lessonNumberController = TextEditingController(text: _point.lessonNumber ?? '');
+    
+    _loadCidOptions();
+  }
+  
+  Future<void> _loadCidOptions() async {
+    final db = await DatabaseHelper().database;
+    final outlineDao = KnowledgeOutlineDao(db);
+    final outlines = await outlineDao.getAll(lang: widget.lang);
+    setState(() {
+      _cidOptions = outlines;
+      if (_point.cid.isNotEmpty) {
+        final found = outlines.firstWhere(
+          (o) => o.cid == _point.cid,
+          orElse: () => KnowledgeOutline(cid: '', content: '', lang: widget.lang),
+        );
+        _cidTitle = found.content;
+      }
+    });
   }
 
   @override
@@ -58,13 +69,18 @@ class _KnowledgePointDetailPageState extends State<KnowledgePointDetailPage> {
     _titleController.dispose();
     _cidController.dispose();
     _contentController.dispose();
+    _unitNumberController.dispose();
+    _lessonNumberController.dispose();
+    _cidSearchController.dispose();
     super.dispose();
   }
 
   Future<void> _saveRecord() async {
     final updated = _point.copyWith(
       title: _titleController.text.trim(),
-      cid: _cidController.text.trim().isEmpty ? null : _cidController.text.trim(),
+      cid: _cidController.text.trim(),
+      unitNumber: _unitNumberController.text.trim().isEmpty ? null : _unitNumberController.text.trim(),
+      lessonNumber: _lessonNumberController.text.trim().isEmpty ? null : _lessonNumberController.text.trim(),
     );
 
     final db = await DatabaseHelper().database;
@@ -108,6 +124,89 @@ class _KnowledgePointDetailPageState extends State<KnowledgePointDetailPage> {
     }
   }
 
+  void _selectCid(String cid, String content) {
+    setState(() {
+      _cidController.text = cid;
+      _cidTitle = content;
+      _cidSearchText = '';
+      _cidSearchController.clear();
+    });
+    Navigator.pop(context);
+  }
+
+  List<KnowledgeOutline> _getFilteredCidOptions() {
+    if (_cidSearchText.isEmpty) {
+      return _cidOptions;
+    }
+    return _cidOptions.where((option) => 
+      option.cid.contains(_cidSearchText) ||
+      option.content.contains(_cidSearchText)
+    ).toList();
+  }
+
+  void _showCidSelector() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(widget.lang == 'cn' ? '选择类ID' : 'Select Class ID'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: _cidSearchController,
+                decoration: InputDecoration(
+                  hintText: widget.lang == 'cn' ? '搜索类ID或名称...' : 'Search class ID or name...',
+                  border: const OutlineInputBorder(),
+                  isDense: true,
+                  prefixIcon: const Icon(Icons.search, size: 18),
+                ),
+                onChanged: (value) {
+                  setState(() {
+                    _cidSearchText = value;
+                  });
+                },
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 200,
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: _getFilteredCidOptions().map((option) {
+                      return InkWell(
+                        onTap: () => _selectCid(option.cid, option.content),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          child: Row(
+                            children: [
+                              TagStyles.knowledgeTag(option.cid),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(option.content, style: const TextStyle(fontSize: 13)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(widget.lang == 'cn' ? '取消' : 'Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final tabs = [
@@ -115,6 +214,13 @@ class _KnowledgePointDetailPageState extends State<KnowledgePointDetailPage> {
       widget.lang == 'cn' ? '保存' : 'Save',
       widget.lang == 'cn' ? '删除' : 'Delete',
     ];
+
+    List<String> testRecsList = _point.testRecs != null && _point.testRecs!.isNotEmpty
+        ? _point.testRecs!.split(',')
+        : [];
+    List<String> errorRecsList = _point.errorRecs != null && _point.errorRecs!.isNotEmpty
+        ? _point.errorRecs!.split(',')
+        : [];
 
     return Scaffold(
       backgroundColor: const Color(0xFFFFF8E1),
@@ -138,7 +244,6 @@ class _KnowledgePointDetailPageState extends State<KnowledgePointDetailPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // ID + 掌握状态
                       Row(
                         children: [
                           if (_point.id != null)
@@ -157,26 +262,9 @@ class _KnowledgePointDetailPageState extends State<KnowledgePointDetailPage> {
                                 ),
                               ),
                             ),
-                          const Spacer(),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                widget.lang == 'cn' ? '已掌握' : 'Mastered',
-                                style: const TextStyle(fontSize: 13, color: Colors.grey),
-                              ),
-                              const SizedBox(width: 8),
-                              Switch(
-                                value: _mastered,
-                                onChanged: (v) => setState(() => _mastered = v),
-                                activeColor: const Color(0xFF4CAF50),
-                              ),
-                            ],
-                          ),
                         ],
                       ),
                       const SizedBox(height: 16),
-                      // 标题
                       TextField(
                         controller: _titleController,
                         maxLines: 2,
@@ -186,7 +274,6 @@ class _KnowledgePointDetailPageState extends State<KnowledgePointDetailPage> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      // 详细内容
                       TextField(
                         controller: _contentController,
                         maxLines: 6,
@@ -196,83 +283,152 @@ class _KnowledgePointDetailPageState extends State<KnowledgePointDetailPage> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      // 分类标签
-                      DropdownButtonFormField<String>(
-                        initialValue: _category,
-                        decoration: InputDecoration(
-                          labelText: widget.lang == 'cn' ? '分类 / Category' : 'Category',
-                          border: const OutlineInputBorder(),
+                      // 类ID（CID）- 一屏宽，样式比照课内标签
+                      InkWell(
+                        onTap: _showCidSelector,
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: TagStyles.knowledgeBg,
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: TagStyles.knowledgeText.withOpacity(0.3)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.lang == 'cn' ? '【类ID】' : 'Class ID',
+                                style: TextStyle(fontWeight: FontWeight.bold, color: TagStyles.knowledgeText),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _cidController.text.isNotEmpty 
+                                    ? '${_cidController.text} - ${_cidTitle ?? ''}'
+                                    : (widget.lang == 'cn' ? '点击选择类ID' : 'Tap to select'),
+                                style: TextStyle(color: TagStyles.knowledgeText),
+                              ),
+                            ],
+                          ),
                         ),
-                        items: _categories.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                        onChanged: (v) => setState(() => _category = v),
                       ),
                       const SizedBox(height: 12),
-                      // 课内单元
-                      TextField(
-                        controller: TextEditingController(text: _lessonUnit ?? ''),
-                        decoration: InputDecoration(
-                          labelText: widget.lang == 'cn' ? '课内单元 / Lesson Unit' : 'Lesson Unit',
-                          border: const OutlineInputBorder(),
+                      // 课内标签（单元+课号）
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: TagStyles.lessonUnitBg,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: TagStyles.lessonUnitText.withOpacity(0.3)),
                         ),
-                        onChanged: (v) => _lessonUnit = v.isEmpty ? null : v,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.lang == 'cn' ? '【课内标签】' : 'Lesson Unit',
+                              style: TextStyle(fontWeight: FontWeight.bold, color: TagStyles.lessonUnitText),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: _unitNumberController,
+                                    keyboardType: TextInputType.number,
+                                    decoration: InputDecoration(
+                                      labelText: widget.lang == 'cn' ? '单元号' : 'Unit No.',
+                                      border: const OutlineInputBorder(),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                const Text('+'),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: TextField(
+                                    controller: _lessonNumberController,
+                                    keyboardType: TextInputType.number,
+                                    decoration: InputDecoration(
+                                      labelText: widget.lang == 'cn' ? '课号' : 'Lesson No.',
+                                      border: const OutlineInputBorder(),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            if (_unitNumberController.text.isNotEmpty || _lessonNumberController.text.isNotEmpty)
+                              Text(
+                                '${_unitNumberController.text.isNotEmpty ? '${_unitNumberController.text}单元' : ''}'
+                                '${_unitNumberController.text.isNotEmpty && _lessonNumberController.text.isNotEmpty ? ' ' : ''}'
+                                '${_lessonNumberController.text.isNotEmpty ? '${_lessonNumberController.text}课' : ''}',
+                                style: TextStyle(color: TagStyles.lessonUnitText),
+                              ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 12),
-                      // 错类关联
-                      DropdownButtonFormField<String>(
-                        initialValue: _errorType,
-                        decoration: InputDecoration(
-                          labelText: widget.lang == 'cn' ? '关联错类 / Error Type' : 'Error Type',
-                          border: const OutlineInputBorder(),
+                      // 测试清单标签（只读）
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: TagStyles.exerciseBg,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: TagStyles.exerciseText.withOpacity(0.3)),
                         ),
-                        items: _errorTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                        onChanged: (v) => setState(() => _errorType = v),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.lang == 'cn' ? '【测试清单】' : 'Test Records',
+                              style: TextStyle(fontWeight: FontWeight.bold, color: TagStyles.exerciseText),
+                            ),
+                            const SizedBox(height: 4),
+                            if (testRecsList.isNotEmpty)
+                              Wrap(
+                                spacing: 4,
+                                children: testRecsList.map((rec) => TagStyles.exerciseTag(rec)).toList(),
+                              )
+                            else
+                              Text(
+                                widget.lang == 'cn' ? '暂无测试记录' : 'No test records',
+                                style: TextStyle(color: TagStyles.exerciseText),
+                              ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 12),
-                      // CID
-                      TextField(
-                        controller: _cidController,
-                        decoration: InputDecoration(
-                          labelText: widget.lang == 'cn' ? 'CID / 类ID' : 'Class ID',
-                          border: const OutlineInputBorder(),
+                      // 错误清单标签（只读）
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: TagStyles.errorTypeBg,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: TagStyles.errorTypeText.withOpacity(0.3)),
                         ),
-                        onChanged: (v) => _cidController.text = v,
-                      ),
-                      const SizedBox(height: 12),
-                      // Father ID
-                      TextField(
-                        controller: TextEditingController(text: _fatherId.toString()),
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          labelText: widget.lang == 'cn' ? 'Father ID / 父节点ID' : 'Father ID',
-                          border: const OutlineInputBorder(),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.lang == 'cn' ? '【错误清单】' : 'Error Records',
+                              style: TextStyle(fontWeight: FontWeight.bold, color: TagStyles.errorTypeText),
+                            ),
+                            const SizedBox(height: 4),
+                            if (errorRecsList.isNotEmpty)
+                              Wrap(
+                                spacing: 4,
+                                children: errorRecsList.map((rec) => TagStyles.errorTypeTag(rec)).toList(),
+                              )
+                            else
+                              Text(
+                                widget.lang == 'cn' ? '暂无错误记录' : 'No error records',
+                                style: TextStyle(color: TagStyles.errorTypeText),
+                              ),
+                          ],
                         ),
-                        onChanged: (v) => _fatherId = int.tryParse(v) ?? 0,
-                      ),
-                      const SizedBox(height: 12),
-                      // 难度选择
-                      DropdownButtonFormField<int>(
-                        initialValue: _difficulty,
-                        decoration: InputDecoration(
-                          labelText: widget.lang == 'cn' ? '难度 / Difficulty' : 'Difficulty',
-                          border: const OutlineInputBorder(),
-                        ),
-                        items: List.generate(5, (index) => index + 1)
-                            .map((d) => DropdownMenuItem(
-                                  value: d,
-                                  child: Text('${'★' * d}${'☆' * (5 - d)} ($d)'),
-                                ))
-                            .toList(),
-                        onChanged: (v) => setState(() => _difficulty = v!),
-                      ),
-                      const SizedBox(height: 12),
-                      // 知识标签
-                      TextField(
-                        controller: TextEditingController(text: _knowledgeTag ?? ''),
-                        decoration: InputDecoration(
-                          labelText: widget.lang == 'cn' ? '知识标签 / Knowledge Tag' : 'Knowledge Tag',
-                          border: const OutlineInputBorder(),
-                        ),
-                        onChanged: (v) => _knowledgeTag = v.isEmpty ? null : v,
                       ),
                     ],
                   ),

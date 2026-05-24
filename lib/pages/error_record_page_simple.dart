@@ -1,14 +1,16 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:sqflite/sqflite.dart';
 import '../components/app_title_bar.dart';
 import '../components/submenu_tabs.dart';
 import '../components/ai_reply_bar.dart';
 import '../components/input_area.dart';
 import '../components/dynamic_tag_selector.dart';
+import '../components/tag_styles.dart';
 import '../database/db_helper.dart';
 import '../database/models/error_record.dart';
-import '../database/models/exercise.dart';
+import '../database/models/question.dart';
 import '../database/models/chat_message.dart';
 import '../database/models/portfolio_item.dart';
 import '../services/llm_service.dart';
@@ -38,9 +40,10 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
   List<ErrorRecord> _allRecords = [];
   List<ErrorRecord> _displayRecords = [];
   final Set<int> _selectedIds = {};
-  String? _filterErrorType;
+  Set<String> _filterErrorTypes = {};
   Set<String> _filterKnowledgeTags = {};
   Set<String> _filterProgressSet = {};
+  Set<String> _filterExerciseIds = {};
   
   Set<String> get _allErrorTypes => {
         ..._allRecords.expand((r) => r.eids),
@@ -101,17 +104,51 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
     final updatedRecords = await _errorRecordDao.getAll(lang: widget.lang);
     setState(() {
       _allRecords = updatedRecords;
-      _applyFilter();
+      _displayRecords = _applyFilter();
     });
   }
 
-  void _applyFilter() {
+  List<ErrorRecord> _applyFilter() {
+    print('[Filter] Applying filters:');
+    print('[Filter] errorTypes: $_filterErrorTypes');
+    print('[Filter] knowledgeTags: $_filterKnowledgeTags');
+    print('[Filter] progressSet: $_filterProgressSet');
+    print('[Filter] exerciseIds: $_filterExerciseIds');
+    print('[Filter] total records: ${_allRecords.length}');
+    
     List<ErrorRecord> filtered = _allRecords.where((r) {
-      if (_filterErrorType != null && !r.eids.contains(_filterErrorType)) return false;
-      if (_filterKnowledgeTags.isNotEmpty && !_filterKnowledgeTags.any((tag) => r.kid?.contains(tag) ?? false)) return false;
-      if (_filterProgressSet.isNotEmpty && !_filterProgressSet.contains(r.progress)) return false;
+      if (_filterErrorTypes.isNotEmpty) {
+        bool hasMatchingErrorType = false;
+        for (final eid in r.eids) {
+          if (_filterErrorTypes.contains(eid)) {
+            hasMatchingErrorType = true;
+            break;
+          }
+        }
+        if (!hasMatchingErrorType) return false;
+      }
+      if (_filterKnowledgeTags.isNotEmpty) {
+        bool hasMatchingTag = false;
+        for (final tag in _filterKnowledgeTags) {
+          if (r.kid?.contains(tag) ?? false) {
+            hasMatchingTag = true;
+            break;
+          }
+        }
+        if (!hasMatchingTag) return false;
+      }
+      if (_filterProgressSet.isNotEmpty) {
+        final progress = r.progress ?? '';
+        if (!_filterProgressSet.contains(progress)) return false;
+      }
+      if (_filterExerciseIds.isNotEmpty) {
+        final exerciseKey = '${r.tid ?? ''}${r.qid != null ? 'Q${r.qid}' : ''}';
+        if (!_filterExerciseIds.contains(exerciseKey)) return false;
+      }
       return true;
     }).toList();
+    
+    print('[Filter] filtered records: ${filtered.length}');
     
     // Apply view mode sorting after filter
     switch (_viewMode) {
@@ -155,7 +192,7 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
           return idA.compareTo(idB);
         });
     }
-    _displayRecords = filtered;
+    return filtered;
   }
 
   int? _extractNumberFromTag(String tag) {
@@ -167,7 +204,7 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
     if (tab == (widget.lang == 'cn' ? '筛选' : 'Filter')) {
       _showFilterDialog();
     } else if (tab == (widget.lang == 'cn' ? '视图' : 'View')) {
-      _showHierarchicalView();
+      _showViewDialog();
     } else if (tab == (widget.lang == 'cn' ? '练习' : 'Practice')) {
       await _generateExercisesForSelectedWithLLM();
     } else if (tab == (widget.lang == 'cn' ? '错类' : 'Error Type')) {
@@ -221,39 +258,222 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
   }
 
   void _showViewDialog() {
-    final labels = widget.lang == 'cn' 
-        ? ['知识点大纲', '习题标号', '错题标号']
-        : ['Knowledge Outline', 'Exercise No.', 'Error No.'];
+    int? selectedOption;
     
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(widget.lang == 'cn' ? '错误本视图' : 'Error Record View'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(widget.lang == 'cn' ? '请选择排列方式：' : 'Select sorting mode:'),
-            const SizedBox(height: 8),
-            ...labels.asMap().entries.map((entry) {
-              return RadioListTile<int>(
-                title: Text(entry.value),
-                value: entry.key,
-                groupValue: _viewMode,
-                onChanged: (value) {
-                  setState(() {
-                    _viewMode = value!;
-                  });
-                  Navigator.pop(context);
-                },
-              );
-            }),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text(widget.lang == 'cn' ? '错误本视图' : 'Error Record View'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  RadioListTile<int>(
+                    title: Text(widget.lang == 'cn' ? '错类大纲视图' : 'Error Type Outline'),
+                    subtitle: Text(widget.lang == 'cn' ? '按错类大纲分组的层次视图' : 'Hierarchical view grouped by error type'),
+                    value: 10,
+                    groupValue: selectedOption,
+                    onChanged: (value) {
+                      setState(() => selectedOption = value);
+                    },
+                  ),
+                  RadioListTile<int>(
+                    title: Text(widget.lang == 'cn' ? '知识点大纲视图' : 'Knowledge Outline'),
+                    subtitle: Text(widget.lang == 'cn' ? '按知识点分组的层次视图' : 'Hierarchical view grouped by knowledge'),
+                    value: 11,
+                    groupValue: selectedOption,
+                    onChanged: (value) {
+                      setState(() => selectedOption = value);
+                    },
+                  ),
+                  RadioListTile<int>(
+                    title: Text(widget.lang == 'cn' ? '习题号汇总视图' : 'Exercise No. Grouped'),
+                    subtitle: Text(widget.lang == 'cn' ? '按TnQm汇总的层次视图' : 'Hierarchical view grouped by TnQm'),
+                    value: 12,
+                    groupValue: selectedOption,
+                    onChanged: (value) {
+                      setState(() => selectedOption = value);
+                    },
+                  ),
+                  const Divider(),
+                  RadioListTile<int>(
+                    title: Text(widget.lang == 'cn' ? '列表-按错类排序' : 'List - Sort by error type'),
+                    value: 0,
+                    groupValue: selectedOption,
+                    onChanged: (value) {
+                      setState(() => selectedOption = value);
+                    },
+                  ),
+                  RadioListTile<int>(
+                    title: Text(widget.lang == 'cn' ? '列表-按习题标号排序' : 'List - Sort by exercise No.'),
+                    value: 1,
+                    groupValue: selectedOption,
+                    onChanged: (value) {
+                      setState(() => selectedOption = value);
+                    },
+                  ),
+                  RadioListTile<int>(
+                    title: Text(widget.lang == 'cn' ? '列表-按错题标号排序' : 'List - Sort by error No.'),
+                    value: 2,
+                    groupValue: selectedOption,
+                    onChanged: (value) {
+                      setState(() => selectedOption = value);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(widget.lang == 'cn' ? '取消' : 'Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                if (selectedOption != null) {
+                  switch (selectedOption!) {
+                    case 10:
+                      _showHierarchicalViewByErrorType();
+                      break;
+                    case 11:
+                      _showHierarchicalViewByKnowledge();
+                      break;
+                    case 12:
+                      _showHierarchicalViewByExercise();
+                      break;
+                    case 0:
+                    case 1:
+                    case 2:
+                      setState(() {
+                        _viewMode = selectedOption!;
+                        _displayRecords = _applyFilter();
+                      });
+                      break;
+                  }
+                }
+              },
+              child: Text(widget.lang == 'cn' ? '确定' : 'Confirm'),
+            ),
           ],
         ),
       ),
-    ).then((_) {
-      _applyFilter();
-    });
+    );
+  }
+
+  void _showHierarchicalViewByErrorType() {
+    Map<String, List<ErrorRecord>> grouped = {};
+    for (final record in _displayRecords) {
+      final eids = record.eids.isNotEmpty ? record.eids : ['未分类'];
+      for (final eid in eids) {
+        grouped.putIfAbsent(eid, () => []).add(record);
+      }
+    }
+    
+    List<String> sortedKeys = grouped.keys.toList()
+      ..sort((a, b) {
+        if (a == '未分类') return 1;
+        if (b == '未分类') return -1;
+        return a.compareTo(b);
+      });
+    
+    Map<String, Map<String, List<ErrorRecord>>> sortedGrouped = {};
+    for (final key in sortedKeys) {
+      sortedGrouped[key] = {'': grouped[key]!};
+    }
+    
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => HierarchicalErrorView(
+          lang: widget.lang,
+          groupedData: sortedGrouped,
+          allRecords: _displayRecords,
+          dao: _errorRecordDao,
+          onHomeTap: widget.onHomeTap,
+          onUpdate: () => _loadRecords(),
+          viewTitle: widget.lang == 'cn' ? '错类大纲视图' : 'Error Type Outline View',
+        ),
+      ),
+    );
+  }
+
+  void _showHierarchicalViewByKnowledge() {
+    Map<String, List<ErrorRecord>> grouped = {};
+    for (final record in _displayRecords) {
+      final kid = record.kid ?? '未分类';
+      grouped.putIfAbsent(kid, () => []).add(record);
+    }
+    
+    List<String> sortedKeys = grouped.keys.toList()
+      ..sort((a, b) {
+        if (a == '未分类') return 1;
+        if (b == '未分类') return -1;
+        return a.compareTo(b);
+      });
+    
+    Map<String, Map<String, List<ErrorRecord>>> sortedGrouped = {};
+    for (final key in sortedKeys) {
+      sortedGrouped[key] = {'': grouped[key]!};
+    }
+    
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => HierarchicalErrorView(
+          lang: widget.lang,
+          groupedData: sortedGrouped,
+          allRecords: _displayRecords,
+          dao: _errorRecordDao,
+          onHomeTap: widget.onHomeTap,
+          onUpdate: () => _loadRecords(),
+          viewTitle: widget.lang == 'cn' ? '知识点大纲视图' : 'Knowledge Outline View',
+        ),
+      ),
+    );
+  }
+
+  void _showHierarchicalViewByExercise() {
+    Map<String, List<ErrorRecord>> grouped = {};
+    for (final record in _displayRecords) {
+      String exerciseKey = '${record.tid ?? ''}${record.qid != null ? 'Q${record.qid}' : ''}';
+      if (exerciseKey.isEmpty) exerciseKey = '未分类';
+      grouped.putIfAbsent(exerciseKey, () => []).add(record);
+    }
+    
+    List<String> sortedKeys = grouped.keys.toList()
+      ..sort((a, b) {
+        if (a == '未分类') return 1;
+        if (b == '未分类') return -1;
+        final numA = _extractNumberFromTag(a);
+        final numB = _extractNumberFromTag(b);
+        if (numA != null && numB != null) return numA.compareTo(numB);
+        return a.compareTo(b);
+      });
+    
+    Map<String, Map<String, List<ErrorRecord>>> sortedGrouped = {};
+    for (final key in sortedKeys) {
+      sortedGrouped[key] = {'': grouped[key]!};
+    }
+    
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => HierarchicalErrorView(
+          lang: widget.lang,
+          groupedData: sortedGrouped,
+          allRecords: _displayRecords,
+          dao: _errorRecordDao,
+          onHomeTap: widget.onHomeTap,
+          onUpdate: () => _loadRecords(),
+          viewTitle: widget.lang == 'cn' ? '习题号汇总视图' : 'Exercise No. View',
+        ),
+      ),
+    );
   }
 
   /// 根据选中错误记录，使用LLM生成练习题
@@ -301,7 +521,7 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
         lang: widget.lang,
       ));
 
-      final exerciseDao = ExerciseDao(db);
+      final exerciseDao = QuestionDao(db);
       final llmService = LlmService();
       await llmService.init();
 
@@ -356,19 +576,39 @@ $errorContent
 
       final List<dynamic> exercisesJson = json.decode(jsonMatch.group(0)!);
       int createdCount = 0;
+      int skippedCount = 0;
+      int expectedCount = 7;
 
       for (final exData in exercisesJson) {
+        if (!_validateExerciseData(exData)) {
+          skippedCount++;
+          print('[GenerateExercises] 跳过无效题目: $exData');
+          continue;
+        }
+
         final nextNum = await exerciseDao.nextExerciseIdNumber();
         
-        final exercise = Exercise(
-          question: exData['question'] ?? '',
-          options: exData['options'] != null 
-              ? (exData['options'] as List).join('\n') 
-              : null,
+        String category = '';
+        final type = exData['type']?.toString().toLowerCase();
+        if (type == 'fill_blank') {
+          category = '填空题';
+        } else if (type == 'multiple_choice') {
+          category = '选择题';
+        } else {
+          category = '填空题';
+        }
+        
+        String questionText = exData['question'] ?? '';
+        if (type == 'multiple_choice' && exData['options'] != null) {
+          final options = exData['options'] as List;
+          questionText = '${questionText}\n\n${options.join('\n')}';
+        }
+
+        final question = Question(
+          question: questionText,
           correctAnswer: exData['correctAnswer'] as String?,
           explanation: exData['explanation'] as String?,
-          category: '错题',
-          difficulty: 1,
+          category: category,
           progress: '未答题',
           source: '错误本',
           contentPath: selectedRecords.first.contentPath,
@@ -376,21 +616,37 @@ $errorContent
           lang: widget.lang,
         );
 
-        await exerciseDao.insert(exercise);
+        await exerciseDao.insert(question);
         createdCount++;
       }
 
-      // 更新AI消息为"已完成习题生成"并关闭弹窗
+      if (skippedCount > 0 && createdCount < expectedCount) {
+        createdCount += await _generateSupplementalExercisesForErrors(
+          selectedRecords, 
+          expectedCount - createdCount,
+          db,
+          llmService,
+          widget.lang,
+        );
+      }
+
       if (mounted) {
-        // 关闭加载弹窗
         Navigator.of(context).pop();
         
         final chatMsgDao = ChatMessageDao(db);
+        String message = widget.lang == 'cn' 
+            ? '已完成习题生成！已从${selectedRecords.length}条错误记录生成$createdCount道练习题并添加到习题集'
+            : 'Exercise generation complete! Generated $createdCount exercises from ${selectedRecords.length} error records.';
+        
+        if (skippedCount > 0) {
+          message += widget.lang == 'cn' 
+              ? '（跳过无效题目$skippedCount道）'
+              : ' (skipped $skippedCount invalid questions)';
+        }
+        
         final completedMsg = ChatMessage(
           id: loadingMsgId,
-          content: widget.lang == 'cn' 
-              ? '已完成习题生成！已从${selectedRecords.length}条错误记录生成$createdCount道练习题并添加到习题集'
-              : 'Exercise generation complete! Generated $createdCount exercises from ${selectedRecords.length} error records.',
+          content: message,
           isUser: false,
           createdAt: DateTime.now(),
           lang: widget.lang,
@@ -407,7 +663,6 @@ $errorContent
       }
     } catch (e) {
       print('[GenerateExercises] 生成失败: $e');
-      // 关闭弹窗并显示错误信息
       if (mounted) {
         try {
           Navigator.of(context).pop();
@@ -426,7 +681,6 @@ $errorContent
           );
           await errorChatMsgDao.update(errorMsg);
         } catch (_) {
-          // 忽略更新失败（可能 loadingMsgId 无效）
         }
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -440,113 +694,526 @@ $errorContent
     }
   }
 
-  void _showFilterDialog() {
+  bool _validateExerciseData(dynamic exData) {
+    if (exData == null) return false;
+    
+    final question = exData['question'];
+    final correctAnswer = exData['correctAnswer'];
+    
+    if (question == null || question.toString().trim().isEmpty) {
+      return false;
+    }
+    
+    if (correctAnswer == null || correctAnswer.toString().trim().isEmpty) {
+      return false;
+    }
+    
+    final type = exData['type']?.toString().toLowerCase();
+    if (type == 'multiple_choice') {
+      final options = exData['options'];
+      if (options == null || 
+          options is! List || 
+          options.length != 4) {
+        return false;
+      }
+      
+      for (final opt in options) {
+        if (opt == null || opt.toString().trim().isEmpty) {
+          return false;
+        }
+      }
+    }
+    
+    return true;
+  }
+
+  Future<int> _generateSupplementalExercisesForErrors(
+    List<ErrorRecord> selectedRecords, 
+    int count,
+    Database db,
+    LlmService llmService,
+    String lang,
+  ) async {
+    if (count <= 0) return 0;
+    
+    print('[GenerateExercises] 尝试补充生成 $count 道题目');
+    
+    try {
+      final errorContent = selectedRecords.map((r) {
+        return '${r.errorId} ${r.question ?? r.wrongWhere ?? ''}\n错因：${r.whyWrong ?? ''}\n预防：${r.howPrevent ?? ''}';
+      }).join('\n\n');
+
+      final prompt = '''你是一位语文教育专家。请根据以下错误记录内容，出${count}道针对性的练习题。
+
+错误案例分析：
+$errorContent
+
+要求：
+1. 题目类型可以是填空题或选择题
+2. 选择题需要包含A/B/C/D四个选项
+3. 题目要针对错误原因设计
+4. 只出语文学科题目
+
+请以如下JSON数组格式回复（只回复JSON，不要其他文字）：
+[
+  {
+    "type": "fill_blank" 或 "multiple_choice",
+    "question": "题目内容",
+    "options": null 或 ["A. 选项1", "B. 选项2", "C. 选项3", "D. 选项4"],
+    "correctAnswer": "答案",
+    "explanation": "解析"
+  }
+]
+''';
+
+      final response = await llmService.generateResponse(prompt);
+      
+      if (response['success'] != true || response['response'] == null) {
+        return 0;
+      }
+
+      final jsonResponse = response['response'] as String;
+      final jsonMatch = RegExp(r'\[[\s\S]*\]').firstMatch(jsonResponse);
+      if (jsonMatch == null) {
+        return 0;
+      }
+
+      final List<dynamic> exercisesJson = json.decode(jsonMatch.group(0)!);
+      final exerciseDao = QuestionDao(db);
+      int createdCount = 0;
+
+      for (final exData in exercisesJson) {
+        if (!_validateExerciseData(exData)) continue;
+        
+        String category = '';
+        final type = exData['type']?.toString().toLowerCase();
+        if (type == 'fill_blank') {
+          category = '填空题';
+        } else if (type == 'multiple_choice') {
+          category = '选择题';
+        } else {
+          category = '填空题';
+        }
+        
+        String questionText = exData['question'] ?? '';
+        if (type == 'multiple_choice' && exData['options'] != null) {
+          final options = exData['options'] as List;
+          questionText = '${questionText}\n\n${options.join('\n')}';
+        }
+
+        final question = Question(
+          question: questionText,
+          correctAnswer: exData['correctAnswer'] as String?,
+          explanation: exData['explanation'] as String?,
+          category: category,
+          progress: '未答题',
+          source: '错误本',
+          contentPath: selectedRecords.first.contentPath,
+          createdAt: DateTime.now(),
+          lang: lang,
+        );
+
+        await exerciseDao.insert(question);
+        createdCount++;
+        
+        if (createdCount >= count) break;
+      }
+
+      print('[GenerateExercises] 成功补充生成 $createdCount 道题目');
+      return createdCount;
+    } catch (e) {
+      print('[GenerateExercises] 补充生成失败: $e');
+      return 0;
+    }
+  }
+
+  void _showFilterDialog() async {
+    Set<String> selectedErrorTypes = Set<String>.from(_filterErrorTypes);
     Set<String> selectedKnowledgeTags = Set<String>.from(_filterKnowledgeTags);
     Set<String> selectedProgresses = Set<String>.from(_filterProgressSet);
-    String? tempErrorType = _filterErrorType;
+    Set<String> selectedExerciseIds = Set<String>.from(_filterExerciseIds);
     
-    // 获取所有可用的知识点标签和进度选项
-    final allKnowledgeTags = _allRecords.map((r) => r.kid).whereType<String>().toSet();
-    final allProgresses = {'待订正', '已订正'};
+    String? selectedFilterType;
+    String searchKeyword = '';
+    
+    final allErrorTypes = _allErrorTypes.toList()..sort();
+    final allKnowledgeTags = _allRecords.map((r) => r.kid).whereType<String>().toList()..sort();
+    final allProgresses = ['待订正', '已订正'];
+    final allExerciseIds = _allRecords.map((r) {
+      return '${r.tid ?? ''}${r.qid != null ? 'Q${r.qid}' : ''}';
+    }).where((e) => e.isNotEmpty).toList()..sort();
 
-    showDialog<void>(
+    final result = await showDialog<Map<String, Set<String>>>(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: Text(widget.lang == 'cn' ? '筛选错误记录' : 'Filter Error Records'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 错类筛选（下拉选择）
-                  Text(widget.lang == 'cn' ? '按错类：' : 'By error type:',
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: DropdownButtonFormField<String?>(
-                      value: tempErrorType,
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
+        builder: (context, setState) {
+          String getHintText() {
+            switch (selectedFilterType) {
+              case 'errorType':
+                return '输入ID号（如1.1）或关键词...';
+              case 'knowledge':
+                return '输入ID号（如K1）或关键词...';
+              case 'exercise':
+                return '输入TnQm格式（如T1Q1）或关键词...';
+              case 'progress':
+                return '输入关键词（待订正、已订正）...';
+              default:
+                return '请先选择筛选类型';
+            }
+          }
+
+          List<String> getSuggestions() {
+            if (searchKeyword.isEmpty || selectedFilterType == null) return [];
+            switch (selectedFilterType) {
+              case 'errorType':
+                return allErrorTypes.where((e) => e.contains(searchKeyword)).take(3).toList();
+              case 'knowledge':
+                return allKnowledgeTags.where((k) => k.contains(searchKeyword)).take(3).toList();
+              case 'exercise':
+                return allExerciseIds.where((e) => e.contains(searchKeyword)).take(3).toList();
+              case 'progress':
+                return allProgresses.where((p) => p.contains(searchKeyword)).take(3).toList();
+              default:
+                return [];
+            }
+          }
+
+          void addTag(String tag) {
+            switch (selectedFilterType) {
+              case 'errorType':
+                if (!selectedErrorTypes.contains(tag)) {
+                  setState(() => selectedErrorTypes.add(tag));
+                }
+                break;
+              case 'knowledge':
+                if (!selectedKnowledgeTags.contains(tag)) {
+                  setState(() => selectedKnowledgeTags.add(tag));
+                }
+                break;
+              case 'exercise':
+                if (!selectedExerciseIds.contains(tag)) {
+                  setState(() => selectedExerciseIds.add(tag));
+                }
+                break;
+              case 'progress':
+                if (!selectedProgresses.contains(tag)) {
+                  setState(() => selectedProgresses.add(tag));
+                }
+                break;
+            }
+            searchKeyword = '';
+          }
+
+          void removeTag(String tag, String type) {
+            switch (type) {
+              case 'errorType':
+                setState(() => selectedErrorTypes.remove(tag));
+                break;
+              case 'knowledge':
+                setState(() => selectedKnowledgeTags.remove(tag));
+                break;
+              case 'exercise':
+                setState(() => selectedExerciseIds.remove(tag));
+                break;
+              case 'progress':
+                setState(() => selectedProgresses.remove(tag));
+                break;
+            }
+          }
+
+          void clearAll() {
+            setState(() {
+              selectedErrorTypes.clear();
+              selectedKnowledgeTags.clear();
+              selectedProgresses.clear();
+              selectedExerciseIds.clear();
+              selectedFilterType = null;
+              searchKeyword = '';
+            });
+          }
+
+          return AlertDialog(
+            title: Text(widget.lang == 'cn' ? '筛选错误记录' : 'Filter Error Records'),
+            content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 第一行：筛选类型下拉框
+                    Text(widget.lang == 'cn' ? '选择筛选类型：' : 'Select filter type:',
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey),
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      items: [
-                        const DropdownMenuItem<String?>(
-                          value: null,
-                          child: Text('全部 / All'),
+                      child: DropdownButtonFormField<String?>(
+                        value: selectedFilterType,
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.zero,
                         ),
-                        ..._allErrorTypes.map((type) => DropdownMenuItem<String>(
-                          value: type,
-                          child: Text(type),
-                        )),
-                      ],
-                      onChanged: (value) {
-                        setState(() => tempErrorType = value);
-                      },
+                        isExpanded: true,
+                        items: [
+                          const DropdownMenuItem<String?>(
+                            value: null,
+                            child: Text('请选择筛选类型'),
+                          ),
+                          const DropdownMenuItem<String>(
+                            value: 'errorType',
+                            child: Text('错类'),
+                          ),
+                          const DropdownMenuItem<String>(
+                            value: 'knowledge',
+                            child: Text('知识点'),
+                          ),
+                          const DropdownMenuItem<String>(
+                            value: 'exercise',
+                            child: Text('习题号'),
+                          ),
+                          const DropdownMenuItem<String>(
+                            value: 'progress',
+                            child: Text('进度'),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          setState(() {
+                            selectedFilterType = value;
+                            searchKeyword = '';
+                          });
+                        },
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  // 知识点标签筛选（使用动态标签选择器）
-                  DynamicTagSelector(
-                    label: widget.lang == 'cn' ? '知识点标签' : 'Knowledge tags',
-                    currentTags: selectedKnowledgeTags,
-                    availableOptions: allKnowledgeTags,
-                    onTagsChanged: (newTags) {
-                      setState(() => selectedKnowledgeTags = newTags);
-                    },
-                    accentColor: const Color(0xFF2196F3),
-                  ),
-                  const SizedBox(height: 16),
-                  // 进度筛选（使用动态标签选择器）
-                  DynamicTagSelector(
-                    label: widget.lang == 'cn' ? '进度' : 'Progress',
-                    currentTags: selectedProgresses,
-                    availableOptions: allProgresses,
-                    onTagsChanged: (newTags) {
-                      setState(() => selectedProgresses = newTags);
-                    },
-                    accentColor: const Color(0xFFFF9800),
-                  ),
-                ],
+                    const SizedBox(height: 16),
+                    
+                    // 第二行：搜索框
+                    Text(widget.lang == 'cn' ? '搜索：' : 'Search:',
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    TextField(
+                      onChanged: (value) => setState(() => searchKeyword = value),
+                      enabled: selectedFilterType != null,
+                      decoration: InputDecoration(
+                        hintText: getHintText(),
+                        border: const OutlineInputBorder(),
+                        suffixIcon: const Icon(Icons.search),
+                      ),
+                    ),
+                    
+                    // 搜索提示下拉（最多3个）
+                    if (getSuggestions().isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        children: getSuggestions().map((item) => ActionChip(
+                          label: Text(item),
+                          onPressed: () => addTag(item),
+                          backgroundColor: Colors.grey[200],
+                        )).toList(),
+                      ),
+                    ],
+                    
+                    // 复选池控件
+                    const SizedBox(height: 16),
+                    Text(widget.lang == 'cn' ? '已选标签：' : 'Selected tags:',
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey[300]!),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      constraints: const BoxConstraints(minHeight: 120, maxHeight: 200),
+                      child: SingleChildScrollView(
+                        child: _buildSelectedTagsPool(
+                          selectedErrorTypes, 
+                          selectedKnowledgeTags, 
+                          selectedExerciseIds, 
+                          selectedProgresses, 
+                          removeTag
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _filterErrorType = null;
-                  _filterKnowledgeTags.clear();
-                  _filterProgressSet.clear();
-                  _applyFilter();
-                });
-                Navigator.pop(context);
-              },
-              child: Text(widget.lang == 'cn' ? '清空' : 'Clear'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  _filterErrorType = tempErrorType;
-                  _filterKnowledgeTags = selectedKnowledgeTags;
-                  _filterProgressSet = selectedProgresses;
-                  _applyFilter();
-                });
-                Navigator.pop(context);
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF69B4)),
-              child: Text(widget.lang == 'cn' ? '确定' : 'Confirm'),
-            ),
-          ],
-        ),
+            actions: [
+              TextButton(
+                onPressed: clearAll,
+                child: Text(widget.lang == 'cn' ? '清空' : 'Clear'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context, {
+                    'errorTypes': selectedErrorTypes,
+                    'knowledgeTags': selectedKnowledgeTags,
+                    'progressSet': selectedProgresses,
+                    'exerciseIds': selectedExerciseIds,
+                  });
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF69B4)),
+                child: Text(widget.lang == 'cn' ? '确定' : 'Confirm'),
+              ),
+            ],
+          );
+        },
       ),
+    );
+
+    if (result != null) {
+      setState(() {
+        _filterErrorTypes = Set<String>.from(result['errorTypes'] ?? {});
+        _filterKnowledgeTags = Set<String>.from(result['knowledgeTags'] ?? {});
+        _filterProgressSet = Set<String>.from(result['progressSet'] ?? {});
+        _filterExerciseIds = Set<String>.from(result['exerciseIds'] ?? {});
+        _displayRecords = _applyFilter();
+      });
+    }
+  }
+
+  Widget _buildSelectedTagsPool(Set<String> errorTypes, Set<String> knowledgeTags,
+      Set<String> exerciseIds, Set<String> progresses, Function(String, String) removeTag) {
+    List<Widget> chips = [];
+    
+    chips.addAll(errorTypes.map((tag) => Chip(
+      label: Text(tag),
+      backgroundColor: const Color(0xFFFFCDD2),
+      labelStyle: const TextStyle(color: Color(0xFFC62828)),
+      onDeleted: () => removeTag(tag, 'errorType'),
+      deleteIconColor: const Color(0xFFC62828),
+    )));
+    
+    chips.addAll(knowledgeTags.map((tag) => Chip(
+      label: Text(tag),
+      backgroundColor: const Color(0xFFE3F2FD),
+      labelStyle: const TextStyle(color: Color(0xFF1565C0)),
+      onDeleted: () => removeTag(tag, 'knowledge'),
+      deleteIconColor: const Color(0xFF1565C0),
+    )));
+    
+    chips.addAll(exerciseIds.map((tag) => Chip(
+      label: Text(tag),
+      backgroundColor: const Color(0xFFE8F5E9),
+      labelStyle: const TextStyle(color: Color(0xFF1B5E20)),
+      onDeleted: () => removeTag(tag, 'exercise'),
+      deleteIconColor: const Color(0xFF1B5E20),
+    )));
+    
+    chips.addAll(progresses.map((tag) => Chip(
+      label: Text(tag),
+      backgroundColor: const Color(0xFFFFF3E0),
+      labelStyle: const TextStyle(color: Color(0xFF8D6E63)),
+      onDeleted: () => removeTag(tag, 'progress'),
+      deleteIconColor: const Color(0xFF8D6E63),
+    )));
+
+    if (chips.isEmpty) {
+      return Text(
+        widget.lang == 'cn' ? '暂无选择' : 'No selection', 
+        style: TextStyle(color: Colors.grey[500]),
+      );
+    }
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      children: chips,
+    );
+  }
+
+  Widget _buildFilterTypeButton(String type, String label, String? selected, StateSetter setState) {
+    return Expanded(
+      child: ElevatedButton(
+        onPressed: () => setState(() => type == selected ? selected = null : selected = type),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: selected == type ? const Color(0xFF2196F3) : Colors.grey[200],
+          foregroundColor: selected == type ? Colors.white : Colors.black,
+        ),
+        child: Text(label, style: const TextStyle(fontSize: 12)),
+      ),
+    );
+  }
+
+  Widget _buildSelectedTags(String type, Set<String> errorTypes, Set<String> knowledgeTags,
+      Set<String> exerciseIds, Set<String> progresses, Function(String, String) removeTag) {
+    Set<String> tags;
+    Color color;
+    switch (type) {
+      case 'errorType':
+        tags = errorTypes;
+        color = const Color(0xFFFFCDD2);
+        break;
+      case 'knowledge':
+        tags = knowledgeTags;
+        color = const Color(0xFFE3F2FD);
+        break;
+      case 'exercise':
+        tags = exerciseIds;
+        color = const Color(0xFFE8F5E9);
+        break;
+      case 'progress':
+        tags = progresses;
+        color = const Color(0xFFFFF3E0);
+        break;
+      default:
+        tags = {};
+        color = Colors.grey;
+    }
+
+    if (tags.isEmpty) {
+      return Text(widget.lang == 'cn' ? '暂无选择' : 'No selection', 
+          style: TextStyle(color: Colors.grey));
+    }
+
+    return Wrap(
+      spacing: 8,
+      children: tags.map((tag) => Chip(
+        label: Text(tag),
+        backgroundColor: color,
+        onDeleted: () => removeTag(tag, type),
+      )).toList(),
+    );
+  }
+
+  Widget _buildAllSelectedTags(Set<String> errorTypes, Set<String> knowledgeTags,
+      Set<String> exerciseIds, Set<String> progresses, Function(String, String) removeTag) {
+    List<Widget> chips = [];
+    
+    chips.addAll(errorTypes.map((tag) => Chip(
+      label: Text('错类:$tag'),
+      backgroundColor: const Color(0xFFFFCDD2),
+      onDeleted: () => removeTag(tag, 'errorType'),
+    )));
+    
+    chips.addAll(knowledgeTags.map((tag) => Chip(
+      label: Text('知识:$tag'),
+      backgroundColor: const Color(0xFFE3F2FD),
+      onDeleted: () => removeTag(tag, 'knowledge'),
+    )));
+    
+    chips.addAll(exerciseIds.map((tag) => Chip(
+      label: Text('习题:$tag'),
+      backgroundColor: const Color(0xFFE8F5E9),
+      onDeleted: () => removeTag(tag, 'exercise'),
+    )));
+    
+    chips.addAll(progresses.map((tag) => Chip(
+      label: Text('进度:$tag'),
+      backgroundColor: const Color(0xFFFFF3E0),
+      onDeleted: () => removeTag(tag, 'progress'),
+    )));
+
+    if (chips.isEmpty) {
+      return Text(widget.lang == 'cn' ? '暂无筛选条件' : 'No filters', 
+          style: TextStyle(color: Colors.grey));
+    }
+
+    return Wrap(
+      spacing: 8,
+      children: chips,
     );
   }
 
@@ -574,6 +1241,7 @@ $errorContent
 
   @override
   Widget build(BuildContext context) {
+    print('[Build] _inGroupedView: $_inGroupedView, _displayRecords length: ${_displayRecords.length}');
     // 如果处于分组汇总视图模式，显示全屏分组视图（替换所有正常UI）
     if (_inGroupedView) {
       return ErrorRecordGroupedView(
@@ -691,28 +1359,12 @@ $errorContent
                       spacing: 6,
                       children: [
                         if (record.kid != null)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(color: const Color(0xFF87CEEB), borderRadius: BorderRadius.circular(4)),
-                            child: Text('知识: ${record.kid}', style: const TextStyle(fontSize: 11)),
-                          ),
+                          TagStyles.knowledgeTag('知识: ${record.kid}'),
                         if (record.eids.isNotEmpty)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(color: const Color(0xFFFFA07A), borderRadius: BorderRadius.circular(4)),
-                            child: Text('错类: ${record.eids.join(',')}', style: const TextStyle(fontSize: 11, color: Colors.deepOrange)),
-                          ),
-                        if (record.qid != null)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(color: const Color(0xFF98FB98), borderRadius: BorderRadius.circular(4)),
-                            child: Text('习题: ${record.qid}', style: const TextStyle(fontSize: 11)),
-                          ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(color: progressColor, borderRadius: BorderRadius.circular(4)),
-                          child: Text(record.progress, style: const TextStyle(fontSize: 11)),
-                        ),
+                          TagStyles.errorTypeTag('错类: ${record.eids.join(',')}'),
+                        if (record.tid != null && record.qid != null)
+                          TagStyles.exerciseTag('${record.tid}Q${record.qid}'),
+                        TagStyles.statusTag(record.progress, record.progress),
                       ],
                     ),
                   ],

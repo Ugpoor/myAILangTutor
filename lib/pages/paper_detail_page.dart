@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 import '../../components/app_title_bar.dart';
 import '../../components/submenu_tabs.dart';
-import '../../database/models/exam_paper.dart';
-import '../../database/models/exercise.dart';
+import '../../database/models/test.dart';
+import '../../database/models/question.dart';
 import '../../database/db_helper.dart';
-import 'exercise_detail_page.dart';
+import 'question_detail_page.dart';
 
-/// 试卷详情页面（显示该试卷下的所有试题）
 class PaperDetailPage extends StatefulWidget {
   final String lang;
-  final ExamPaper paper;
+  final Test paper;
   final VoidCallback onHomeTap;
 
   const PaperDetailPage({
@@ -24,40 +23,40 @@ class PaperDetailPage extends StatefulWidget {
 }
 
 class _PaperDetailPageState extends State<PaperDetailPage> {
-  late ExamPaper _paper;
-  List<Exercise> _exercises = [];
+  late Test _paper;
+  List<Question> _questions = [];
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _paper = widget.paper;
-    _loadExercises();
+    _loadQuestions();
   }
 
-  Future<void> _loadExercises() async {
+  Future<void> _loadQuestions() async {
     final db = await DatabaseHelper().database;
-    final exerciseDao = ExerciseDao(db);
-    final exercises = await exerciseDao.getExercisesByPaperId(_paper.paperId);
+    final questionDao = QuestionDao(db);
+    final questions = await questionDao.getQuestionsByTid(_paper.tid);
     setState(() {
-      _exercises = exercises;
+      _questions = questions;
       _isLoading = false;
     });
   }
 
-  void _navigateToExerciseDetail(Exercise exercise) async {
+  void _navigateToQuestionDetail(Question question) async {
     final result = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (context) => ExerciseDetailPage(
+        builder: (context) => QuestionDetailPage(
           lang: widget.lang,
-          exercise: exercise,
+          question: question,
           onHomeTap: widget.onHomeTap,
         ),
       ),
     );
     if (result == true) {
-      _loadExercises(); // 重新加载
+      _loadQuestions();
     }
   }
 
@@ -69,7 +68,7 @@ class _PaperDetailPageState extends State<PaperDetailPage> {
         child: Column(
           children: [
             AppTitleBar(
-              title: '${widget.lang == 'cn' ? '试卷' : 'Paper'} ${_paper.paperId}',
+              title: '${widget.lang == 'cn' ? '试卷' : 'Paper'} ${_paper.tid}',
               onHomeTap: widget.onHomeTap,
             ),
             Expanded(
@@ -87,11 +86,9 @@ class _PaperDetailPageState extends State<PaperDetailPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // 试卷信息卡片
                             _buildPaperInfoCard(),
                             const SizedBox(height: 20),
                             
-                            // 试题列表标题
                             Row(
                               children: [
                                 Container(
@@ -112,7 +109,7 @@ class _PaperDetailPageState extends State<PaperDetailPage> {
                                 ),
                                 const Spacer(),
                                 Text(
-                                  '${_exercises.length} ${widget.lang == 'cn' ? '题' : 'questions'}',
+                                  '${_questions.length} ${widget.lang == 'cn' ? '题' : 'questions'}',
                                   style: TextStyle(
                                     fontSize: 14,
                                     color: Colors.grey[600],
@@ -122,8 +119,7 @@ class _PaperDetailPageState extends State<PaperDetailPage> {
                             ),
                             const SizedBox(height: 12),
                             
-                            // 试题列表
-                            if (_exercises.isEmpty)
+                            if (_questions.isEmpty)
                               Center(
                                 child: Padding(
                                   padding: const EdgeInsets.symmetric(vertical: 40),
@@ -137,9 +133,9 @@ class _PaperDetailPageState extends State<PaperDetailPage> {
                                 ),
                               )
                             else
-                              ...List.generate(_exercises.length, (index) {
-                                final exercise = _exercises[index];
-                                return _buildExerciseItem(exercise, index);
+                              ...List.generate(_questions.length, (index) {
+                                final question = _questions[index];
+                                return _buildQuestionItem(question, index);
                               }),
                           ],
                         ),
@@ -181,7 +177,7 @@ class _PaperDetailPageState extends State<PaperDetailPage> {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  _paper.paperId,
+                  _paper.tid,
                   style: const TextStyle(
                     fontSize: 14,
                     color: Colors.white,
@@ -206,12 +202,10 @@ class _PaperDetailPageState extends State<PaperDetailPage> {
             spacing: 12,
             runSpacing: 8,
             children: [
-              if (_paper.subject != null)
-                _buildInfoChip('${widget.lang == 'cn' ? '科目' : 'Subject'}: ${_paper.subject}'),
-              if (_paper.lessonUnit != null)
-                _buildInfoChip('${widget.lang == 'cn' ? '单元' : 'Unit'}: ${_paper.lessonUnit}'),
-              if (_paper.knowledgeTag != null)
-                _buildInfoChip('${widget.lang == 'cn' ? '知识' : 'Knowledge'}: ${_paper.knowledgeTag}'),
+              if (_paper.lessonUnitList.isNotEmpty)
+                _buildInfoChip('${widget.lang == 'cn' ? '单元' : 'Unit'}: ${_paper.lessonUnitList.join(', ')}'),
+              if (_paper.kids.isNotEmpty)
+                _buildInfoChip('${widget.lang == 'cn' ? '知识' : 'Knowledge'}: ${_paper.kids.join(', ')}'),
               if (_paper.totalScore != null)
                 _buildInfoChip('${widget.lang == 'cn' ? '总分' : 'Score'}: ${_paper.totalScore}'),
               if (_paper.duration != null)
@@ -224,6 +218,14 @@ class _PaperDetailPageState extends State<PaperDetailPage> {
                 _buildInfoChip(
                   '${widget.lang == 'cn' ? '考试日期' : 'Exam Date'}: ${_paper.examDate!.toString().split('T')[0]}',
                 ),
+              if (_paper.gradeDate != null)
+                _buildInfoChip(
+                  '${widget.lang == 'cn' ? '批阅日期' : 'Grade Date'}: ${_paper.gradeDate!.toString().split('T')[0]}',
+                ),
+              if (_paper.images.isNotEmpty)
+                _buildInfoChip(
+                  '${widget.lang == 'cn' ? '图片' : 'Images'}: ${_paper.images.length}张',
+                ),
             ],
           ),
         ],
@@ -235,14 +237,14 @@ class _PaperDetailPageState extends State<PaperDetailPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: (color ?? const Color(0xFFE3F2FD)).withOpacity(0.7),
+        color: color ?? Colors.grey[200],
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
         text,
         style: TextStyle(
           fontSize: 12,
-          color: color != null ? Colors.black : const Color(0xFF1976D2),
+          color: color != null ? Colors.white : Colors.grey[700],
         ),
       ),
     );
@@ -250,132 +252,89 @@ class _PaperDetailPageState extends State<PaperDetailPage> {
 
   Color _getStatusColor(String status) {
     switch (status) {
-      case '未开始':
-        return Colors.grey;
-      case '进行中':
-        return Colors.orange;
       case '已完成':
-        return Colors.green;
+        return const Color(0xFF4CAF50);
+      case '进行中':
+        return const Color(0xFFFF9800);
       default:
         return Colors.grey;
     }
   }
 
-  Widget _buildExerciseItem(Exercise exercise, int index) {
-    final progressColor = _getProgressColor(exercise.progress);
-    
-    return InkWell(
-      onTap: () => _navigateToExerciseDetail(exercise),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.grey[50],
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.grey[300]!),
-        ),
-        child: Row(
-          children: [
-            // 题号圆圈
-            Container(
-              width: 32,
-              height: 32,
-              decoration: const BoxDecoration(
-                color: Color(0xFF2196F3),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  '${index + 1}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            
-            // 题目信息
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildQuestionItem(Question question, int index) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      child: InkWell(
+        onTap: () => _navigateToQuestionDetail(question),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      Text(
-                        exercise.exerciseId ?? '',
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2196F3),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Center(
+                      child: Text(
+                        '${index + 1}',
                         style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.white,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF651FFF),
-                          fontSize: 13,
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          exercise.question,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: progressColor,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          exercise.progress,
-                          style: const TextStyle(fontSize: 11),
-                        ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      question.exerciseId ?? widget.lang == 'cn' ? '未编号' : 'Unnumbered',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2196F3),
                       ),
-                      if (exercise.knowledgeTag != null)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF87CEEB),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            exercise.knowledgeTag!,
-                            style: const TextStyle(fontSize: 11),
-                          ),
-                        ),
-                    ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _getQuestionStatusColor(question.progress),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      question.progress,
+                      style: const TextStyle(fontSize: 12, color: Colors.white),
+                    ),
                   ),
                 ],
               ),
-            ),
-            
-            // 箭头图标
-            Icon(
-              Icons.chevron_right,
-              color: Colors.grey[400],
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                question.question,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 14),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Color _getProgressColor(String progress) {
-    switch (progress) {
-      case '未答题':
-        return const Color(0xFFD3D3D3);
-      case '已答题':
-        return const Color(0xFFFFE4E9);
+  Color _getQuestionStatusColor(String status) {
+    switch (status) {
       case '已批阅':
-        return const Color(0xFFFFA07A);
+        return const Color(0xFFFF9800);
       case '已订正':
-        return const Color(0xFF90EE90);
+        return const Color(0xFF4CAF50);
       default:
         return Colors.grey;
     }

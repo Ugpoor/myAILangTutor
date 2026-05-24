@@ -2,7 +2,7 @@ import 'package:sqflite/sqflite.dart';
 import '../database/db_helper.dart';
 import '../database/models/skill.dart';
 import '../database/models/error_record.dart';
-import '../database/models/exercise.dart';
+import '../database/models/question.dart';
 import '../database/models/portfolio_item.dart';
 import '../database/models/knowledge_point.dart';
 import '../database/models/error_type_outline.dart';

@@ -6,7 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import '../database/db_helper.dart';
 import '../database/models/error_record.dart';
-import '../database/models/exercise.dart';
+import '../database/models/question.dart';
 import '../database/models/portfolio_item.dart';
 import '../database/models/knowledge_point.dart';
 import '../database/models/error_type_outline.dart';
@@ -347,19 +347,29 @@ class ConfigImporter {
     final data = json.decode(jsonString);
     final exercises = data['exercises'] as List;
 
-    final dao = ExerciseDao(db);
+    final dao = QuestionDao(db);
     for (final item in exercises) {
+      int? lessonNumber;
+      int? unitNumber;
+      if (item['lessonUnit'] != null) {
+        final lessonMatch = RegExp(
+          r'(\d+)单元(\d+)课',
+        ).firstMatch(item['lessonUnit']);
+        if (lessonMatch != null) {
+          lessonNumber = int.tryParse(lessonMatch.group(1)!);
+          unitNumber = int.tryParse(lessonMatch.group(2)!);
+        }
+      }
+
       await dao.insert(
-        Exercise(
+        Question(
           question: item['question'],
           exerciseId: item['exerciseId'],
-          lessonUnit: item['lessonUnit'],
-          knowledgeTag: item['knowledgeTag'],
+          lessonNumber: lessonNumber,
+          unitNumber: unitNumber,
+          kid: item['knowledgeTag'],
           progress: item['progress'],
           category: item['category'],
-          examPaper: item['examPaper'],
-          answerSheet: item['answerSheet'],
-          answerKey: item['answerKey'],
           grading: item['grading'],
           createdAt: DateTime.now(),
           lang: item['lang'] ?? 'cn',

@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import '../components/app_title_bar.dart';
 import '../components/submenu_tabs.dart';
 import '../database/models/error_record.dart';
-import '../database/models/exercise.dart';
+import '../database/models/question.dart';
 import '../database/models/chat_message.dart';
 import '../database/db_helper.dart';
 import '../services/llm_service.dart';
@@ -19,6 +19,7 @@ class HierarchicalErrorView extends StatefulWidget {
   final ErrorRecordDao dao;
   final VoidCallback onHomeTap;
   final VoidCallback onUpdate;
+  final String? viewTitle;
 
   const HierarchicalErrorView({
     super.key,
@@ -28,6 +29,7 @@ class HierarchicalErrorView extends StatefulWidget {
     required this.dao,
     required this.onHomeTap,
     required this.onUpdate,
+    this.viewTitle,
   });
 
   @override
@@ -83,7 +85,7 @@ class _HierarchicalErrorViewState extends State<HierarchicalErrorView> {
         lang: widget.lang,
       ));
 
-      final exerciseDao = ExerciseDao(db);
+      final exerciseDao = QuestionDao(db);
       final llmService = LlmService();
       await llmService.init();
 
@@ -146,16 +148,18 @@ $errorContent
         final isFillBlank = optionsStr == null || 
             (optionsStr is List && optionsStr.isEmpty);
         
-        final exercise = Exercise(
-          question: exData['question'] ?? '',
-          options: isFillBlank 
-              ? null
-              : (optionsStr as List).join('\n'),
+        String questionText = exData['question'] ?? '';
+        if (!isFillBlank && optionsStr is List && optionsStr.isNotEmpty) {
+          questionText = '$questionText\n\n${optionsStr.join('\n')}';
+        }
+        
+        final question = Question(
+          question: questionText,
           correctAnswer: exData['correctAnswer'] as String?,
           explanation: exData['explanation'] as String?,
           category: isFillBlank ? '填空题' : '选择题',
           difficulty: 2,
-          knowledgeTag: selectedRecords.first.kid ?? '综合',
+          kid: selectedRecords.first.kid ?? '综合',
           progress: '未答题',
           source: '错误本自动生成',
           exerciseId: 'T$nextNum',
@@ -164,7 +168,7 @@ $errorContent
           lang: widget.lang,
         );
 
-        await exerciseDao.insert(exercise);
+        await exerciseDao.insert(question);
         createdCount++;
       }
 
@@ -223,7 +227,7 @@ $errorContent
         child: Column(
           children: [
             AppTitleBar(
-              title: widget.lang == 'cn' ? '错误本 - 层次视图' : 'Error Book - Hierarchical View',
+              title: widget.viewTitle ?? (widget.lang == 'cn' ? '错误本 - 层次视图' : 'Error Book - Hierarchical View'),
             ),
             Expanded(
               child: Container(

@@ -1,116 +1,122 @@
 import 'package:sqflite/sqflite.dart';
 
-/// 试卷模型（考试/测试的一次完整试卷）
-class ExamPaper {
+class Test {
   final int? id;
-  final String paperId; // E开头，如 E1, E2
-  final String title; // 试卷标题
-  final String? subject; // 科目
-  final String? lessonUnit; // 课内单元
-  final String? knowledgeTag; // 知识标签
+  final String tid;
+  final String title;
+  final List<String> lessonUnitList;
+  final List<String> kids;
   final DateTime? createdAt;
-  final DateTime? examDate; // 考试日期
+  final DateTime? examDate;
+  final DateTime? gradeDate;
   final String lang;
-  final int? totalScore; // 总分
-  final int? duration; // 时长（分钟）
-  final String status; // 状态：未开始/进行中/已完成
+  final int? totalScore;
+  final int? duration;
+  final String status;
+  final List<String> images;
 
-  ExamPaper({
+  Test({
     this.id,
-    required this.paperId,
+    required this.tid,
     required this.title,
-    this.subject,
-    this.lessonUnit,
-    this.knowledgeTag,
+    this.lessonUnitList = const [],
+    this.kids = const [],
     this.createdAt,
     this.examDate,
+    this.gradeDate,
     this.lang = 'cn',
     this.totalScore,
     this.duration,
     this.status = '未开始',
+    this.images = const [],
   });
 
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'paper_id': paperId,
+      'tid': tid,
       'title': title,
-      'subject': subject,
-      'lesson_unit': lessonUnit,
-      'knowledge_tag': knowledgeTag,
+      'lesson_unit_list': lessonUnitList.join(','),
+      'kids': kids.join(','),
       'created_at': createdAt?.toIso8601String(),
       'exam_date': examDate?.toIso8601String(),
+      'grade_date': gradeDate?.toIso8601String(),
       'lang': lang,
       'total_score': totalScore,
       'duration': duration,
       'status': status,
+      'images': images.join(','),
     };
   }
 
-  static ExamPaper fromMap(Map<String, dynamic> map) {
-    return ExamPaper(
+  static Test fromMap(Map<String, dynamic> map) {
+    return Test(
       id: map['id'] as int?,
-      paperId: map['paper_id'] as String,
+      tid: map['tid'] as String,
       title: map['title'] as String,
-      subject: map['subject'] as String?,
-      lessonUnit: map['lesson_unit'] as String?,
-      knowledgeTag: map['knowledge_tag'] as String?,
+      lessonUnitList: (map['lesson_unit_list'] as String?)?.split(',').where((s) => s.isNotEmpty).toList() ?? [],
+      kids: (map['kids'] as String?)?.split(',').where((s) => s.isNotEmpty).toList() ?? [],
       createdAt: map['created_at'] != null
           ? DateTime.parse(map['created_at'] as String)
           : null,
       examDate: map['exam_date'] != null
           ? DateTime.parse(map['exam_date'] as String)
           : null,
+      gradeDate: map['grade_date'] != null
+          ? DateTime.parse(map['grade_date'] as String)
+          : null,
       lang: map['lang'] as String? ?? 'cn',
       totalScore: map['total_score'] as int?,
       duration: map['duration'] as int?,
       status: map['status'] as String? ?? '未开始',
+      images: (map['images'] as String?)?.split(',').where((s) => s.isNotEmpty).toList() ?? [],
     );
   }
 
-  ExamPaper copyWith({
+  Test copyWith({
     int? id,
-    String? paperId,
+    String? tid,
     String? title,
-    String? subject,
-    String? lessonUnit,
-    String? knowledgeTag,
+    List<String>? lessonUnitList,
+    List<String>? kids,
     DateTime? createdAt,
     DateTime? examDate,
+    DateTime? gradeDate,
     String? lang,
     int? totalScore,
     int? duration,
     String? status,
+    List<String>? images,
   }) {
-    return ExamPaper(
+    return Test(
       id: id ?? this.id,
-      paperId: paperId ?? this.paperId,
+      tid: tid ?? this.tid,
       title: title ?? this.title,
-      subject: subject ?? this.subject,
-      lessonUnit: lessonUnit ?? this.lessonUnit,
-      knowledgeTag: knowledgeTag ?? this.knowledgeTag,
+      lessonUnitList: lessonUnitList ?? this.lessonUnitList,
+      kids: kids ?? this.kids,
       createdAt: createdAt ?? this.createdAt,
       examDate: examDate ?? this.examDate,
+      gradeDate: gradeDate ?? this.gradeDate,
       lang: lang ?? this.lang,
       totalScore: totalScore ?? this.totalScore,
       duration: duration ?? this.duration,
       status: status ?? this.status,
+      images: images ?? this.images,
     );
   }
 }
 
-class ExamPaperDao {
+class TestDao {
   final Database db;
 
-  ExamPaperDao(this.db);
+  TestDao(this.db);
 
-  Future<int> insert(ExamPaper paper) async {
-    return await db.insert('exam_papers', paper.toMap());
+  Future<int> insert(Test test) async {
+    return await db.insert('tests', test.toMap());
   }
 
-  Future<List<ExamPaper>> getAll({
+  Future<List<Test>> getAll({
     String? lang,
-    String? subject,
     String? status,
     String? keyword,
   }) async {
@@ -121,78 +127,73 @@ class ExamPaperDao {
       conditions.add('lang = ?');
       args.add(lang);
     }
-    if (subject != null) {
-      conditions.add('subject = ?');
-      args.add(subject);
-    }
     if (status != null) {
       conditions.add('status = ?');
       args.add(status);
     }
     if (keyword != null && keyword.isNotEmpty) {
-      conditions.add('(title LIKE ? OR paper_id LIKE ?)');
+      conditions.add('(title LIKE ? OR tid LIKE ?)');
       args.add('%$keyword%');
       args.add('%$keyword%');
     }
 
     final maps = await db.query(
-      'exam_papers',
+      'tests',
       where: conditions.isNotEmpty ? conditions.join(' AND ') : null,
       whereArgs: args.isNotEmpty ? args : null,
       orderBy: 'exam_date DESC, created_at DESC',
     );
-    return maps.map((map) => ExamPaper.fromMap(map)).toList();
+    return maps.map((map) => Test.fromMap(map)).toList();
   }
 
-  Future<ExamPaper?> getById(int id) async {
+  Future<Test?> getById(int id) async {
     final maps = await db.query(
-      'exam_papers',
+      'tests',
       where: 'id = ?',
       whereArgs: [id],
     );
-    return maps.isNotEmpty ? ExamPaper.fromMap(maps.first) : null;
+    return maps.isNotEmpty ? Test.fromMap(maps.first) : null;
   }
 
-  Future<ExamPaper?> getByPaperId(String paperId) async {
+  Future<Test?> getByTid(String tid) async {
     final maps = await db.query(
-      'exam_papers',
-      where: 'paper_id = ?',
-      whereArgs: [paperId],
+      'tests',
+      where: 'tid = ?',
+      whereArgs: [tid],
     );
-    return maps.isNotEmpty ? ExamPaper.fromMap(maps.first) : null;
+    return maps.isNotEmpty ? Test.fromMap(maps.first) : null;
   }
 
-  Future<int> update(ExamPaper paper) async {
+  Future<int> update(Test test) async {
     return await db.update(
-      'exam_papers',
-      paper.toMap(),
+      'tests',
+      test.toMap(),
       where: 'id = ?',
-      whereArgs: [paper.id],
+      whereArgs: [test.id],
     );
   }
 
   Future<int> delete(int id) async {
     return await db.delete(
-      'exam_papers',
+      'tests',
       where: 'id = ?',
       whereArgs: [id],
     );
   }
 
-  Future<int> nextPaperIdNumber() async {
+  Future<int> nextTidNumber() async {
     final result = await db.rawQuery(
-      "SELECT paper_id FROM exam_papers WHERE paper_id LIKE 'E%' ORDER BY id DESC LIMIT 1",
+      "SELECT tid FROM tests WHERE tid LIKE 'T%' ORDER BY id DESC LIMIT 1",
     );
     if (result.isEmpty) return 1;
-    final lastId = result.first['paper_id'] as String?;
+    final lastId = result.first['tid'] as String?;
     if (lastId == null) return 1;
-    final match = RegExp(r'E(\d+)').firstMatch(lastId);
+    final match = RegExp(r'T(\d+)').firstMatch(lastId);
     if (match != null) return int.parse(match.group(1)!) + 1;
     return 1;
   }
 
-  /// 删除所有试卷
   Future<int> deleteAll() async {
-    return await db.rawDelete('DELETE FROM exam_papers');
+    return await db.rawDelete('DELETE FROM tests');
   }
 }

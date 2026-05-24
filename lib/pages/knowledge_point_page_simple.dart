@@ -7,10 +7,12 @@ import '../components/ai_reply_bar.dart';
 import '../components/input_area.dart';
 import '../components/chat_bubble_list.dart';
 import '../components/dynamic_tag_selector.dart';
+import '../components/tag_styles.dart';
 import '../database/db_helper.dart';
 import '../database/models/knowledge_point.dart';
 import '../database/models/knowledge_outline.dart';
-import '../database/models/exercise.dart';
+import '../database/models/question.dart';
+import '../database/models/error_record.dart';
 import '../services/llm_service.dart';
 import 'knowledge_outline_page.dart';
 import 'knowledge_point_detail_page.dart';
@@ -42,10 +44,30 @@ class _KnowledgePointPageSimpleState extends State<KnowledgePointPageSimple> {
   Set<String> _filterCategories = {};
   Set<String> _filterLessonUnits = {};
   late KnowledgePointDao _knowledgePointDao;
-  late ExerciseDao _exerciseDao;
+  late QuestionDao _exerciseDao;
+  late ErrorRecordDao _errorRecordDao;
   final LlmService _llmService = LlmService();
   bool _isGenerating = false;
   bool _isCleaning = false;
+  
+  // 统计数据缓存
+  Map<String, int> _exerciseCountByCid = {};
+  Map<String, int> _errorCountByCid = {};
+
+  String _formatTime(DateTime time) {
+    final now = DateTime.now();
+    final diff = now.difference(time);
+    
+    if (diff.inMinutes < 60) {
+      return '${diff.inMinutes}分钟前';
+    } else if (diff.inHours < 24) {
+      return '${diff.inHours}小时前';
+    } else if (diff.inDays < 7) {
+      return '${diff.inDays}天前';
+    } else {
+      return '${time.month}/${time.day} ${time.hour}:${time.minute.toString().padLeft(2, '0')}';
+    }
+  }
 
   @override
   void initState() {
@@ -56,9 +78,41 @@ class _KnowledgePointPageSimpleState extends State<KnowledgePointPageSimple> {
   Future<void> _initDao() async {
     final db = await DatabaseHelper().database;
     _knowledgePointDao = KnowledgePointDao(db);
-    _exerciseDao = ExerciseDao(db);
+    _exerciseDao = QuestionDao(db);
+    _errorRecordDao = ErrorRecordDao(db);
     await _llmService.init();
     await _loadPoints();
+    await _loadStatistics();
+  }
+  
+  Future<void> _loadStatistics() async {
+    final exercises = await _exerciseDao.getAll();
+    final errorRecords = await _errorRecordDao.getAll();
+    
+    Map<String, int> exerciseCount = {};
+    Map<String, int> errorCount = {};
+    
+    // 统计习题中各类别的出现次数
+    for (final ex in exercises) {
+      if (ex.category != null) {
+        exerciseCount[ex.category!] = (exerciseCount[ex.category!] ?? 0) + 1;
+      }
+    }
+    
+    // 统计错题中各类别的出现次数
+    for (final record in errorRecords) {
+      if (record.eids.isNotEmpty) {
+        // 每个错类都统计一次
+        for (final eid in record.eids) {
+          errorCount[eid] = (errorCount[eid] ?? 0) + 1;
+        }
+      }
+    }
+    
+    setState(() {
+      _exerciseCountByCid = exerciseCount;
+      _errorCountByCid = errorCount;
+    });
   }
 
   @override
@@ -195,11 +249,19 @@ ${combinedContent.toString()}
 
       // 批量插入习题集
       int createdCount = 0;
+      int skippedCount = 0;
+      int expectedCount = 7; // 期望生成7道题
 
       for (final exData in exercisesJson) {
+        // 验证题目数据是否有效
+        if (!_validateExerciseData(exData)) {
+          skippedCount++;
+          print('[GenerateExercises] 跳过无效题目: $exData');
+          continue;
+        }
+
         final nextNum = await _exerciseDao.nextExerciseIdNumber();
         
-        // 根据 knowledgeTag 匹配对应的知识点（如果有）
         KnowledgePoint pointForExercise = selectedPoints[0];
         if (exData['knowledgeTag'] != null) {
           final matched = selectedPoints.firstWhere(
@@ -209,34 +271,68 @@ ${combinedContent.toString()}
           pointForExercise = matched;
         }
         
-        final exercise = Exercise(
-          question: exData['question'] ?? '',
-          options: exData['options'] != null 
-              ? (exData['options'] as List).join('\n') 
-              : null,
+        String category = '';
+        final type = exData['type']?.toString().toLowerCase();
+        if (type == 'fill_blank') {
+          category = '填空题';
+        } else if (type == 'multiple_choice') {
+          category = '选择题';
+        } else {
+          category = '填空题';
+        }
+        
+        String questionText = exData['question'] ?? '';
+        if (type == 'multiple_choice' && exData['options'] != null) {
+          final options = exData['options'] as List;
+          questionText = '${questionText}\n\n${options.join('\n')}';
+        }
+
+        final question = Question(
+          question: questionText,
           correctAnswer: exData['correctAnswer'] as String?,
           explanation: exData['explanation'] as String?,
-          category: pointForExercise.cid ?? '练习题',
+          category: category,
           progress: '未答题',
           source: '知识点',
           contentPath: pointForExercise.contentPath,
           createdAt: DateTime.now(),
           lang: widget.lang,
+          kid: pointForExercise.id != null ? 'K${pointForExercise.id}' : null,
         );
 
-        await _exerciseDao.insert(exercise);
+        await _exerciseDao.insert(question);
         createdCount++;
+      }
+
+      if (skippedCount > 0 && createdCount < expectedCount) {
+        createdCount += await _generateSupplementalExercises(
+          selectedPoints, 
+          expectedCount - createdCount
+        );
       }
 
       final cnSubjectLabel = widget.lang == 'cn' ? '个知识点' : 'knowledge points';
       if (mounted) {
+        String message = widget.lang == 'cn' 
+            ? '已从${selectedPoints.length}$cnSubjectLabel生成$createdCount道练习题并添加到习题集'
+            : 'Generated $createdCount exercises from ${selectedPoints.length}$cnSubjectLabel and added to exercise set';
+        
+        if (skippedCount > 0) {
+          message += widget.lang == 'cn' 
+              ? '（跳过无效题目$skippedCount道）' 
+              : ' (skipped $skippedCount invalid questions)';
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(
-            widget.lang == 'cn' 
-                ? '已从${selectedPoints.length}$cnSubjectLabel生成$createdCount道练习题并添加到习题集'
-                : 'Generated $createdCount exercises from ${selectedPoints.length}$cnSubjectLabel and added to exercise set',
-          )),
+          SnackBar(content: Text(message)),
         );
+      }
+      
+      final now = DateTime.now();
+      for (final point in selectedPoints) {
+        if (point.id != null) {
+          await _knowledgePointDao.updateLastPracticeTime(point.id!, now);
+        }
       }
       
       await _loadPoints();
@@ -251,6 +347,149 @@ ${combinedContent.toString()}
       }
     } finally {
       setState(() => _isGenerating = false);
+    }
+  }
+
+  bool _validateExerciseData(dynamic exData) {
+    if (exData == null) return false;
+    
+    // 检查必需字段
+    final question = exData['question'];
+    final correctAnswer = exData['correctAnswer'];
+    
+    if (question == null || question.toString().trim().isEmpty) {
+      return false;
+    }
+    
+    if (correctAnswer == null || correctAnswer.toString().trim().isEmpty) {
+      return false;
+    }
+    
+    // 检查选择题是否有选项
+    final type = exData['type']?.toString().toLowerCase();
+    if (type == 'multiple_choice') {
+      final options = exData['options'];
+      if (options == null || 
+          options is! List || 
+          options.length != 4) {
+        return false;
+      }
+      
+      for (final opt in options) {
+        if (opt == null || opt.toString().trim().isEmpty) {
+          return false;
+        }
+      }
+    }
+    
+    return true;
+  }
+
+  Future<int> _generateSupplementalExercises(List<KnowledgePoint> selectedPoints, int count) async {
+    if (count <= 0) return 0;
+    
+    print('[GenerateExercises] 尝试补充生成 $count 道题目');
+    
+    try {
+      StringBuffer combinedContent = StringBuffer();
+      for (final point in selectedPoints) {
+        combinedContent.writeln('【${point.title}】');
+        if (point.cid != null) combinedContent.writeln('分类：${point.cid}');
+        if (point.brief != null) combinedContent.writeln('简介：${point.brief}');
+        combinedContent.writeln('');
+      }
+
+      final prompt = '''你是一位语文教育专家。请根据以下主题知识点内容，出${count}道练习题。
+
+主题知识点：
+${combinedContent.toString()}
+
+要求：
+1. 题目类型可以是填空题或选择题
+2. 选择题需要包含A/B/C/D四个选项
+3. 题目要覆盖知识点的关键内容
+4. 只出语文学科题目
+
+请以如下JSON数组格式回复（只回复JSON，不要其他文字）：
+[
+  {
+    "type": "fill_blank" 或 "multiple_choice",
+    "question": "题目内容",
+    "options": null 或 ["A. 选项1", "B. 选项2", "C. 选项3", "D. 选项4"],
+    "correctAnswer": "答案",
+    "explanation": "解析",
+    "knowledgeTag": "所属知识点标题"
+  }
+]
+''';
+
+      final response = await _llmService.generateResponse(prompt);
+      
+      if (response['success'] != true || response['response'] == null) {
+        return 0;
+      }
+
+      final jsonResponse = response['response'] as String;
+      final jsonMatch = RegExp(r'\[[\s\S]*\]').firstMatch(jsonResponse);
+      if (jsonMatch == null) {
+        return 0;
+      }
+
+      final List<dynamic> exercisesJson = json.decode(jsonMatch.group(0)!);
+      int createdCount = 0;
+
+      for (final exData in exercisesJson) {
+        if (!_validateExerciseData(exData)) continue;
+        
+        KnowledgePoint pointForExercise = selectedPoints[0];
+        if (exData['knowledgeTag'] != null) {
+          final matched = selectedPoints.firstWhere(
+            (p) => p.title == exData['knowledgeTag'],
+            orElse: () => selectedPoints[0],
+          );
+          pointForExercise = matched;
+        }
+        
+        String category = '';
+        final type = exData['type']?.toString().toLowerCase();
+        if (type == 'fill_blank') {
+          category = '填空题';
+        } else if (type == 'multiple_choice') {
+          category = '选择题';
+        } else {
+          category = '填空题';
+        }
+        
+        String questionText = exData['question'] ?? '';
+        if (type == 'multiple_choice' && exData['options'] != null) {
+          final options = exData['options'] as List;
+          questionText = '${questionText}\n\n${options.join('\n')}';
+        }
+
+        final question = Question(
+          question: questionText,
+          correctAnswer: exData['correctAnswer'] as String?,
+          explanation: exData['explanation'] as String?,
+          category: category,
+          progress: '未答题',
+          source: '知识点',
+          contentPath: pointForExercise.contentPath,
+          createdAt: DateTime.now(),
+          lang: widget.lang,
+          kid: pointForExercise.id != null ? 'K${pointForExercise.id}' : null,
+        );
+
+        await _exerciseDao.insert(question);
+        createdCount++;
+        
+        if (createdCount >= count) break;
+      }
+
+      print('[GenerateExercises] 成功补充生成 $createdCount 道题目');
+      return createdCount;
+    } catch (e) {
+      print('[GenerateExercises] 补充生成失败: $e');
+      return 0;
     }
   }
 
@@ -323,8 +562,12 @@ ${combinedContent.toString()}
   void _showFilterDialog() {
     final categories = _allPoints.map((p) => p.cid).whereType<String>().toSet();
     final lessonUnits = _allPoints.map((p) => p.unitNumber).whereType<String>().toSet();
+    final kidList = _allPoints.map((p) => p.kid).whereType<String>().toSet();
     Set<String> selectedCategories = Set<String>.from(_filterCategories);
     Set<String> selectedLessonUnits = Set<String>.from(_filterLessonUnits);
+    
+    String? selectedKid;
+    String keyword = '';
 
     showDialog<void>(
       context: context,
@@ -338,9 +581,53 @@ ${combinedContent.toString()}
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 分类筛选（使用动态标签选择器）
+                  // 关键词搜索
+                  Text(widget.lang == 'cn' ? '关键词搜索' : 'Keyword Search',
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  TextField(
+                    onChanged: (value) => setState(() => keyword = value),
+                    decoration: InputDecoration(
+                      hintText: widget.lang == 'cn' ? '搜索标题或简介...' : 'Search title or brief...',
+                      border: const OutlineInputBorder(),
+                      isDense: true,
+                      prefixIcon: const Icon(Icons.search, size: 18),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Kid下拉框
+                  Text(widget.lang == 'cn' ? '知识点ID' : 'Knowledge ID',
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: DropdownButtonFormField<String?>(
+                      value: selectedKid,
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('全部 / All'),
+                        ),
+                        ...kidList.map((kid) => DropdownMenuItem<String>(
+                          value: kid,
+                          child: Text(kid),
+                        )),
+                      ],
+                      onChanged: (value) => setState(() => selectedKid = value),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // 分类筛选（cid）
                   DynamicTagSelector(
-                    label: widget.lang == 'cn' ? '分类' : 'Category',
+                    label: widget.lang == 'cn' ? '类ID (CID)' : 'Class ID',
                     currentTags: selectedCategories,
                     availableOptions: categories,
                     onTagsChanged: (newTags) {
@@ -349,9 +636,9 @@ ${combinedContent.toString()}
                     accentColor: const Color(0xFF2196F3),
                   ),
                   const SizedBox(height: 16),
-                  // 课内单元筛选（使用动态标签选择器）
+                  // 课内单元筛选
                   DynamicTagSelector(
-                    label: widget.lang == 'cn' ? '课内单元' : 'Lesson units',
+                    label: widget.lang == 'cn' ? '课内标签' : 'Lesson Units',
                     currentTags: selectedLessonUnits,
                     availableOptions: lessonUnits,
                     onTagsChanged: (newTags) {
@@ -465,7 +752,6 @@ ${combinedContent.toString()}
             children: [
               Row(
                 children: [
-                  // 左侧方框多选
                   Checkbox(
                     value: isSelected,
                     onChanged: (value) {
@@ -485,69 +771,41 @@ ${combinedContent.toString()}
                       children: [
                         Row(
                           children: [
-                            // CID 标识
-                            if (point.cid != null && point.cid!.isNotEmpty)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFFD700),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text('CID: ${point.cid}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                              ),
-                            const SizedBox(width: 8),
-                            // 子节点标识
-                            if (point.kid != null)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFDDA0DD),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text('${point.kid}', style: const TextStyle(fontSize: 10)),
-                              ),
-                            const SizedBox(width: 8),
-                            // 标题
                             Text(
-                              point.title,
+                              point.kid != null 
+                                  ? '${point.kid}.${point.title}' 
+                                  : point.title,
                               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
                             ),
                           ],
                         ),
                         const SizedBox(height: 4),
-                        // 掌握状态（移动到标签区域）
                         Wrap(
                           spacing: 6,
                           children: [
-                            if (point.unitNumber != null)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(color: const Color(0xFFFFE4E9), borderRadius: BorderRadius.circular(4)),
-                                child: Text('单元: ${point.unitNumber}', style: const TextStyle(fontSize: 11)),
+                            if (point.unitNumber != null || point.lessonNumber != null)
+                              TagStyles.lessonUnitTag(
+                                '${point.unitNumber != null ? '${point.unitNumber}单元' : ''}'
+                                '${point.unitNumber != null && point.lessonNumber != null ? ' ' : ''}'
+                                '${point.lessonNumber != null ? '${point.lessonNumber}课' : ''}',
                               ),
                             if (point.cid != null)
+                              TagStyles.knowledgeTag('分类: ${point.cid}'),
+                            if (point.cid != null && _exerciseCountByCid[point.cid!] != null && _exerciseCountByCid[point.cid!]! > 0)
+                              TagStyles.exerciseTag('同类考过${_exerciseCountByCid[point.cid!]}次'),
+                            if (point.cid != null && _errorCountByCid[point.cid!] != null && _errorCountByCid[point.cid!]! > 0)
+                              TagStyles.errorTypeTag('同类错${_errorCountByCid[point.cid!]}次'),
+                            if ((point.testTimes ?? 0) > 0)
+                              TagStyles.exerciseTag('测试${point.testTimes}次'),
+                            if (point.lastPracticeTime != null)
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(color: const Color(0xFF87CEEB), borderRadius: BorderRadius.circular(4)),
-                                child: Text(point.cid!, style: const TextStyle(fontSize: 11)),
+                                decoration: BoxDecoration(color: const Color(0xFFF5F5F5), borderRadius: BorderRadius.circular(4)),
+                                child: Text(
+                                  _formatTime(point.lastPracticeTime!),
+                                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                ),
                               ),
-                            if (point.brief != null)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(color: const Color(0xFFFFA07A), borderRadius: BorderRadius.circular(4)),
-                                child: Text('简介: ${point.brief!.length > 10 ? point.brief!.substring(0, 10) + '...' : point.brief}', style: const TextStyle(fontSize: 11, color: Colors.deepOrange)),
-                              ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: (point.testTimes ?? 0) > 0 ? const Color(0xFF90EE90) : const Color(0xFFD3D3D3),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                (point.testTimes ?? 0) > 0 ? '测试${point.testTimes}次' : '未测试',
-                                style: const TextStyle(fontSize: 11),
-                              ),
-                            ),
                           ],
                         ),
                       ],

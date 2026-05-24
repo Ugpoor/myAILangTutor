@@ -5,10 +5,10 @@ import '../components/ai_reply_bar.dart';
 import '../components/input_area.dart';
 import '../components/dynamic_tag_selector.dart';
 import '../database/db_helper.dart';
-import '../database/models/exercise.dart';
+import '../database/models/question.dart';
 import '../database/models/error_record.dart';
 import '../services/llm_service.dart';
-import 'exercise_detail_page.dart';
+import 'question_detail_page.dart';
 
 class ExercisesPageSimple extends StatefulWidget {
   final String lang;
@@ -27,8 +27,8 @@ class ExercisesPageSimple extends StatefulWidget {
 }
 
 class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
-  List<Exercise> _allExercises = [];
-  List<Exercise> _displayExercises = [];
+  List<Question> _allExercises = [];
+  List<Question> _displayExercises = [];
   final Set<int> _selectedIds = {};
   String? _filterProgress;
   Set<String> _filterKnowledgeTags = {};
@@ -37,7 +37,7 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
   bool _isGrading = false;
   bool _isCorrecting = false;
   bool _isCleaning = false;
-  late ExerciseDao _exerciseDao;
+  late QuestionDao _exerciseDao;
   final LlmService _llmService = LlmService();
 
   @override
@@ -48,7 +48,7 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
 
   Future<void> _initDao() async {
     final db = await DatabaseHelper().database;
-    _exerciseDao = ExerciseDao(db);
+    _exerciseDao = QuestionDao(db);
     await _llmService.init();
     await _loadExercises();
   }
@@ -64,7 +64,7 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
   void _applyFilter() {
     _displayExercises = _allExercises.where((e) {
       if (_filterProgress != null && e.progress != _filterProgress) return false;
-      if (_filterKnowledgeTags.isNotEmpty && !_filterKnowledgeTags.any((tag) => e.knowledgeTag?.contains(tag) ?? false)) return false;
+      if (_filterKnowledgeTags.isNotEmpty && !_filterKnowledgeTags.any((tag) => e.kid?.contains(tag) ?? false)) return false;
       if (_filterSources.isNotEmpty && !(_filterSources.contains(e.source) || (e.source == null && _filterSources.contains('未设置')))) return false;
       if (_filterLessonUnitInput?.isNotEmpty == true && !(e.lessonUnit?.contains(_filterLessonUnitInput!) ?? false)) return false;
       return true;
@@ -72,7 +72,7 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
   }
 
   /// 获取所有唯一的知识点标签
-  Set<String> get _allKnowledgeTags => _allExercises.map((e) => e.knowledgeTag).whereType<String>().toSet();
+  Set<String> get _allKnowledgeTags => _allExercises.map((e) => e.kid).whereType<String>().toSet();
   /// 获取所有唯一的来源
   Set<String> get _allSources => _allExercises.map((e) => e.source).where((s) => s != null).cast<String>().toSet();
 
@@ -115,7 +115,7 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
     setState(() => _isCleaning = true);
 
     try {
-      final result = await _exerciseDao.cleanExercises();
+      final result = await _exerciseDao.cleanQuestions();
       
       await _loadExercises();
       
@@ -312,8 +312,8 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
         final nextNum = await errorRecordDao.nextErrorIdNumber();
         await errorRecordDao.insert(ErrorRecord(
           errorId: 'T$nextNum',
-          question: exercise.examPaper,
-          wrongAnswer: exercise.answerSheet,
+          question: exercise.question,
+          wrongAnswer: exercise.correctAnswer,
           wrongWhere: '练习错题',
           progress: '待订正',
           createdAt: DateTime.now(),
@@ -538,31 +538,32 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
     );
   }
 
-  Widget _buildExerciseItem(Exercise exercise) {
+  Widget _buildExerciseItem(Question exercise) {
     final isSelected = _selectedIds.contains(exercise.id);
     final progressColor = _getProgressColor(exercise.progress);
 
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: InkWell(
-        onTap: () {
-          _showExerciseDetail(exercise);
-        },
+    return InkWell(
+      onTap: () => _showExerciseDetail(exercise),
+      child: Card(
+        margin: const EdgeInsets.symmetric(vertical: 4),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              Checkbox(
-                value: isSelected,
-                onChanged: (value) {
+              GestureDetector(
+                onTap: (() {
                   setState(() {
-                    if (value == true) {
-                      _selectedIds.add(exercise.id!);
-                    } else {
+                    if (isSelected) {
                       _selectedIds.remove(exercise.id!);
+                    } else {
+                      _selectedIds.add(exercise.id!);
                     }
                   });
-                },
+                }),
+                child: Checkbox(
+                  value: isSelected,
+                  onChanged: null,
+                ),
               ),
               Expanded(
                 child: Column(
@@ -600,11 +601,11 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
                             decoration: BoxDecoration(color: const Color(0xFFFFE4E9), borderRadius: BorderRadius.circular(4)),
                             child: Text('课内: ${exercise.lessonUnit}', style: const TextStyle(fontSize: 11)),
                           ),
-                        if (exercise.knowledgeTag != null)
+                        if (exercise.kid != null)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(color: const Color(0xFF87CEEB), borderRadius: BorderRadius.circular(4)),
-                            child: Text('知识: ${exercise.knowledgeTag}', style: const TextStyle(fontSize: 11)),
+                            child: Text('知识: ${exercise.kid}', style: const TextStyle(fontSize: 11)),
                           ),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -623,13 +624,13 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
     );
   }
 
-  Future<void> _showExerciseDetail(Exercise exercise) async {
-    await Navigator.push(
+  Future<void> _showExerciseDetail(Question exercise) async {
+    final result = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (context) => ExerciseDetailPage(
+        builder: (context) => QuestionDetailPage(
           lang: widget.lang,
-          exercise: exercise,
+          question: exercise,
           onHomeTap: widget.onHomeTap,
         ),
       ),
