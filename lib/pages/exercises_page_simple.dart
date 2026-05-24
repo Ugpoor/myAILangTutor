@@ -3,12 +3,12 @@ import '../components/app_title_bar.dart';
 import '../components/submenu_tabs.dart';
 import '../components/ai_reply_bar.dart';
 import '../components/input_area.dart';
+import '../components/tag_styles.dart';
 import '../database/db_helper.dart';
 import '../database/models/question.dart';
-import '../database/models/test_paper.dart';
+import '../database/models/test.dart';
 import '../services/llm_service.dart';
-import 'test_paper_detail_page.dart';
-import 'question_detail_page.dart';
+import 'paper_detail_page.dart';
 
 class ExercisesPageSimple extends StatefulWidget {
   final String lang;
@@ -27,12 +27,12 @@ class ExercisesPageSimple extends StatefulWidget {
 }
 
 class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
-  List<TestPaper> _allTestPapers = [];
-  List<TestPaper> _displayTestPapers = [];
+  List<Test> _allTests = [];
+  List<Test> _displayTests = [];
   final Set<int> _selectedIds = {};
   bool _isGrading = false;
   bool _isCorrecting = false;
-  late TestPaperDao _testPaperDao;
+  late TestDao _testDao;
   late QuestionDao _questionDao;
   final LlmService _llmService = LlmService();
 
@@ -44,17 +44,17 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
 
   Future<void> _initDao() async {
     final db = await DatabaseHelper().database;
-    _testPaperDao = TestPaperDao(db);
+    _testDao = TestDao(db);
     _questionDao = QuestionDao(db);
     await _llmService.init();
-    await _loadTestPapers();
+    await _loadTests();
   }
 
-  Future<void> _loadTestPapers() async {
-    final papers = await _testPaperDao.getAll(lang: widget.lang);
+  Future<void> _loadTests() async {
+    final tests = await _testDao.getAll(lang: widget.lang);
     setState(() {
-      _allTestPapers = papers;
-      _displayTestPapers = papers;
+      _allTests = tests;
+      _displayTests = tests;
     });
   }
 
@@ -85,11 +85,11 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
 
     try {
       final questions = await _questionDao.getAll(lang: widget.lang);
-      final selectedPapers = _allTestPapers.where((p) => _selectedIds.contains(p.id)).toList();
+      final selectedTests = _allTests.where((t) => _selectedIds.contains(t.id)).toList();
       
-      for (final paper in selectedPapers) {
-        final paperQuestions = questions.where((q) => q.tid == paper.tid).toList();
-        final toGrade = paperQuestions.where((q) => q.progress == '未批阅').toList();
+      for (final test in selectedTests) {
+        final testQuestions = questions.where((q) => q.tid == test.tid).toList();
+        final toGrade = testQuestions.where((q) => q.progress == '未批阅').toList();
         
         for (final question in toGrade) {
           final prompt = '请批阅以下习题：\n题目：${question.question}\n答卷：${question.correctAnswer ?? "未作答"}';
@@ -139,11 +139,11 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
 
     try {
       final questions = await _questionDao.getAll(lang: widget.lang);
-      final selectedPapers = _allTestPapers.where((p) => _selectedIds.contains(p.id)).toList();
+      final selectedTests = _allTests.where((t) => _selectedIds.contains(t.id)).toList();
       
-      for (final paper in selectedPapers) {
-        final paperQuestions = questions.where((q) => q.tid == paper.tid).toList();
-        final toCorrect = paperQuestions.where((q) => q.progress == '已批阅').toList();
+      for (final test in selectedTests) {
+        final testQuestions = questions.where((q) => q.tid == test.tid).toList();
+        final toCorrect = testQuestions.where((q) => q.progress == '已批阅').toList();
         
         for (final question in toCorrect) {
           await _questionDao.update(question.copyWith(
@@ -169,13 +169,13 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
     }
   }
 
-  void _openTestPaperDetail(TestPaper paper) {
+  void _openTestDetail(Test test) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => TestPaperDetailPage(
+        builder: (context) => PaperDetailPage(
           lang: widget.lang,
-          testPaper: paper,
+          paper: test,
           onHomeTap: widget.onHomeTap,
         ),
       ),
@@ -207,16 +207,16 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.grey),
                 ),
-                child: _displayTestPapers.isEmpty
+                child: _displayTests.isEmpty
                     ? Center(
                         child: Text(widget.lang == 'cn' ? '暂无试卷' : 'No test papers'),
                       )
                     : ListView.builder(
                         padding: const EdgeInsets.all(8),
-                        itemCount: _displayTestPapers.length,
+                        itemCount: _displayTests.length,
                         itemBuilder: (context, index) {
-                          final paper = _displayTestPapers[index];
-                          return _buildTestPaperItem(paper);
+                          final test = _displayTests[index];
+                          return _buildTestItem(test);
                         },
                       ),
               ),
@@ -237,34 +237,29 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
     );
   }
 
-  Widget _buildTestPaperItem(TestPaper paper) {
-    final isSelected = _selectedIds.contains(paper.id);
+  Widget _buildTestItem(Test test) {
+    final isSelected = _selectedIds.contains(test.id);
 
     return InkWell(
-      onTap: () => _openTestPaperDetail(paper),
+      onTap: () => _openTestDetail(test),
       child: Card(
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        elevation: 2,
+        margin: const EdgeInsets.symmetric(vertical: 4),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              GestureDetector(
-                onTap: (() {
+              Checkbox(
+                value: isSelected,
+                onChanged: (value) {
                   setState(() {
-                    if (isSelected) {
-                      _selectedIds.remove(paper.id!);
+                    if (value == true) {
+                      _selectedIds.add(test.id!);
                     } else {
-                      _selectedIds.add(paper.id!);
+                      _selectedIds.remove(test.id!);
                     }
                   });
-                }),
-                child: Checkbox(
-                  value: isSelected,
-                  onChanged: null,
-                ),
+                },
               ),
-              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -272,46 +267,34 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
                     Row(
                       children: [
                         Text(
-                          '${paper.tid ?? ""} ',
+                          '${test.tid} ',
                           style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF651FFF)),
                         ),
                         Expanded(
                           child: Text(
-                            paper.testTitle,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            test.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w500),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
                     Wrap(
-                      spacing: 8,
+                      spacing: 6,
                       children: [
-                        if (paper.unitNumber != null)
-                          _buildTag('${widget.lang == 'cn' ? '单元' : 'Unit'} ${paper.unitNumber}', Colors.blue),
-                        if (paper.lessonNumber != null)
-                          _buildTag('${widget.lang == 'cn' ? '课号' : 'Lesson'} ${paper.lessonNumber}', Colors.orange),
-                        if (paper.source != null)
-                          _buildTag('${widget.lang == 'cn' ? '来源' : 'Source'}: ${paper.source}', Colors.purple),
+                        if (test.lessonUnitList.isNotEmpty)
+                          TagStyles.lessonUnitTag('${widget.lang == 'cn' ? '单元' : 'Unit'}: ${test.lessonUnitList.join(',')}'),
+                        if (test.kids.isNotEmpty)
+                          TagStyles.knowledgeTag('${widget.lang == 'cn' ? '知识' : 'Knowledge'}: ${test.kids.join(',')}'),
+                        TagStyles.statusTag(test.status, test.status),
+                        TagStyles.exerciseTag(test.tid),
                       ],
-                    ),
-                    const SizedBox(height: 8),
-                    FutureBuilder<int>(
-                      future: _getQuestionCount(paper.tid),
-                      builder: (context, snapshot) {
-                        if (snapshot.hasData) {
-                          return Text(
-                            '${widget.lang == 'cn' ? '题目数量' : 'Question count'}: ${snapshot.data}',
-                            style: const TextStyle(fontSize: 14, color: Colors.grey),
-                          );
-                        }
-                        return const SizedBox();
-                      },
                     ),
                   ],
                 ),
               ),
-              const Icon(Icons.arrow_forward_ios, color: Colors.grey),
             ],
           ),
         ),
@@ -319,24 +302,8 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
     );
   }
 
-  Widget _buildTag(String text, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.bold),
-      ),
-    );
-  }
-
-  Future<int> _getQuestionCount(String? tid) async {
-    if (tid == null) return 0;
-    final questions = await _questionDao.getAll(lang: widget.lang);
-    return questions.where((q) => q.tid == tid).length;
+  Future<int> _getQuestionCount(String tid) async {
+    final questions = await _questionDao.getQuestionsByTid(tid);
+    return questions.length;
   }
 }

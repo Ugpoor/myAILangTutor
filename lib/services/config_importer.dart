@@ -7,7 +7,7 @@ import 'package:sqflite/sqflite.dart';
 import '../database/db_helper.dart';
 import '../database/models/error_record.dart';
 import '../database/models/question.dart';
-import '../database/models/test_paper.dart';
+import '../database/models/test.dart';
 import '../database/models/portfolio_item.dart';
 import '../database/models/knowledge_point.dart';
 import '../database/models/error_type_outline.dart';
@@ -235,12 +235,33 @@ class ConfigImporter {
   }
 
   Future<void> _clearAllTables(Database db) async {
-    await db.delete('error_type_outlines');
-    await db.delete('knowledge_outlines');
-    await db.delete('error_records');
-    await db.delete('exercises');
-    await db.delete('portfolio_items');
-    await db.delete('knowledge_points');
+    final tables = [
+      'error_type_outlines',
+      'knowledge_outlines',
+      'error_records',
+      'exercises',
+      'test_papers',
+      'tests',
+      'questions',
+      'portfolio_items',
+      'knowledge_points',
+    ];
+    
+    for (final table in tables) {
+      try {
+        // 检查表是否存在
+        final result = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+          [table],
+        );
+        if (result.isNotEmpty) {
+          await db.delete(table);
+        }
+      } catch (e) {
+        // 忽略删除表时的错误
+        print('Warning: Could not clear table $table: $e');
+      }
+    }
   }
 
   Future<void> _importErrorTypeOutlines(
@@ -316,10 +337,17 @@ class ConfigImporter {
 
     final dao = ErrorRecordDao(db);
     for (final item in records) {
+      // 安全地转换 eids 为 List<String>
+      List<String> eidsList = [];
+      if (item['eids'] != null) {
+        final eidsDynamic = item['eids'] as List;
+        eidsList = eidsDynamic.map((e) => e.toString()).toList();
+      }
+      
       await dao.insert(
         ErrorRecord(
           errorId: item['errorId'],
-          eids: List<String>.from(item['eids']),
+          eids: eidsList,
           progress: item['progress'],
           question: item['question'],
           wrongAnswer: item['wrongAnswer'],
@@ -349,34 +377,30 @@ class ConfigImporter {
     final exercises = data['exercises'] as List;
 
     final questionDao = QuestionDao(db);
-    final testPaperDao = TestPaperDao(db);
+    final testDao = TestDao(db);
 
     for (final item in exercises) {
-      String? unitNumber;
-      String? lessonNumber;
+      List<String> lessonUnitList = [];
+      List<String> kids = [];
+      
       if (item['lessonUnit'] != null) {
-        final unitMatch = RegExp(r'(\d+)年级').firstMatch(item['lessonUnit']);
-        if (unitMatch != null) {
-          unitNumber = unitMatch.group(1);
-        }
-        final lessonMatch = RegExp(r'第(\d+)单元').firstMatch(item['lessonUnit']);
-        if (lessonMatch != null) {
-          lessonNumber = lessonMatch.group(1);
-        }
+        lessonUnitList.add(item['lessonUnit'].toString());
+      }
+      
+      if (item['knowledgeTag'] != null) {
+        kids = item['knowledgeTag'].toString().split(',').map((s) => s.trim()).toList();
       }
 
       final tid = item['exerciseId'];
 
-      await testPaperDao.insert(
-        TestPaper(
+      await testDao.insert(
+        Test(
           tid: tid,
-          testTitle: item['question'],
+          title: item['question'],
+          lessonUnitList: lessonUnitList,
+          kids: kids,
+          status: '未开始',
           images: [],
-          questionList: [],
-          contentPath: 'test_data/exercises',
-          unitNumber: unitNumber,
-          lessonNumber: lessonNumber,
-          source: '测试数据',
           createdAt: DateTime.now(),
           lang: item['lang'] ?? 'cn',
         ),
@@ -387,11 +411,7 @@ class ConfigImporter {
           question: item['examPaper'] ?? item['question'],
           exerciseId: tid,
           tid: tid,
-          lessonNumber: lessonNumber != null
-              ? int.tryParse(lessonNumber)
-              : null,
-          unitNumber: unitNumber != null ? int.tryParse(unitNumber) : null,
-          kid: item['knowledgeTag'],
+          kid: kids.isNotEmpty ? kids.first : null,
           progress: item['progress'],
           category: item['category'],
           grading: item['grading'],

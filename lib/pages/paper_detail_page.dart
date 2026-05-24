@@ -294,7 +294,7 @@ class _PaperDetailPageState extends State<PaperDetailPage> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      question.exerciseId ?? widget.lang == 'cn' ? '未编号' : 'Unnumbered',
+                      question.exerciseId ?? (widget.lang == 'cn' ? '未编号' : 'Unnumbered'),
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,

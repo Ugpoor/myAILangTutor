@@ -12,7 +12,7 @@ import '../components/generic_filter_dialog.dart';
 import '../database/db_helper.dart';
 import '../database/models/error_record.dart';
 import '../database/models/question.dart';
-import '../database/models/test_paper.dart';
+import '../database/models/test.dart';
 import '../database/models/chat_message.dart';
 import '../database/models/portfolio_item.dart';
 import '../services/llm_service.dart';
@@ -642,18 +642,18 @@ $errorContent
       int skippedCount = 0;
       int expectedCount = 7;
 
-      final testPaperDao = TestPaperDao(db);
-      final nextNum = await exerciseDao.nextExerciseIdNumber();
+      final testDao = TestDao(db);
+      final nextNum = await testDao.nextTidNumber();
       final tid = 'T$nextNum';
       
-      await testPaperDao.insert(
-        TestPaper(
+      await testDao.insert(
+        Test(
           tid: tid,
-          testTitle: widget.lang == 'cn' ? '错误本练习 - 第${nextNum}套' : 'Error Practice - Set $nextNum',
+          title: widget.lang == 'cn' ? '错误本练习 - 第${nextNum}套' : 'Error Practice - Set $nextNum',
+          lessonUnitList: [],
+          kids: [],
           images: [],
-          questionList: [],
-          contentPath: 'error_record',
-          source: '错误本生成',
+          status: '未开始',
           createdAt: DateTime.now(),
           lang: widget.lang,
         ),
@@ -707,6 +707,7 @@ $errorContent
           db,
           llmService,
           widget.lang,
+          tid,
         );
       }
 
@@ -813,6 +814,7 @@ $errorContent
     Database db,
     LlmService llmService,
     String lang,
+    String tid,
   ) async {
     if (count <= 0) return 0;
     
@@ -882,6 +884,7 @@ $errorContent
         }
 
         final question = Question(
+          tid: tid,
           question: questionText,
           correctAnswer: exData['correctAnswer'] as String?,
           explanation: exData['explanation'] as String?,

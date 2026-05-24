@@ -127,7 +127,7 @@ class ErrorRecordSchema {
 }
 
 // ============================================================
-// 试卷模块 (Test Paper)
+// 试卷模块 (Test Paper) - 旧版
 // ============================================================
 
 class TestPaperSchema {
@@ -153,6 +153,38 @@ class TestPaperSchema {
     '错题本',
     '知识点',
     '作品集',
+  ];
+}
+
+// ============================================================
+// 测试模块 (Test) - 新版
+// ============================================================
+
+class TestSchema {
+  static const String tableName = 'tests';
+  
+  static const Map<String, String> columns = {
+    'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
+    'tid': 'TEXT UNIQUE',
+    'title': 'TEXT NOT NULL',
+    'lesson_unit_list': 'TEXT',
+    'kids': 'TEXT',
+    'created_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+    'exam_date': 'TIMESTAMP',
+    'grade_date': 'TIMESTAMP',
+    'lang': "TEXT DEFAULT 'cn'",
+    'total_score': 'INTEGER',
+    'duration': 'INTEGER',
+    'status': "TEXT DEFAULT '未开始'",
+    'images': 'TEXT',
+  };
+
+  // 状态枚举
+  static const List<String> statuses = [
+    '未开始',
+    '答题中',
+    '已交卷',
+    '已批阅',
   ];
 }
 

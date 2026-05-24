@@ -3,6 +3,7 @@ import '../database/db_helper.dart';
 import '../database/models/skill.dart';
 import '../database/models/error_record.dart';
 import '../database/models/question.dart';
+import '../database/models/test.dart';
 import '../database/models/portfolio_item.dart';
 import '../database/models/knowledge_point.dart';
 import '../database/models/error_type_outline.dart';
@@ -250,32 +251,51 @@ class DemoDataInitializer {
   }
 
   Future<void> _insertSampleExercises(Database db) async {
-    final dao = ExerciseDao(db);
+    final testDao = TestDao(db);
+    final questionDao = QuestionDao(db);
 
-    await dao.insert(Exercise(
-      question: '四年级上第二单元测试',
-      exerciseId: 'T1',
-      lessonUnit: '四年级上-第二单元',
-      knowledgeTag: '字形辨析,近义词,阅读理解',
-      progress: '已批阅',
-      category: '单元测试',
-      examPaper: '一、选择正确的字填空\n1. 教室里非常______(安静/宁静)\n2. 夜晚的湖面非常______(安静/平静)\n3. 她______地坐在角落看书(安静/宁静)\n\n二、近义词辨析\n4. 美丽和漂亮的区别\n5. 高兴和快乐的区别',
-      answerSheet: '1. 宁静 2. 平静 3. 安静\n4. 美丽侧重外表，漂亮侧重好看\n5. 高兴侧重情绪，快乐侧重状态',
-      answerKey: '1. 安静 2. 平静 3. 安静\n4. 美丽=外在好看，漂亮=令人赏心悦目\n5. 高兴=一时情绪，快乐=持久状态',
-      grading: '第1题错误：应选"安静"。"安静"强调没有声响，"宁静"强调幽雅安静，教室环境用"安静"更合适。\n第4、5题基本正确，但辨析不够深入。',
+    // 插入试卷 T1
+    await testDao.insert(Test(
+      tid: 'T1',
+      title: '四年级上第二单元测试',
+      lessonUnitList: ['四年级上-第二单元'],
+      kids: ['字形辨析', '近义词', '阅读理解'],
+      status: '已批阅',
       createdAt: DateTime.now().subtract(const Duration(days: 2)),
       lang: 'cn',
     ));
 
-    await dao.insert(Exercise(
-      question: '阅读理解专项测试',
-      exerciseId: 'T2',
-      lessonUnit: '五年级上-第一单元',
-      knowledgeTag: '阅读理解,主旨归纳,借物喻人',
+    // 插入对应的题目
+    await questionDao.insert(Question(
+      tid: 'T1',
+      question: '一、选择正确的字填空\n1. 教室里非常______(安静/宁静)\n2. 夜晚的湖面非常______(安静/平静)\n3. 她______地坐在角落看书(安静/宁静)\n\n二、近义词辨析\n4. 美丽和漂亮的区别\n5. 高兴和快乐的区别',
+      correctAnswer: '1. 安静 2. 平静 3. 安静\n4. 美丽=外在好看，漂亮=令人赏心悦目\n5. 高兴=一时情绪，快乐=持久状态',
+      grading: '第1题错误：应选"安静"。"安静"强调没有声响，"宁静"强调幽雅安静，教室环境用"安静"更合适。\n第4、5题基本正确，但辨析不够深入。',
+      progress: '已批阅',
+      kid: 'K1',
+      createdAt: DateTime.now().subtract(const Duration(days: 2)),
+      lang: 'cn',
+    ));
+
+    // 插入试卷 T2
+    await testDao.insert(Test(
+      tid: 'T2',
+      title: '阅读理解专项测试',
+      lessonUnitList: ['五年级上-第一单元'],
+      kids: ['阅读理解', '主旨归纳', '借物喻人'],
+      status: '未批阅',
+      createdAt: DateTime.now().subtract(const Duration(hours: 12)),
+      lang: 'cn',
+    ));
+
+    // 插入对应的题目
+    await questionDao.insert(Question(
+      tid: 'T2',
+      question: '阅读《落花生》，回答：\n1. 概括文章主旨\n2. 找出文中"借物喻人"的语句\n3. 落花生和苹果、石榴的对比说明了什么？',
+      correctAnswer: null,
+      grading: null,
       progress: '未批阅',
-      category: '专项练习',
-      examPaper: '阅读《落花生》，回答：\n1. 概括文章主旨\n2. 找出文中"借物喻人"的语句\n3. 落花生和苹果、石榴的对比说明了什么？',
-      answerSheet: '1. 文章写了一家人种花生、收花生、吃花生的事情。\n2. "所以你们要像花生，它虽然不好看，可是很有用"\n3. 说明了花生虽然外表不好看，但是很有用',
+      kid: 'K2',
       createdAt: DateTime.now().subtract(const Duration(hours: 12)),
       lang: 'cn',
     ));

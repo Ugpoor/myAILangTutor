@@ -13,6 +13,7 @@ import '../database/db_helper.dart';
 import '../database/models/knowledge_point.dart';
 import '../database/models/knowledge_outline.dart';
 import '../database/models/question.dart';
+import '../database/models/test.dart';
 import '../database/models/error_record.dart';
 import '../services/llm_service.dart';
 import 'knowledge_outline_page.dart';
@@ -58,6 +59,7 @@ class _KnowledgePointPageSimpleState extends State<KnowledgePointPageSimple> {
   MatchMode _filterTestTimesMatchMode = MatchMode.equals;
   late KnowledgePointDao _knowledgePointDao;
   late QuestionDao _exerciseDao;
+  late TestDao _testDao;
   late ErrorRecordDao _errorRecordDao;
   final LlmService _llmService = LlmService();
   bool _isGenerating = false;
@@ -92,6 +94,7 @@ class _KnowledgePointPageSimpleState extends State<KnowledgePointPageSimple> {
     final db = await DatabaseHelper().database;
     _knowledgePointDao = KnowledgePointDao(db);
     _exerciseDao = QuestionDao(db);
+    _testDao = TestDao(db);
     _errorRecordDao = ErrorRecordDao(db);
     await _llmService.init();
     await _loadPoints();
@@ -346,6 +349,22 @@ ${combinedContent.toString()}
       int skippedCount = 0;
       int expectedCount = 7; // 期望生成7道题
 
+      // 先创建一个 Test 记录
+      final nextTidNum = await _testDao.nextTidNumber();
+      final tid = 'T$nextTidNum';
+      final testTitle = selectedPoints.map((p) => p.title).join(' + ');
+      final kids = selectedPoints.map((p) => 'K${p.id}').where((k) => k != null).map((k) => k!).toList();
+      
+      await _testDao.insert(Test(
+        tid: tid,
+        title: widget.lang == 'cn' ? '$testTitle 练习' : '$testTitle Practice',
+        lessonUnitList: selectedPoints.map((p) => p.unitNumber ?? '').where((u) => u.isNotEmpty).toList(),
+        kids: kids,
+        status: '未开始',
+        createdAt: DateTime.now(),
+        lang: widget.lang,
+      ));
+
       for (final exData in exercisesJson) {
         // 验证题目数据是否有效
         if (!_validateExerciseData(exData)) {
@@ -353,8 +372,6 @@ ${combinedContent.toString()}
           print('[GenerateExercises] 跳过无效题目: $exData');
           continue;
         }
-
-        final nextNum = await _exerciseDao.nextExerciseIdNumber();
         
         KnowledgePoint pointForExercise = selectedPoints[0];
         if (exData['knowledgeTag'] != null) {
@@ -382,6 +399,7 @@ ${combinedContent.toString()}
         }
 
         final question = Question(
+          tid: tid,
           question: questionText,
           correctAnswer: exData['correctAnswer'] as String?,
           explanation: exData['explanation'] as String?,
@@ -392,6 +410,8 @@ ${combinedContent.toString()}
           createdAt: DateTime.now(),
           lang: widget.lang,
           kid: pointForExercise.id != null ? 'K${pointForExercise.id}' : null,
+          unitNumber: pointForExercise.unitNumber != null ? int.tryParse(pointForExercise.unitNumber!) : null,
+          lessonNumber: pointForExercise.lessonNumber != null ? int.tryParse(pointForExercise.lessonNumber!) : null,
         );
 
         await _exerciseDao.insert(question);
@@ -401,7 +421,8 @@ ${combinedContent.toString()}
       if (skippedCount > 0 && createdCount < expectedCount) {
         createdCount += await _generateSupplementalExercises(
           selectedPoints, 
-          expectedCount - createdCount
+          expectedCount - createdCount,
+          tid
         );
       }
 
@@ -479,7 +500,7 @@ ${combinedContent.toString()}
     return true;
   }
 
-  Future<int> _generateSupplementalExercises(List<KnowledgePoint> selectedPoints, int count) async {
+  Future<int> _generateSupplementalExercises(List<KnowledgePoint> selectedPoints, int count, String tid) async {
     if (count <= 0) return 0;
     
     print('[GenerateExercises] 尝试补充生成 $count 道题目');
@@ -561,6 +582,7 @@ ${combinedContent.toString()}
         }
 
         final question = Question(
+          tid: tid,
           question: questionText,
           correctAnswer: exData['correctAnswer'] as String?,
           explanation: exData['explanation'] as String?,
@@ -571,6 +593,8 @@ ${combinedContent.toString()}
           createdAt: DateTime.now(),
           lang: widget.lang,
           kid: pointForExercise.id != null ? 'K${pointForExercise.id}' : null,
+          unitNumber: pointForExercise.unitNumber != null ? int.tryParse(pointForExercise.unitNumber!) : null,
+          lessonNumber: pointForExercise.lessonNumber != null ? int.tryParse(pointForExercise.lessonNumber!) : null,
         );
 
         await _exerciseDao.insert(question);

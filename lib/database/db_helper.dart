@@ -8,7 +8,7 @@ class DatabaseHelper {
   DatabaseHelper._internal();
 
   static Database? _database;
-  static const int _version = 27;
+  static const int _version = 28;
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -33,6 +33,7 @@ class DatabaseHelper {
     await _createTestPapersTable(db);
     await _createExercisesTable(db);
     await _createQuestionsTable(db);
+    await _createTestsTable(db);
     await _createPortfolioItemsTable(db);
     await _createSkillsTable(db);
     await _createInboxItemsTable(db);
@@ -189,6 +190,26 @@ class DatabaseHelper {
         answer_key TEXT,
         grading TEXT,
         source TEXT
+      )
+    ''');
+  }
+
+  Future<void> _createTestsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE tests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tid TEXT UNIQUE,
+        title TEXT NOT NULL,
+        lesson_unit_list TEXT,
+        kids TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        exam_date TIMESTAMP,
+        grade_date TIMESTAMP,
+        lang TEXT DEFAULT 'cn',
+        total_score INTEGER,
+        duration INTEGER,
+        status TEXT DEFAULT '未开始',
+        images TEXT
       )
     ''');
   }
@@ -369,6 +390,9 @@ class DatabaseHelper {
     if (oldVersion < 27) {
       await _upgradeToV27(db);
     }
+    if (oldVersion < 28) {
+      await _upgradeToV28(db);
+    }
   }
 
   Future<void> _upgradeToV24(Database db) async {
@@ -449,6 +473,10 @@ class DatabaseHelper {
     try {
       await db.execute('ALTER TABLE knowledge_points ADD COLUMN last_practice_time TEXT');
     } catch (_) {}
+  }
+
+  Future<void> _upgradeToV28(Database db) async {
+    await _createTestsTable(db);
   }
 
   Future<void> _upgradeToV23(Database db) async {

@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 import '../components/app_title_bar.dart';
-import '../database/models/test_paper.dart';
 import '../database/models/question.dart';
+import '../database/models/test.dart';
 import '../database/db_helper.dart';
 import 'question_detail_page.dart';
 
 class TestPaperDetailPage extends StatefulWidget {
   final String lang;
-  final TestPaper testPaper;
+  final Test test;
   final VoidCallback onHomeTap;
 
   const TestPaperDetailPage({
     super.key,
     this.lang = 'cn',
-    required this.testPaper,
+    required this.test,
     required this.onHomeTap,
   });
 
@@ -22,14 +22,14 @@ class TestPaperDetailPage extends StatefulWidget {
 }
 
 class _TestPaperDetailPageState extends State<TestPaperDetailPage> {
-  late TestPaper _testPaper;
+  late Test _test;
   List<Question> _questions = [];
   late QuestionDao _questionDao;
 
   @override
   void initState() {
     super.initState();
-    _testPaper = widget.testPaper;
+    _test = widget.test;
     _initDao();
   }
 
@@ -40,9 +40,9 @@ class _TestPaperDetailPageState extends State<TestPaperDetailPage> {
   }
 
   Future<void> _loadQuestions() async {
-    final questions = await _questionDao.getAll(lang: widget.lang);
+    final questions = await _questionDao.getQuestionsByTid(_test.tid);
     setState(() {
-      _questions = questions.where((q) => q.tid == _testPaper.tid).toList();
+      _questions = questions;
     });
   }
 
@@ -107,7 +107,6 @@ class _TestPaperDetailPageState extends State<TestPaperDetailPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // 试卷信息卡片
                       Card(
                         elevation: 4,
                         child: Padding(
@@ -125,7 +124,7 @@ class _TestPaperDetailPageState extends State<TestPaperDetailPage> {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                _testPaper.testTitle,
+                                _test.title,
                                 style: const TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.bold,
@@ -135,21 +134,23 @@ class _TestPaperDetailPageState extends State<TestPaperDetailPage> {
                               const SizedBox(height: 16),
                               Row(
                                 children: [
-                                  _buildInfoTag(widget.lang == 'cn' ? '试卷ID' : 'Test ID', _testPaper.tid ?? '-'),
+                                  _buildInfoTag(widget.lang == 'cn' ? '试卷ID' : 'Test ID', _test.tid),
                                   const SizedBox(width: 12),
-                                  _buildInfoTag(widget.lang == 'cn' ? '单元' : 'Unit', _testPaper.unitNumber ?? '-'),
+                                  if (_test.lessonUnitList.isNotEmpty)
+                                    _buildInfoTag(widget.lang == 'cn' ? '单元' : 'Unit', _test.lessonUnitList.join(', ')),
                                   const SizedBox(width: 12),
-                                  _buildInfoTag(widget.lang == 'cn' ? '课号' : 'Lesson', _testPaper.lessonNumber ?? '-'),
+                                  if (_test.status.isNotEmpty)
+                                    _buildInfoTag(widget.lang == 'cn' ? '状态' : 'Status', _test.status),
                                 ],
                               ),
                               const SizedBox(height: 12),
-                              _buildInfoTag(widget.lang == 'cn' ? '来源' : 'Source', _testPaper.source ?? '-'),
+                              if (_test.kids.isNotEmpty)
+                                _buildInfoTag(widget.lang == 'cn' ? '知识点' : 'Knowledge', _test.kids.join(', ')),
                             ],
                           ),
                         ),
                       ),
                       const SizedBox(height: 20),
-                      // 题目清单标题
                       Text(
                         widget.lang == 'cn' ? '题目清单' : 'Question List',
                         style: const TextStyle(
@@ -159,7 +160,6 @@ class _TestPaperDetailPageState extends State<TestPaperDetailPage> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      // 题目列表
                       _buildQuestionList(),
                     ],
                   ),

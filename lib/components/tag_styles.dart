@@ -82,11 +82,15 @@ class TagStyles {
     switch (status) {
       case '已订正':
       case 'completed':
+      case '已批阅':
+      case '已完成':
         bgColor = statusCompletedBg;
         textColor = statusCompletedText;
         break;
       case '待订正':
       case 'pending':
+      case '未开始':
+      case '未批阅':
         bgColor = statusPendingBg;
         textColor = statusPendingText;
         break;
@@ -94,6 +98,15 @@ class TagStyles {
       case 'error':
         bgColor = statusErrorBg;
         textColor = statusErrorText;
+        break;
+      case '进行中':
+      case 'doing':
+        bgColor = const Color(0xFFFF9800);
+        textColor = Colors.white;
+        break;
+      case '学习中':
+        bgColor = const Color(0xFF2196F3);
+        textColor = Colors.white;
         break;
       default:
         bgColor = statusPendingBg;

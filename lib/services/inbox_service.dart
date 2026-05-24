@@ -8,7 +8,8 @@ import 'package:html/parser.dart' as html_parser;
 import '../database/models/inbox_item.dart' hide DatabaseHelper;
 import '../database/models/chat_message.dart';
 import '../database/models/error_record.dart';
-import '../database/models/exercise.dart';
+import '../database/models/test.dart';
+import '../database/models/question.dart';
 import '../database/models/portfolio_item.dart';
 import '../database/models/knowledge_point.dart';
 import 'package:sqflite/sqflite.dart';
@@ -966,26 +967,38 @@ $content
   }
 
   Future<void> _insertExercise(Database db, InboxItem item, Map<String, dynamic> data) async {
-    final dao = ExerciseDao(db);
-    final nextNum = await dao.nextExerciseIdNumber();
+    final testDao = TestDao(db);
+    final questionDao = QuestionDao(db);
+    final nextNum = await testDao.nextTidNumber();
+    final tid = 'T$nextNum';
 
-    final exercise = Exercise(
-      question: data['question'] ?? '',
-      options: data['options'] as String?,
-      correctAnswer: data['correctAnswer'] as String?,
-      explanation: data['explanation'] as String?,
-      difficulty: data['difficulty'] as int? ?? 1,
-      progress: '未答题',
-      examPaper: data['examPaper'] as String?,
-      answerKey: data['answerKey'] as String?,
-      contentPath: item.filePath,
+    // 先插入 Test 记录
+    await testDao.insert(Test(
+      tid: tid,
+      title: data['title'] ?? item.title ?? '收件箱导入',
+      lessonUnitList: [],
+      kids: [],
+      images: [],
+      status: '未开始',
       createdAt: item.createdAt,
       lang: 'cn',
-      source: '收件箱',
-    );
+    ));
 
-    await dao.insert(exercise);
-    print('[WriteThrough] 习题集条目已创建: T$nextNum');
+    // 再插入对应的 Question 记录
+    await questionDao.insert(Question(
+      tid: tid,
+      question: data['question'] ?? '',
+      correctAnswer: data['correctAnswer'] as String?,
+      explanation: data['explanation'] as String?,
+      progress: '未答题',
+      kid: null,
+      unitNumber: null,
+      lessonNumber: null,
+      createdAt: item.createdAt,
+      lang: 'cn',
+    ));
+
+    print('[WriteThrough] 习题集条目已创建: $tid');
   }
 
   Future<void> _insertPortfolioItem(Database db, InboxItem item, Map<String, dynamic> data) async {
@@ -1048,14 +1061,33 @@ $content
         break;
 
       case '习题集':
-        final dao = ExerciseDao(db);
-        await dao.insert(Exercise(
-          question: item.title,
-          contentPath: item.filePath,
-          progress: '未答题',
+        final testDao = TestDao(db);
+        final questionDao = QuestionDao(db);
+        final nextNum = await testDao.nextTidNumber();
+        final tid = 'T$nextNum';
+        
+        await testDao.insert(Test(
+          tid: tid,
+          title: item.title,
+          lessonUnitList: [],
+          kids: [],
+          images: [],
+          status: '未开始',
           createdAt: item.createdAt,
           lang: 'cn',
-          source: '收件箱',
+        ));
+        
+        await questionDao.insert(Question(
+          tid: tid,
+          question: item.title,
+          correctAnswer: null,
+          explanation: null,
+          progress: '未答题',
+          kid: null,
+          unitNumber: null,
+          lessonNumber: null,
+          createdAt: item.createdAt,
+          lang: 'cn',
         ));
         print('[Fallback] 习题集条目已创建（仅标题）');
         break;
