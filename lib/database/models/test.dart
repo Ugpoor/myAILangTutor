@@ -14,6 +14,7 @@ class Test {
   final int? duration;
   final String status;
   final List<String> images;
+  final String? content; // 全文搜索内容
 
   Test({
     this.id,
@@ -29,6 +30,7 @@ class Test {
     this.duration,
     this.status = '未开始',
     this.images = const [],
+    this.content,
   });
 
   Map<String, dynamic> toMap() {
@@ -46,6 +48,7 @@ class Test {
       'duration': duration,
       'status': status,
       'images': images.join(','),
+      'content': content,
     };
   }
 
@@ -70,6 +73,7 @@ class Test {
       duration: map['duration'] as int?,
       status: map['status'] as String? ?? '未开始',
       images: (map['images'] as String?)?.split(',').where((s) => s.isNotEmpty).toList() ?? [],
+      content: map['content'] as String?,
     );
   }
 
@@ -87,6 +91,7 @@ class Test {
     int? duration,
     String? status,
     List<String>? images,
+    String? content,
   }) {
     return Test(
       id: id ?? this.id,
@@ -102,6 +107,7 @@ class Test {
       duration: duration ?? this.duration,
       status: status ?? this.status,
       images: images ?? this.images,
+      content: content ?? this.content,
     );
   }
 }
@@ -119,6 +125,10 @@ class TestDao {
     String? lang,
     String? status,
     String? keyword,
+    String? contentKeyword,
+    List<String>? unitNumbers,
+    List<String>? lessonNumbers,
+    List<String>? kidList,
   }) async {
     List<String> conditions = [];
     List<dynamic> args = [];
@@ -135,6 +145,22 @@ class TestDao {
       conditions.add('(title LIKE ? OR tid LIKE ?)');
       args.add('%$keyword%');
       args.add('%$keyword%');
+    }
+    if (contentKeyword != null && contentKeyword.isNotEmpty) {
+      conditions.add('content LIKE ?');
+      args.add('%$contentKeyword%');
+    }
+    if (unitNumbers != null && unitNumbers.isNotEmpty) {
+      conditions.add('lesson_unit_list LIKE ?');
+      args.add('%${unitNumbers.join('%')}%');
+    }
+    if (lessonNumbers != null && lessonNumbers.isNotEmpty) {
+      conditions.add('lesson_unit_list LIKE ?');
+      args.add('%${lessonNumbers.join('%')}%');
+    }
+    if (kidList != null && kidList.isNotEmpty) {
+      conditions.add('kids LIKE ?');
+      args.add('%${kidList.join('%')}%');
     }
 
     final maps = await db.query(

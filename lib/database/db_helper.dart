@@ -8,7 +8,7 @@ class DatabaseHelper {
   DatabaseHelper._internal();
 
   static Database? _database;
-  static const int _version = 32;
+  static const int _version = 33;
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -407,6 +407,9 @@ class DatabaseHelper {
     if (oldVersion < 32) {
       await _upgradeToV32(db);
     }
+    if (oldVersion < 33) {
+      await _upgradeToV33(db);
+    }
   }
 
   Future<void> _upgradeToV24(Database db) async {
@@ -529,6 +532,18 @@ class DatabaseHelper {
         moved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     ''');
+  }
+
+  Future<void> _upgradeToV33(Database db) async {
+    try {
+      await db.execute('ALTER TABLE tests ADD COLUMN content TEXT');
+    } catch (_) {}
+    try {
+      await db.execute('ALTER TABLE portfolio_items ADD COLUMN content TEXT');
+    } catch (_) {}
+    try {
+      await db.execute('ALTER TABLE knowledge_points ADD COLUMN content TEXT');
+    } catch (_) {}
   }
 
   Future<void> _upgradeToV23(Database db) async {

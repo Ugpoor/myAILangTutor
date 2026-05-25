@@ -8,6 +8,7 @@ import '../components/submenu_tabs.dart';
 import '../components/chat_bubble_list.dart';
 import '../database/db_helper.dart';
 import '../services/llm_service.dart';
+import '../components/generic_filter_dialog.dart';
 
 // Top-level key for main_screen.dart to trigger inbox refresh after clipboard save
 final GlobalKey<InboxPageState> inboxPageKey = GlobalKey<InboxPageState>();
@@ -38,7 +39,7 @@ class InboxPageState extends State<InboxPage> {
   List<InboxItem> _allItems = [];
   final Set<String> _selectedItemKeys = {}; // 使用 filePath 作为唯一 key
   bool _isLoading = true;
-  bool _showFilterDialog = false;
+  bool _isFilterDialogShowing = false;
   bool _isProcessing = false;
 
   // Classification history for AIReplyBar display
@@ -104,11 +105,16 @@ class InboxPageState extends State<InboxPage> {
   }
 
   final TextEditingController _keywordController = TextEditingController();
-  String? _selectedSource;
-  String? _selectedCategory;
-  String? _selectedStatus;
-  DateTime? _filterStartDate;
-  DateTime? _filterEndDate;
+  final TextEditingController _contentKeywordController = TextEditingController();
+  
+  Set<String> _filterSources = {};
+  Set<String> _filterCategories = {};
+  Set<String> _filterStatus = {};
+  Set<String> _filterIsValid = {};
+  MatchMode _filterSourceMatchMode = MatchMode.equals;
+  MatchMode _filterCategoryMatchMode = MatchMode.equals;
+  MatchMode _filterStatusMatchMode = MatchMode.equals;
+  MatchMode _filterIsValidMatchMode = MatchMode.equals;
 
   @override
   void initState() {
@@ -180,141 +186,94 @@ class InboxPageState extends State<InboxPage> {
   }
 
   Future<void> _applyFilters() async {
+    bool? isValid = _filterIsValid.contains('true') ? true : (_filterIsValid.contains('false') ? false : null);
+    
     final filteredItems = await _inboxService.filterItems(
-      keyword: _keywordController.text,
-      source: _selectedSource,
-      category: _selectedCategory,
-      status: _selectedStatus,
-      startDate: _filterStartDate,
-      endDate: _filterEndDate,
+      keyword: _keywordController.text.isNotEmpty ? _keywordController.text : null,
+      source: _filterSources.isNotEmpty ? _filterSources : null,
+      category: _filterCategories.isNotEmpty ? _filterCategories : null,
+      status: _filterStatus.isNotEmpty ? _filterStatus : null,
+      isValid: isValid,
+      contentKeyword: _contentKeywordController.text.isNotEmpty ? _contentKeywordController.text : null,
     );
     setState(() {
       _items = filteredItems;
-      _showFilterDialog = false;
     });
     Navigator.of(context).pop();
   }
 
-  Future<void> _clearFilters() async {
+  void _clearFilters() {
     setState(() {
       _keywordController.clear();
-      _selectedSource = null;
-      _selectedCategory = null;
-      _selectedStatus = null;
-      _filterStartDate = null;;
-      _filterEndDate = null;
+      _contentKeywordController.clear();
+      _filterSources.clear();
+      _filterCategories.clear();
+      _filterStatus.clear();
+      _filterIsValid.clear();
       _items = _allItems;
-      _showFilterDialog = false;
     });
     Navigator.of(context).pop();
   }
 
-  Widget _buildFilterDialog() {
+  void _showFilterDialog() async {
     final sources = _allItems.map((item) => item.source).toSet().toList();
     final categories = ['知识点', '错题本', '习题集', '作品集', '无法分类', '未知归类'];
     final statuses = ['未处理', '已处理'];
+    final isValidOptions = ['true', 'false'];
 
-    return AlertDialog(
-      title: Text(widget.lang == 'cn' ? '筛选' : 'Filter'),
-      content: SizedBox(
-        width: 300,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _keywordController,
-                decoration: InputDecoration(
-                  labelText: widget.lang == 'cn' ? '关键词' : 'Keywords',
-                ),
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: _selectedSource,
-                decoration: InputDecoration(
-                  labelText: widget.lang == 'cn' ? '来源' : 'Source',
-                ),
-                items: [
-                  DropdownMenuItem(
-                    value: null,
-                    child: Text(widget.lang == 'cn' ? '全部' : 'All'),
-                  ),
-                  ...sources.map((source) => DropdownMenuItem(
-                        value: source,
-                        child: Text(source),
-                      )),
-                ],
-                onChanged: (value) {
-                  setState(() {
-                    _selectedSource = value;
-                  });
-                },
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: _selectedCategory,
-                decoration: InputDecoration(
-                  labelText: widget.lang == 'cn' ? '归类' : 'Category',
-                ),
-                items: [
-                  DropdownMenuItem(
-                    value: null,
-                    child: Text(widget.lang == 'cn' ? '全部' : 'All'),
-                  ),
-                  ...categories.map((cat) => DropdownMenuItem(
-                        value: cat,
-                        child: Text(cat),
-                      )),
-                ],
-                onChanged: (value) {
-                  setState(() {
-                    _selectedCategory = value;
-                  });
-                },
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: _selectedStatus,
-                decoration: InputDecoration(
-                  labelText: widget.lang == 'cn' ? '状态' : 'Status',
-                ),
-                items: [
-                  DropdownMenuItem(
-                    value: null,
-                    child: Text(widget.lang == 'cn' ? '全部' : 'All'),
-                  ),
-                  ...statuses.map((status) => DropdownMenuItem(
-                        value: status,
-                        child: Text(status),
-                      )),
-                ],
-                onChanged: (value) {
-                  setState(() {
-                    _selectedStatus = value;
-                  });
-                },
-              ),
-            ],
-          ),
+    final config = FilterConfig(
+      filterTypes: ['source', 'category', 'status', 'isValid'],
+      typeConfigs: {
+        'source': FilterTypeConfig(
+          options: sources.map((s) => FilterOption(value: s, label: s)).toList(),
+          initialValues: _filterSources,
+          label: widget.lang == 'cn' ? '来源' : 'Source',
+          hintText: widget.lang == 'cn' ? '输入来源...' : 'Enter source...',
+          defaultMatchMode: MatchMode.equals,
         ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: _clearFilters,
-          child: Text(widget.lang == 'cn' ? '重置' : 'Reset'),
+        'category': FilterTypeConfig(
+          options: categories.map((c) => FilterOption(value: c, label: c)).toList(),
+          initialValues: _filterCategories,
+          label: widget.lang == 'cn' ? '归类' : 'Category',
+          hintText: widget.lang == 'cn' ? '输入归类...' : 'Enter category...',
+          defaultMatchMode: MatchMode.equals,
         ),
-        TextButton(
-          onPressed: () {
-            Navigator.of(context).pop();
-          },
-          child: Text(widget.lang == 'cn' ? '取消' : 'Cancel'),
+        'status': FilterTypeConfig(
+          options: statuses.map((s) => FilterOption(value: s, label: s)).toList(),
+          initialValues: _filterStatus,
+          label: widget.lang == 'cn' ? '状态' : 'Status',
+          hintText: widget.lang == 'cn' ? '输入状态...' : 'Enter status...',
+          defaultMatchMode: MatchMode.equals,
         ),
-        ElevatedButton(
-          onPressed: _applyFilters,
-          child: Text(widget.lang == 'cn' ? '确定' : 'Apply'),
+        'isValid': FilterTypeConfig(
+          options: isValidOptions.map((v) => FilterOption(
+            value: v, 
+            label: v == 'true' ? (widget.lang == 'cn' ? '有效' : 'Valid') : (widget.lang == 'cn' ? '异常' : 'Invalid')
+          )).toList(),
+          initialValues: _filterIsValid,
+          label: widget.lang == 'cn' ? '有效性' : 'Validity',
+          hintText: widget.lang == 'cn' ? '选择有效性...' : 'Select validity...',
+          defaultMatchMode: MatchMode.equals,
         ),
-      ],
+      },
     );
+
+    final result = await GenericFilterDialog.show(context, config: config, lang: widget.lang);
+
+    if (result != null) {
+      setState(() {
+        _filterSources = Set<String>.from((result['source'] as Map?)?['values'] ?? {});
+        _filterCategories = Set<String>.from((result['category'] as Map?)?['values'] ?? {});
+        _filterStatus = Set<String>.from((result['status'] as Map?)?['values'] ?? {});
+        _filterIsValid = Set<String>.from((result['isValid'] as Map?)?['values'] ?? {});
+        
+        _filterSourceMatchMode = MatchMode.values[(result['source'] as Map?)?['matchMode'] as int? ?? 0];
+        _filterCategoryMatchMode = MatchMode.values[(result['category'] as Map?)?['matchMode'] as int? ?? 0];
+        _filterStatusMatchMode = MatchMode.values[(result['status'] as Map?)?['matchMode'] as int? ?? 0];
+        _filterIsValidMatchMode = MatchMode.values[(result['isValid'] as Map?)?['matchMode'] as int? ?? 0];
+      });
+      await _applyFilters();
+    }
   }
 
   /// Build dynamic tabs based on selection state
@@ -552,12 +511,9 @@ class InboxPageState extends State<InboxPage> {
 
                 if (tab == cnFilter) {
                   setState(() {
-                    _showFilterDialog = true;
+                    _isFilterDialogShowing = true;
                   });
-                  showDialog(
-                    context: context,
-                    builder: (context) => _buildFilterDialog(),
-                  );
+                  _showFilterDialog();
                 } else if (tab == cnOrganize) {
                   await _processSelectedItems();
                 } else if (tab == cnArchive) {

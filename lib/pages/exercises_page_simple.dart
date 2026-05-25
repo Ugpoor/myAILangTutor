@@ -4,6 +4,7 @@ import '../components/submenu_tabs.dart';
 import '../components/ai_reply_bar.dart';
 import '../components/input_area.dart';
 import '../components/tag_styles.dart';
+import '../components/generic_filter_dialog.dart';
 import '../database/db_helper.dart';
 import '../database/models/question.dart';
 import '../database/models/test.dart';
@@ -35,6 +36,13 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
   late TestDao _testDao;
   late QuestionDao _questionDao;
   final LlmService _llmService = LlmService();
+  
+  // 筛选状态
+  Set<String> _filterUnitNumbers = {};
+  Set<String> _filterLessonNumbers = {};
+  Set<String> _filterStatus = {};
+  Set<String> _filterKids = {};
+  String _filterContentKeyword = '';
 
   @override
   void initState() {
@@ -63,7 +71,120 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
       await _gradeSelected();
     } else if (tab == (widget.lang == 'cn' ? '订正' : 'Correct')) {
       await _correctSelected();
+    } else if (tab == (widget.lang == 'cn' ? '筛选' : 'Filter')) {
+      _showFilterDialog();
     }
+  }
+
+  void _showFilterDialog() async {
+    final unitNumbers = _allTests
+        .map((t) => t.lessonUnitList.firstWhere(
+              (item) => item.startsWith('U'),
+              orElse: () => '',
+            ))
+        .where((s) => s.isNotEmpty)
+        .map((s) => s.replaceFirst('U', ''))
+        .toSet();
+    
+    final lessonNumbers = _allTests
+        .map((t) => t.lessonUnitList.firstWhere(
+              (item) => item.startsWith('L'),
+              orElse: () => '',
+            ))
+        .where((s) => s.isNotEmpty)
+        .map((s) => s.replaceFirst('L', ''))
+        .toSet();
+    
+    final statuses = _allTests.map((t) => t.status).toSet();
+    final kids = _allTests.expand((t) => t.kids).where((s) => s.isNotEmpty).toSet();
+
+    final config = FilterConfig(
+      filterTypes: [
+        'unit',
+        'lesson',
+        'status',
+        'kid',
+      ],
+      typeConfigs: {
+        'unit': FilterTypeConfig(
+          options: unitNumbers.map((u) => FilterOption(value: u, label: u)).toList(),
+          initialValues: _filterUnitNumbers,
+          label: widget.lang == 'cn' ? '单元号' : 'Unit',
+          hintText: widget.lang == 'cn' ? '输入单元号...' : 'Enter unit...',
+        ),
+        'lesson': FilterTypeConfig(
+          options: lessonNumbers.map((l) => FilterOption(value: l, label: l)).toList(),
+          initialValues: _filterLessonNumbers,
+          label: widget.lang == 'cn' ? '课号' : 'Lesson',
+          hintText: widget.lang == 'cn' ? '输入课号...' : 'Enter lesson...',
+        ),
+        'status': FilterTypeConfig(
+          options: statuses.map((s) => FilterOption(value: s, label: s)).toList(),
+          initialValues: _filterStatus,
+          label: widget.lang == 'cn' ? '状态' : 'Status',
+          hintText: widget.lang == 'cn' ? '输入状态...' : 'Enter status...',
+        ),
+        'kid': FilterTypeConfig(
+          options: kids.map((k) => FilterOption(value: k, label: k)).toList(),
+          initialValues: _filterKids,
+          label: widget.lang == 'cn' ? '知识点' : 'Knowledge',
+          hintText: widget.lang == 'cn' ? '输入知识点...' : 'Enter knowledge...',
+        ),
+      },
+    );
+
+    final result = await GenericFilterDialog.show(context, config: config, lang: widget.lang);
+
+    if (result != null) {
+      setState(() {
+        _filterUnitNumbers = Set<String>.from((result['unit'] as Map?)?['values'] ?? {});
+        _filterLessonNumbers = Set<String>.from((result['lesson'] as Map?)?['values'] ?? {});
+        _filterStatus = Set<String>.from((result['status'] as Map?)?['values'] ?? {});
+        _filterKids = Set<String>.from((result['kid'] as Map?)?['values'] ?? {});
+      });
+      _applyFilters();
+    }
+  }
+
+  void _applyFilters() {
+    List<Test> filtered = List.from(_allTests);
+
+    if (_filterUnitNumbers.isNotEmpty) {
+      filtered = filtered.where((t) {
+        return t.lessonUnitList.any((item) => 
+          _filterUnitNumbers.any((unit) => item == 'U$unit')
+        );
+      }).toList();
+    }
+
+    if (_filterLessonNumbers.isNotEmpty) {
+      filtered = filtered.where((t) {
+        return t.lessonUnitList.any((item) => 
+          _filterLessonNumbers.any((lesson) => item == 'L$lesson')
+        );
+      }).toList();
+    }
+
+    if (_filterStatus.isNotEmpty) {
+      filtered = filtered.where((t) => _filterStatus.contains(t.status)).toList();
+    }
+
+    if (_filterKids.isNotEmpty) {
+      filtered = filtered.where((t) => 
+        t.kids.any((kid) => _filterKids.contains(kid))
+      ).toList();
+    }
+
+    if (_filterContentKeyword.isNotEmpty) {
+      final keyword = _filterContentKeyword.toLowerCase();
+      filtered = filtered.where((t) => 
+        (t.content ?? '').toLowerCase().contains(keyword)
+      ).toList();
+    }
+
+    setState(() {
+      _displayTests = filtered;
+    });
   }
 
   Future<void> _gradeSelected() async {
@@ -184,7 +305,7 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
 
   @override
   Widget build(BuildContext context) {
-    final tabs = widget.lang == 'cn' ? ['批阅', '订正'] : ['Grade', 'Correct'];
+    final tabs = widget.lang == 'cn' ? ['批阅', '订正', '筛选'] : ['Grade', 'Correct', 'Filter'];
 
     return Scaffold(
       backgroundColor: const Color(0xFFFFE4E9),

@@ -23,6 +23,7 @@ class KnowledgePoint {
   final String? testRecs; // 测试记录（JSON格式存储）
   final String? errorRecs; // 错误记录（JSON格式存储）
   final String? brief; // 知识点摘要/简介
+  final String? content; // 全文搜索内容
 
   KnowledgePoint({
     this.id,
@@ -41,6 +42,7 @@ class KnowledgePoint {
     this.testRecs,
     this.errorRecs,
     this.brief,
+    this.content,
   });
 
   Map<String, dynamic> toMap() {
@@ -61,6 +63,7 @@ class KnowledgePoint {
       'test_recs': testRecs,
       'error_recs': errorRecs,
       'brief': brief,
+      'content': content,
     };
   }
 
@@ -86,6 +89,7 @@ class KnowledgePoint {
       testRecs: map['test_recs'] as String?,
       errorRecs: map['error_recs'] as String?,
       brief: map['brief'] as String?,
+      content: map['content'] as String?,
     );
   }
 
@@ -106,6 +110,7 @@ class KnowledgePoint {
     String? testRecs,
     String? errorRecs,
     String? brief,
+    String? content,
   }) {
     return KnowledgePoint(
       id: id ?? this.id,
@@ -124,6 +129,7 @@ class KnowledgePoint {
       testRecs: testRecs ?? this.testRecs,
       errorRecs: errorRecs ?? this.errorRecs,
       brief: brief ?? this.brief,
+      content: content ?? this.content,
     );
   }
 }
@@ -136,35 +142,27 @@ class KnowledgePointDao {
   Future<int> insert(KnowledgePoint point) async {
     final id = await db.insert('knowledge_points', point.toMap());
     if (id > 0) {
-      // 如果已经有 wid 和 contentPath，则不重新生成
-      if (point.kid == null || point.contentPath == null) {
-        final kid = 'K$id';
+      final kid = 'K$id';
 
+      // 如果已经有 contentPath（如从收件箱分类过来的情况），保留原路径
+      String contentPath = point.contentPath ?? '';
+
+      // 如果没有 contentPath 或者路径不存在，创建新目录
+      if (contentPath.isEmpty || !await Directory(contentPath).exists()) {
         final documentsDir = await getApplicationDocumentsDirectory();
         final knowledgeDir = Directory('${documentsDir.path}/knowledge/$kid');
         if (!await knowledgeDir.exists()) {
           await knowledgeDir.create(recursive: true);
         }
-
-        final contentPath = knowledgeDir.path;
-
-        await db.update(
-          'knowledge_points',
-          {'kid': kid, 'content_path': contentPath},
-          where: 'id = ?',
-          whereArgs: [id],
-        );
-      } else {
-        // 只更新 kid（如果已经有 contentPath）
-        if (point.kid != null) {
-          await db.update(
-            'knowledge_points',
-            {'kid': point.kid},
-            where: 'id = ?',
-            whereArgs: [id],
-          );
-        }
+        contentPath = knowledgeDir.path;
       }
+
+      await db.update(
+        'knowledge_points',
+        {'kid': kid, 'content_path': contentPath},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
     }
     return id;
   }
@@ -176,6 +174,7 @@ class KnowledgePointDao {
     List<String>? tags,
     String? keyword,
     String? cid,
+    String? contentKeyword,
   }) async {
     List<String> conditions = [];
     List<dynamic> args = [];
@@ -200,6 +199,10 @@ class KnowledgePointDao {
       conditions.add('(title LIKE ? OR brief LIKE ?)');
       args.add('%$keyword%');
       args.add('%$keyword%');
+    }
+    if (contentKeyword != null && contentKeyword.isNotEmpty) {
+      conditions.add('content LIKE ?');
+      args.add('%$contentKeyword%');
     }
 
     final maps = await db.query(

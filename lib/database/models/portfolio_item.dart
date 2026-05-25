@@ -20,6 +20,7 @@ class PortfolioItem {
   final String? unitNumber; // 单元号
   final String? lessonNumber; // 课号
   final String? testRecs; // 生成练习记录（逗号分隔的 tid 列表）
+  final String? content; // 全文搜索内容
 
   PortfolioItem({
     this.id,
@@ -35,6 +36,7 @@ class PortfolioItem {
     this.unitNumber,
     this.lessonNumber,
     this.testRecs,
+    this.content,
   });
 
   Map<String, dynamic> toMap() {
@@ -52,6 +54,7 @@ class PortfolioItem {
       'unit_number': unitNumber,
       'lesson_number': lessonNumber,
       'test_recs': testRecs,
+      'content': content,
     };
   }
 
@@ -72,6 +75,7 @@ class PortfolioItem {
       unitNumber: map['unit_number'] as String?,
       lessonNumber: map['lesson_number'] as String?,
       testRecs: map['test_recs'] as String?,
+      content: map['content'] as String?,
     );
   }
 
@@ -89,6 +93,7 @@ class PortfolioItem {
     String? unitNumber,
     String? lessonNumber,
     String? testRecs,
+    String? content,
   }) {
     return PortfolioItem(
       id: id ?? this.id,
@@ -104,6 +109,7 @@ class PortfolioItem {
       unitNumber: unitNumber ?? this.unitNumber,
       lessonNumber: lessonNumber ?? this.lessonNumber,
       testRecs: testRecs ?? this.testRecs,
+      content: content ?? this.content,
     );
   }
 }
@@ -118,13 +124,18 @@ class PortfolioDao {
     if (id > 0 && item.wid == null) {
       final wid = 'W$id';
 
-      final documentsDir = await getApplicationDocumentsDirectory();
-      final portfolioDir = Directory('${documentsDir.path}/portfolio/$wid');
-      if (!await portfolioDir.exists()) {
-        await portfolioDir.create(recursive: true);
-      }
+      // 如果已经有 contentPath（如从收件箱分类过来的情况），保留原路径
+      String contentPath = item.contentPath ?? '';
 
-      final contentPath = portfolioDir.path;
+      // 如果没有 contentPath 或者路径不存在，创建新目录
+      if (contentPath.isEmpty || !await Directory(contentPath).exists()) {
+        final documentsDir = await getApplicationDocumentsDirectory();
+        final portfolioDir = Directory('${documentsDir.path}/portfolio/$wid');
+        if (!await portfolioDir.exists()) {
+          await portfolioDir.create(recursive: true);
+        }
+        contentPath = portfolioDir.path;
+      }
 
       await db.update(
         'portfolio_items',
@@ -143,6 +154,7 @@ class PortfolioDao {
     String? unitNumber,
     String? lessonNumber,
     String? keyword,
+    String? contentKeyword,
   }) async {
     List<String> conditions = [];
     List<dynamic> args = [];
@@ -172,6 +184,10 @@ class PortfolioDao {
       args.add('%$keyword%');
       args.add('%$keyword%');
       args.add('%$keyword%');
+    }
+    if (contentKeyword != null && contentKeyword.isNotEmpty) {
+      conditions.add('content LIKE ?');
+      args.add('%$contentKeyword%');
     }
 
     final maps = await db.query(

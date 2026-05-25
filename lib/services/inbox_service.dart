@@ -50,11 +50,13 @@ class ClassificationResult {
   final String category;
   final String reasoning;
   final String? newTitle;
+  final String? content;
 
   ClassificationResult({
     required this.category,
     required this.reasoning,
     this.newTitle,
+    this.content,
   });
 }
 
@@ -305,8 +307,8 @@ class InboxService {
       await _dbHelper.updateInboxItem(updatedItem);
     } else {
       // 如果数据库没有记录，插入新记录
-      final id = await _dbHelper.insertInboxItem(updatedItem);
-      updatedItem.copyWith(id: id);
+      await _dbHelper.insertInboxItem(updatedItem);
+      // 注意：InboxItem 是不可变对象，插入后不需要更新本地引用
     }
 
     // 记录移动历史
@@ -349,8 +351,9 @@ class InboxService {
     if (item.id != null) {
       await _dbHelper.updateInboxItem(item);
     } else {
-      final id = await _dbHelper.insertInboxItem(item);
-      item.copyWith(id: id);
+      await _dbHelper.insertInboxItem(item);
+      // 注意：InboxItem 是不可变对象，插入后不需要更新本地引用
+      // 调用者应使用数据库返回的 id 创建新对象
     }
   }
 
@@ -362,11 +365,13 @@ class InboxService {
   // 过滤条目
   Future<List<InboxItem>> filterItems({
     String? keyword,
-    String? source,
-    String? category,
-    String? status,
+    Set<String>? source,
+    Set<String>? category,
+    Set<String>? status,
     DateTime? startDate,
     DateTime? endDate,
+    bool? isValid,
+    String? contentKeyword,
   }) async {
     final allItems = await getAllInboxItems();
 
@@ -378,23 +383,23 @@ class InboxService {
       }
 
       if (source != null && source.isNotEmpty) {
-        match = match && item.source.toLowerCase().contains(source.toLowerCase());
+        match = match && source.any((s) => item.source.toLowerCase().contains(s.toLowerCase()));
       }
 
       if (category != null && category.isNotEmpty) {
-        match = match && item.category == category;
+        match = match && category.contains(item.category);
       }
 
       if (status != null && status.isNotEmpty) {
-        match = match && item.status == status;
+        match = match && status.contains(item.status);
       }
 
-      if (startDate != null) {
-        match = match && item.createdAt.isAfter(startDate);
+      if (isValid != null) {
+        match = match && item.isValid == isValid;
       }
 
-      if (endDate != null) {
-        match = match && item.createdAt.isBefore(endDate);
+      if (contentKeyword != null && contentKeyword.isNotEmpty) {
+        match = match && item.content.toLowerCase().contains(contentKeyword.toLowerCase());
       }
 
       return match;
@@ -427,62 +432,93 @@ class InboxService {
       finalTitle = await _selectBestTitle(uniqueTitles, textContent);
     }
 
-    // Step 3: Classify using LLM
-    final systemPrompt = '''你是一位专业的文档分类助手。请判断以下文档内容最属于哪个分类栏目（每篇文档只能归入一个类别，不可多选）。
-
-请先阅读下方【分类定义】，再仔细阅读待分类文档，最后从 5 个选项中选出唯一最匹配的一个。
-
-=== 分类定义（严格互斥） ===
-1，「习题集」：仅包含题目和答案，没有答卷、批阅记录、错误分析等内容。通常是原始练习题、试卷、思考题。
-2，「错题本」：在习题的基础上，额外包含答卷/批改痕迹/错误分析/技巧总结等订正信息。核心特征是"有错且有分析与修正"。
-3，「作品集」：范文、作文、原创文章、名人名篇等作品性文本。不是练习题，也不是学习笔记。
-4，「知识点」：文化知识、历史地理知识介绍、语言规则讲解、学习方法心得、笔记摘要等知识类内容。
-5，「无法分类」：与学习无关的内容、工具输出、系统信息、闲聊对话等。
-
-=== 核心区分要点 ===
-- 习题集 vs 错题本：若文档仅有题目和参考答案 → 归为习题集；若有答卷标记、错误分析、技巧总结 → 归为错题本
-
-请对以下内容进行分类，选择最合适的栏目标签，只需回复数字序号（1-5），不要回复其他内容。
-
-内容：
-$textContent
-
-请只回复一个数字（1-5）。''';
-
-    final categoryResponse = await _llmService.generateResponse(systemPrompt);
-    String category = '无法分类';
-
-    final numberMap = <String, String>{
-      '1': '习题集',
-      '2': '错题本',
-      '3': '作品集',
-      '4': '知识点',
-      '5': '无法分类',
-    };
-
-    if (categoryResponse['success'] == true) {
-      final response = categoryResponse['response'] as String;
-      final match = RegExp(r'[1-5]').firstMatch(response);
-      if (match != null) {
-        final numStr = match.group(0)!;
-        if (numberMap.containsKey(numStr)) {
-          category = numberMap[numStr]!;
-        }
-      }
+    // Step 3: Two-stage classification using LLM
+    // Stage 1: First classify into broad categories
+    String category = await _firstStageClassification(textContent);
+    
+    // Stage 2: If classified as exercise-related, further determine if it's error book or exercise set
+    String stageReasoning = '';
+    if (category == '习题相关') {
+      category = await _secondStageClassification(textContent);
+      stageReasoning = ' → 二级分类完成';
     }
-
-    final reasoning = categoryResponse['success'] == true
-        ? 'LLM分类完成'
-        : 'LLM分类失败: ${categoryResponse['reasoning']}';
 
     print('[SortLog] 分类结果: $category (标题: $finalTitle)');
     print('[SortLog] ========== 分类处理完成 (unified) ==========');
 
     return ClassificationResult(
       category: category,
-      reasoning: reasoning,
+      reasoning: 'LLM分类完成$stageReasoning',
       newTitle: finalTitle != item.title ? finalTitle : null,
+      content: textContent,
     );
+  }
+
+  /// First stage: Classify into broad categories
+  Future<String> _firstStageClassification(String content) async {
+    final systemPrompt = '''你是一位专业的文档分类助手。请将文档归类到以下四大类别之一。
+
+=== 分类定义 ===
+1，「习题相关」：包含题目、答案、练习题、试卷、答题等学习练习相关内容（无论是否有错误分析）
+2，「作品集」：范文、作文、原创文章、名人名篇等作品性文本。不是练习题，也不是学习笔记。
+3，「知识点」：文化知识、历史地理知识介绍、语言规则讲解、学习方法心得、笔记摘要等知识类内容。
+4，「无法分类」：与学习无关的内容、工具输出、系统信息、闲聊对话等。
+
+请对以下内容进行分类，选择最合适的栏目标签，只需回复数字序号（1-4），不要回复其他内容。
+
+内容：
+$content
+
+请只回复一个数字（1-4）。''';
+
+    final response = await _llmService.generateResponse(systemPrompt);
+    final numberMap = <String, String>{
+      '1': '习题相关',
+      '2': '作品集',
+      '3': '知识点',
+      '4': '无法分类',
+    };
+
+    if (response['success'] == true) {
+      final resp = response['response'] as String;
+      final match = RegExp(r'[1-4]').firstMatch(resp);
+      if (match != null) {
+        final numStr = match.group(0)!;
+        if (numberMap.containsKey(numStr)) {
+          return numberMap[numStr]!;
+        }
+      }
+    }
+    return '无法分类';
+  }
+
+  /// Second stage: Determine if exercise-related content is error book or exercise set
+  Future<String> _secondStageClassification(String content) async {
+    final systemPrompt = '''你是一位专业的文档分类助手。请判断以下习题相关文档属于哪一类。
+
+=== 分类定义 ===
+1，「错题本」：文档中包含答卷、批改痕迹、错误分析、技巧总结、"错在哪里"、"正确答案是"、"我的答案"、"批阅"等订正相关信息。核心特征是"有错且有分析与修正"。
+2，「习题集」：仅包含题目和参考答案，没有答卷、批阅记录、错误分析等订正信息。是原始练习题、试卷、思考题。
+
+请仔细阅读内容，判断是否包含错误分析、批阅信息、错在哪里等内容：
+
+内容：
+$content
+
+请只回复一个数字（1 或 2）。''';
+
+    final response = await _llmService.generateResponse(systemPrompt);
+    
+    if (response['success'] == true) {
+      final resp = response['response'] as String;
+      if (resp.contains('1')) {
+        return '错题本';
+      } else if (resp.contains('2')) {
+        return '习题集';
+      }
+    }
+    // Default to exercise set if uncertain
+    return '习题集';
   }
 
   // Extract heading tags from HTML content
@@ -695,10 +731,12 @@ $content
       final category = result.category;
       final reasoning = result.reasoning;
       final newTitle = result.newTitle;
+      final content = result.content;
       print('[SortLog] 分类结果: $category (标题: $newTitle)');
 
       // Determine actual file path after potential move
       String finalFilePath = item.filePath;
+      bool fileMoved = false;
       if (item.category != category || newTitle != null) {
         await moveItemToColumn(item, category);
 
@@ -709,16 +747,24 @@ $content
         final candidatePath = '${newColumnDir.path}/$dirName';
         if (await Directory(candidatePath).exists()) {
           finalFilePath = candidatePath;
+          fileMoved = true;
         } else {
           while (suffix <= 10) {
             final searchPath = '${newColumnDir.path}/${dirName}_$suffix';
             if (await Directory(searchPath).exists()) {
               finalFilePath = searchPath;
+              fileMoved = true;
               break;
             }
             suffix++;
           }
         }
+
+        // 验证文件是否成功移动
+        if (!fileMoved) {
+          throw Exception('文件移动失败，目标路径不存在');
+        }
+        print('[SortLog] 文件已成功移动到: $finalFilePath');
       }
 
       // Build updated item with latest data
@@ -727,13 +773,20 @@ $content
         category: category,
         filePath: finalFilePath,
         status: '已处理',
+        content: content ?? item.content,
       );
 
       // Persist to inbox_items table
       await updateItemInfo(updatedItem);
 
       // Write through to corresponding module table
-      await _writeToModuleTable(updatedItem);
+      final moduleInserted = await _writeToModuleTable(updatedItem);
+      
+      // 验证目标栏目数据库是否成功插入记录
+      if (!moduleInserted) {
+        throw Exception('目标栏目数据库记录插入失败');
+      }
+      print('[SortLog] 目标栏目数据库记录已成功插入');
 
       // Save full chat history to conversation database
       await _saveFullClassificationChat(
@@ -751,21 +804,28 @@ $content
       };
     } catch (e) {
       print('[SortLog] 分类处理异常: $e');
+      
+      // 更新状态为整理失败
+      final failedItem = item.copyWith(
+        status: '整理失败',
+      );
+      await updateItemInfo(failedItem);
+      
       return {
         'category': '无法分类',
-        'reasoning': '处理失败: $e',
+        'reasoning': '处理失败: $e，请人工处理',
       };
     }
   }
 
   // 分类后写入对应模块表（通过 LLM 将 inbox item content 解析为目标数据结构）
-  Future<void> _writeToModuleTable(InboxItem item) async {
+  Future<bool> _writeToModuleTable(InboxItem item) async {
     final db = await _dbHelper.database;
 
-    // 如果 content 为空或只有占位符，跳过智能解析
+    // 如果 content 为空或只有占位符，跳过智能解析，返回 false 表示未成功插入
     if (item.content.isEmpty || item.content == '正在处理中...') {
       print('[WriteThrough] 内容未就绪，跳过智能解析');
-      return;
+      return false;
     }
 
     try {
@@ -775,21 +835,24 @@ $content
       switch (item.category) {
         case '错题本':
           await _insertErrorRecord(db, item, parsedData);
-          break;
+          return true;
         case '习题集':
           await _insertExercise(db, item, parsedData);
-          break;
+          return true;
         case '作品集':
           await _insertPortfolioItem(db, item, parsedData);
-          break;
+          return true;
         case '知识点':
           await _insertKnowledgePoint(db, item, parsedData);
-          break;
+          return true;
+        default:
+          print('[WriteThrough] 未知分类: ${item.category}');
+          return false;
       }
     } catch (e) {
       print('[WriteThrough] LLM 解析失败: $e');
       // LLM 失败时降级为仅标题插入
-      await _fallbackInsertModuleTable(item);
+      return await _fallbackInsertModuleTable(item);
     }
   }
 
@@ -990,13 +1053,27 @@ $content
     final nextNum = await testDao.nextTidNumber();
     final tid = 'T$nextNum';
 
+    // 获取文档中的图片路径
+    List<String> images = [];
+    if (item.filePath.isNotEmpty) {
+      final dir = Directory(item.filePath);
+      if (await dir.exists()) {
+        final files = await dir.list().where((entity) => 
+          entity.path.endsWith('.jpg') || 
+          entity.path.endsWith('.jpeg') || 
+          entity.path.endsWith('.png')
+        ).toList();
+        images = files.map((f) => f.path).toList();
+      }
+    }
+
     // 先插入 Test 记录
     await testDao.insert(Test(
       tid: tid,
       title: data['title'] ?? item.title ?? '收件箱导入',
       lessonUnitList: [],
       kids: [],
-      images: [],
+      images: images,
       status: '未开始',
       createdAt: item.createdAt,
       lang: 'cn',
@@ -1014,6 +1091,7 @@ $content
       lessonNumber: null,
       createdAt: item.createdAt,
       lang: 'cn',
+      contentPath: item.filePath.isNotEmpty ? item.filePath : null,
     ));
 
     print('[WriteThrough] 习题集条目已创建: $tid');
@@ -1060,7 +1138,7 @@ $content
 
   // ========== 降级策略：LLM 失败时的简单插入 ==========
 
-  Future<void> _fallbackInsertModuleTable(InboxItem item) async {
+  Future<bool> _fallbackInsertModuleTable(InboxItem item) async {
     final db = await _dbHelper.database;
 
     switch (item.category) {
@@ -1075,7 +1153,7 @@ $content
           lang: 'cn',
         ));
         print('[Fallback] 错题本条目已创建（仅标题）: T$nextNum');
-        break;
+        return true;
 
       case '习题集':
         final testDao = TestDao(db);
@@ -1083,12 +1161,26 @@ $content
         final nextNum = await testDao.nextTidNumber();
         final tid = 'T$nextNum';
         
+        // 获取文档中的图片路径
+        List<String> images = [];
+        if (item.filePath.isNotEmpty) {
+          final dir = Directory(item.filePath);
+          if (await dir.exists()) {
+            final files = await dir.list().where((entity) => 
+              entity.path.endsWith('.jpg') || 
+              entity.path.endsWith('.jpeg') || 
+              entity.path.endsWith('.png')
+            ).toList();
+            images = files.map((f) => f.path).toList();
+          }
+        }
+        
         await testDao.insert(Test(
           tid: tid,
           title: item.title,
           lessonUnitList: [],
           kids: [],
-          images: [],
+          images: images,
           status: '未开始',
           createdAt: item.createdAt,
           lang: 'cn',
@@ -1105,9 +1197,10 @@ $content
           lessonNumber: null,
           createdAt: item.createdAt,
           lang: 'cn',
+          contentPath: item.filePath.isNotEmpty ? item.filePath : null,
         ));
         print('[Fallback] 习题集条目已创建（仅标题）');
-        break;
+        return true;
 
       case '作品集':
         final dao = PortfolioDao(db);
@@ -1119,7 +1212,7 @@ $content
           lang: 'cn',
         ));
         print('[Fallback] 作品集条目已创建（仅标题）');
-        break;
+        return true;
 
       case '知识点':
         final dao = KnowledgePointDao(db);
@@ -1131,7 +1224,11 @@ $content
           cid: '',
         ));
         print('[Fallback] 知识点条目已创建');
-        break;
+        return true;
+
+      default:
+        print('[Fallback] 未知分类: ${item.category}');
+        return false;
     }
   }
 
