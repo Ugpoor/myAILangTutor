@@ -240,10 +240,10 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
   Widget _buildTestItem(Test test) {
     final isSelected = _selectedIds.contains(test.id);
 
-    return InkWell(
-      onTap: () => _openTestDetail(test),
-      child: Card(
-        margin: const EdgeInsets.symmetric(vertical: 4),
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: InkWell(
+        onTap: () => _openTestDetail(test),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
@@ -270,14 +270,6 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
                           '${test.tid} ',
                           style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF651FFF)),
                         ),
-                        Expanded(
-                          child: Text(
-                            test.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w500),
-                          ),
-                        ),
                       ],
                     ),
                     const SizedBox(height: 4),
@@ -288,8 +280,8 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
                           TagStyles.lessonUnitTag('${widget.lang == 'cn' ? '单元' : 'Unit'}: ${test.lessonUnitList.join(',')}'),
                         if (test.kids.isNotEmpty)
                           TagStyles.knowledgeTag('${widget.lang == 'cn' ? '知识' : 'Knowledge'}: ${test.kids.join(',')}'),
-                        TagStyles.statusTag(test.status, test.status),
                         TagStyles.exerciseTag(test.tid),
+                        TagStyles.statusTag(test.status, test.status),
                       ],
                     ),
                   ],

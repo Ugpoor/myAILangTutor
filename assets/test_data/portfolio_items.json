@@ -1,64 +1,70 @@
 {
   "portfolio_items": [
     {
+      "wid": "W1",
       "title": "落花生——许地山",
       "isOriginal": false,
-      "contentPath": "portfolio/peanut_analysis",
       "brief": "许地山经典散文赏析，借物喻人手法的典范",
       "kid": "K2",
       "unitNumber": "5",
       "lessonNumber": "1",
-      "lang": "cn"
+      "lang": "cn",
+      "testRecs": ""
     },
     {
+      "wid": "W2",
       "title": "我的校园",
       "isOriginal": true,
-      "contentPath": "portfolio/my_school",
       "brief": "原创写景作文，描写美丽的校园",
       "kid": "K3",
       "unitNumber": "4",
       "lessonNumber": "4",
-      "lang": "cn"
+      "lang": "cn",
+      "testRecs": ""
     },
     {
+      "wid": "W3",
       "title": "春——朱自清",
       "isOriginal": false,
-      "contentPath": "portfolio/spring_zhu",
       "brief": "朱自清经典散文，描绘春天的美好",
       "kid": "K4",
       "unitNumber": "5",
       "lessonNumber": "2",
-      "lang": "cn"
+      "lang": "cn",
+      "testRecs": ""
     },
     {
+      "wid": "W4",
       "title": "我的老师——写人作文",
       "isOriginal": true,
-      "contentPath": "portfolio/my_teacher",
       "brief": "原创写人作文，刻画老师形象",
       "kid": "K5",
       "unitNumber": "7",
       "lessonNumber": "1",
-      "lang": "cn"
+      "lang": "cn",
+      "testRecs": ""
     },
     {
+      "wid": "W5",
       "title": "从百草园到三味书屋——鲁迅",
       "isOriginal": false,
-      "contentPath": "portfolio/baicao_yuan",
       "brief": "鲁迅回忆性散文，对比手法运用",
       "kid": "K6",
       "unitNumber": "7",
       "lessonNumber": "2",
-      "lang": "cn"
+      "lang": "cn",
+      "testRecs": ""
     },
     {
+      "wid": "W6",
       "title": "难忘的一件事——记叙文",
       "isOriginal": true,
-      "contentPath": "portfolio/unforgettable",
       "brief": "原创记叙文，讲述难忘的运动会经历",
       "kid": "K7",
       "unitNumber": "6",
       "lessonNumber": "2",
-      "lang": "cn"
+      "lang": "cn",
+      "testRecs": ""
     }
   ]
 }

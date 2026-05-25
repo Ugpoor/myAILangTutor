@@ -13,6 +13,7 @@ import '../database/models/knowledge_point.dart';
 import '../database/models/error_type_outline.dart';
 import '../database/models/knowledge_outline.dart';
 import '../database/models/skill.dart';
+import 'llm_service.dart';
 
 class ConfigImporter {
   static final ConfigImporter _instance = ConfigImporter._internal();
@@ -280,7 +281,7 @@ class ConfigImporter {
 
     final jsonString = await _getConfigFileContent('error_type_outlines.json');
     final data = json.decode(jsonString);
-    final outlines = data['error_type_outlines'] as List;
+    final outlines = (data['error_type_outlines'] as List?) ?? [];
 
     final dao = ErrorTypeOutlineDao(db);
     for (final item in outlines) {
@@ -312,7 +313,7 @@ class ConfigImporter {
 
     final jsonString = await _getConfigFileContent('knowledge_outlines.json');
     final data = json.decode(jsonString);
-    final outlines = data['knowledge_outlines'] as List;
+    final outlines = (data['knowledge_outlines'] as List?) ?? [];
 
     final dao = KnowledgeOutlineDao(db);
     for (final item in outlines) {
@@ -333,7 +334,7 @@ class ConfigImporter {
       'assets/test_data/error_records.json',
     );
     final data = json.decode(jsonString);
-    final records = data['error_records'] as List;
+    final records = (data['error_records'] as List?) ?? [];
 
     final dao = ErrorRecordDao(db);
     for (final item in records) {
@@ -374,54 +375,111 @@ class ConfigImporter {
       'assets/test_data/exercises.json',
     );
     final data = json.decode(jsonString);
-    final exercises = data['exercises'] as List;
 
     final questionDao = QuestionDao(db);
     final testDao = TestDao(db);
 
-    for (final item in exercises) {
+    final tests = (data['tests'] as List?) ?? [];
+    for (final item in tests) {
       List<String> lessonUnitList = [];
       List<String> kids = [];
+      List<String> images = [];
       
-      if (item['lessonUnit'] != null) {
-        lessonUnitList.add(item['lessonUnit'].toString());
+      if (item['lessonUnitList'] != null) {
+        final list = item['lessonUnitList'] as List;
+        lessonUnitList = list.map((e) => e.toString()).toList();
       }
       
-      if (item['knowledgeTag'] != null) {
-        kids = item['knowledgeTag'].toString().split(',').map((s) => s.trim()).toList();
+      if (item['kids'] != null) {
+        final list = item['kids'] as List;
+        kids = list.map((e) => e.toString()).toList();
       }
 
-      final tid = item['exerciseId'];
+      if (item['images'] != null) {
+        final list = item['images'] as List;
+        images = list.map((e) => e.toString()).toList();
+      }
 
       await testDao.insert(
         Test(
-          tid: tid,
-          title: item['question'],
+          tid: item['tid'],
+          title: item['title'],
           lessonUnitList: lessonUnitList,
           kids: kids,
-          status: '未开始',
-          images: [],
-          createdAt: DateTime.now(),
-          lang: item['lang'] ?? 'cn',
-        ),
-      );
-
-      await questionDao.insert(
-        Question(
-          question: item['examPaper'] ?? item['question'],
-          exerciseId: tid,
-          tid: tid,
-          kid: kids.isNotEmpty ? kids.first : null,
-          progress: item['progress'],
-          category: item['category'],
-          grading: item['grading'],
-          correctAnswer: item['answerKey'],
+          status: item['status'] ?? '未开始',
+          images: images,
           createdAt: DateTime.now(),
           lang: item['lang'] ?? 'cn',
         ),
       );
     }
-    print('[ConfigImporter] 导入习题: ${exercises.length} 条');
+    print('[ConfigImporter] 导入试卷: ${tests.length} 条');
+
+    final questions = (data['questions'] as List?) ?? [];
+    for (final item in questions) {
+      ImageRegion? examPaper;
+      ImageRegion? answerSheet;
+      ImageRegion? answerKey;
+      ImageRegion? gradingSheet;
+
+      if (item['examPaper'] != null) {
+        final ep = item['examPaper'] as Map<String, dynamic>;
+        examPaper = ImageRegion(
+          imgNum: ep['imgNum'] as int,
+          leftTop: (ep['left-top'] as List).map((e) => (e as num).toDouble()).toList(),
+          bottomRight: (ep['bottom-right'] as List).map((e) => (e as num).toDouble()).toList(),
+        );
+      }
+
+      if (item['answerSheet'] != null) {
+        final as = item['answerSheet'] as Map<String, dynamic>;
+        answerSheet = ImageRegion(
+          imgNum: as['imgNum'] as int,
+          leftTop: (as['left-top'] as List).map((e) => (e as num).toDouble()).toList(),
+          bottomRight: (as['bottom-right'] as List).map((e) => (e as num).toDouble()).toList(),
+        );
+      }
+
+      if (item['answerKey'] != null) {
+        final ak = item['answerKey'] as Map<String, dynamic>;
+        answerKey = ImageRegion(
+          imgNum: ak['imgNum'] as int,
+          leftTop: (ak['left-top'] as List).map((e) => (e as num).toDouble()).toList(),
+          bottomRight: (ak['bottom-right'] as List).map((e) => (e as num).toDouble()).toList(),
+        );
+      }
+
+      if (item['gradingSheet'] != null) {
+        final gs = item['gradingSheet'] as Map<String, dynamic>;
+        gradingSheet = ImageRegion(
+          imgNum: gs['imgNum'] as int,
+          leftTop: (gs['left-top'] as List).map((e) => (e as num).toDouble()).toList(),
+          bottomRight: (gs['bottom-right'] as List).map((e) => (e as num).toDouble()).toList(),
+        );
+      }
+
+      await questionDao.insert(
+        Question(
+          question: item['question'],
+          exerciseId: item['exerciseId'],
+          tid: item['tid'],
+          kid: item['kid'],
+          progress: item['progress'] ?? '未答题',
+          category: item['category'],
+          grading: item['grading'],
+          gradingResult: item['gradingResult']?.toString(),
+          answer: item['answer']?.toString(),
+          correctAnswer: item['correctAnswer'],
+          examPaper: examPaper,
+          answerSheet: answerSheet,
+          answerKey: answerKey,
+          gradingSheet: gradingSheet,
+          createdAt: DateTime.now(),
+          lang: item['lang'] ?? 'cn',
+        ),
+      );
+    }
+    print('[ConfigImporter] 导入题目: ${questions.length} 条');
   }
 
   Future<void> _importPortfolioItems(Database db) async {
@@ -429,25 +487,160 @@ class ConfigImporter {
       'assets/test_data/portfolio_items.json',
     );
     final data = json.decode(jsonString);
-    final items = data['portfolio_items'] as List;
+    final items = (data['portfolio_items'] as List?) ?? [];
+
+    final llmService = LlmService();
+    await llmService.init();
+
+    final appDocDir = await getApplicationDocumentsDirectory();
+    final portfolioBaseDir = Directory('${appDocDir.path}/portfolio');
+    if (!await portfolioBaseDir.exists()) {
+      await portfolioBaseDir.create(recursive: true);
+    }
 
     final dao = PortfolioDao(db);
     for (final item in items) {
+      final title = item['title'] as String;
+      final brief = item['brief'] as String? ?? '';
+      final isOriginal = item['isOriginal'] as bool;
+      final wid = item['wid'] as String?;
+      
+      final dirName = wid ?? 'portfolio_${DateTime.now().millisecondsSinceEpoch}';
+      final itemDir = Directory('${portfolioBaseDir.path}/$dirName');
+      if (!await itemDir.exists()) {
+        await itemDir.create(recursive: true);
+      }
+
+      final htmlPath = '${itemDir.path}/index.html';
+      if (!await File(htmlPath).exists()) {
+        final htmlContent = await _generatePortfolioHtml(title, brief, isOriginal, llmService);
+        await File(htmlPath).writeAsString(htmlContent);
+        print('[ConfigImporter] 动态生成作品集HTML: $htmlPath');
+      }
+
       await dao.insert(
         PortfolioItem(
-          title: item['title'],
-          isOriginal: item['isOriginal'],
-          contentPath: item['contentPath'],
-          brief: item['brief'],
-          kid: item['kid'],
-          unitNumber: item['unitNumber'],
-          lessonNumber: item['lessonNumber'],
+          wid: wid,
+          title: title,
+          isOriginal: isOriginal,
+          contentPath: itemDir.path,
+          brief: brief,
+          kid: item['kid'] as String?,
+          unitNumber: item['unitNumber'] as String?,
+          lessonNumber: item['lessonNumber'] as String?,
           createdAt: DateTime.now(),
-          lang: item['lang'] ?? 'cn',
+          lang: item['lang'] as String? ?? 'cn',
+          testRecs: item['testRecs'] as String?,
         ),
       );
     }
     print('[ConfigImporter] 导入作品集: ${items.length} 条');
+  }
+
+  Future<String> _generatePortfolioHtml(String title, String brief, bool isOriginal, LlmService llmService) async {
+    try {
+      String prompt;
+      if (isOriginal) {
+        prompt = '''请根据以下原创作文信息生成HTML格式的作品展示页面：
+
+标题：$title
+简介：$brief
+
+要求：
+1. 生成一篇完整的原创作文内容（根据标题和简介推断主题）
+2. 使用优美的语言，适合学生作文水平
+3. 输出完整的HTML文件，包含标题、正文内容
+4. 不要输出任何解释性文字，只输出HTML内容
+''';
+      } else {
+        prompt = '''请根据以下文学作品信息生成HTML格式的赏析页面：
+
+作品标题：$title
+简介：$brief
+
+要求：
+1. 如果是著名作品，请提供原文节选
+2. 分析作品的写作手法和艺术特色
+3. 输出完整的HTML文件，包含原文、赏析内容
+4. 不要输出任何解释性文字，只输出HTML内容
+''';
+      }
+
+      final response = await llmService.generateResponse(prompt);
+      if (response['success'] == true && response['response'] != null) {
+        return response['response'] as String;
+      }
+    } catch (e) {
+      print('[ConfigImporter] LLM生成HTML失败: $e');
+    }
+
+    return _generateDefaultPortfolioHtml(title, brief, isOriginal);
+  }
+
+  String _generateDefaultPortfolioHtml(String title, String brief, bool isOriginal) {
+    final authorMatch = RegExp(r'——(.+)$').firstMatch(title);
+    final author = authorMatch != null ? authorMatch.group(1) : '';
+    final cleanTitle = authorMatch != null && author != null ? title.substring(0, title.length - author.length - 2) : title;
+
+    if (isOriginal) {
+      return '''<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>$title</title>
+    <style>
+        body { font-family: "Microsoft YaHei", sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.8; }
+        h1 { color: #333; border-bottom: 2px solid #FF69B4; padding-bottom: 10px; }
+        .brief { color: #666; font-style: italic; margin-bottom: 20px; }
+        .content { margin-top: 20px; text-indent: 2em; }
+    </style>
+</head>
+<body>
+    <h1>$cleanTitle</h1>
+    ${(author?.isNotEmpty ?? false) ? '<p class="author">——$author</p>' : ''}
+    <p class="brief">$brief</p>
+    <div class="content">
+        <p>这是一篇原创作品，展示了作者独特的写作风格和视角。</p>
+        <p>请在这里继续创作你的精彩内容...</p>
+    </div>
+</body>
+</html>''';
+    } else {
+      return '''<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>$title</title>
+    <style>
+        body { font-family: "Microsoft YaHei", sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.8; }
+        h1 { color: #333; border-bottom: 2px solid #4CAF50; padding-bottom: 10px; }
+        .author { color: #888; font-style: italic; }
+        .brief { color: #666; margin-bottom: 20px; }
+        .content { margin-top: 20px; text-indent: 2em; }
+        .analysis { background-color: #E8F5E9; padding: 15px; border-radius: 8px; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>$cleanTitle</h1>
+    ${(author?.isNotEmpty ?? false) ? '<p class="author">——$author</p>' : ''}
+    <p class="brief">$brief</p>
+    <div class="content">
+        <p>这是一篇经典文学作品，具有很高的艺术价值和文学价值。</p>
+        <p>作品通过细腻的描写和独特的叙事手法，展现了深刻的主题思想。</p>
+    </div>
+    <div class="analysis">
+        <h2>写作手法赏析</h2>
+        <ul>
+            <li><strong>语言风格：</strong>文字优美，表达细腻，富有感染力。</li>
+            <li><strong>结构特点：</strong>层次分明，过渡自然，逻辑清晰。</li>
+            <li><strong>主题思想：</strong>主题深刻，寓意深远，引人深思。</li>
+        </ul>
+    </div>
+</body>
+</html>''';
+    }
   }
 
   Future<void> _importKnowledgePoints(Database db) async {
@@ -455,25 +648,115 @@ class ConfigImporter {
       'assets/test_data/knowledge_points.json',
     );
     final data = json.decode(jsonString);
-    final points = data['knowledge_points'] as List;
+    final points = (data['knowledge_points'] as List?) ?? [];
+
+    final llmService = LlmService();
+    await llmService.init();
+
+    final appDocDir = await getApplicationDocumentsDirectory();
+    final knowledgeBaseDir = Directory('${appDocDir.path}/knowledge');
+    if (!await knowledgeBaseDir.exists()) {
+      await knowledgeBaseDir.create(recursive: true);
+    }
 
     final dao = KnowledgePointDao(db);
     for (final item in points) {
+      final title = item['title'] as String;
+      final brief = item['brief'] as String? ?? '';
+      final kid = item['kid'] as String?;
+      
+      final dirName = kid ?? 'knowledge_${DateTime.now().millisecondsSinceEpoch}';
+      final itemDir = Directory('${knowledgeBaseDir.path}/$dirName');
+      if (!await itemDir.exists()) {
+        await itemDir.create(recursive: true);
+      }
+
+      final htmlPath = '${itemDir.path}/index.html';
+      if (!await File(htmlPath).exists()) {
+        final htmlContent = await _generateKnowledgeHtml(title, brief, llmService);
+        await File(htmlPath).writeAsString(htmlContent);
+        print('[ConfigImporter] 动态生成知识点HTML: $htmlPath');
+      }
+
       await dao.insert(
         KnowledgePoint(
-          title: item['title'],
-          cid: item['cid'],
-          kid: item['kid'],
-          contentPath: item['contentPath'],
-          brief: item['brief'],
-          unitNumber: item['unitNumber'],
-          lessonNumber: item['lessonNumber'],
+          kid: kid,
+          title: title,
+          cid: item['cid'] as String? ?? '',
+          contentPath: itemDir.path,
+          brief: brief,
+          unitNumber: item['unitNumber'] as String?,
+          lessonNumber: item['lessonNumber'] as String?,
           createdAt: DateTime.now(),
-          lang: item['lang'] ?? 'cn',
+          lang: item['lang'] as String? ?? 'cn',
         ),
       );
     }
     print('[ConfigImporter] 导入知识点: ${points.length} 条');
+  }
+
+  Future<String> _generateKnowledgeHtml(String title, String brief, LlmService llmService) async {
+    try {
+      final prompt = '''请根据以下知识点信息生成HTML格式的学习资料页面：
+
+知识点标题：$title
+简介：$brief
+
+要求：
+1. 详细解释该知识点的定义、特点、应用场景
+2. 提供相关的例子和实例
+3. 输出完整的HTML文件，包含标题、正文、示例等内容
+4. 不要输出任何解释性文字，只输出HTML内容
+''';
+
+      final response = await llmService.generateResponse(prompt);
+      if (response['success'] == true && response['response'] != null) {
+        return response['response'] as String;
+      }
+    } catch (e) {
+      print('[ConfigImporter] LLM生成知识点HTML失败: $e');
+    }
+
+    return _generateDefaultKnowledgeHtml(title, brief);
+  }
+
+  String _generateDefaultKnowledgeHtml(String title, String brief) {
+    return '''<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>$title</title>
+    <style>
+        body { font-family: "Microsoft YaHei", sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.8; }
+        h1 { color: #333; border-bottom: 2px solid #2196F3; padding-bottom: 10px; }
+        h2 { color: #555; margin-top: 20px; }
+        .brief { color: #666; margin-bottom: 20px; }
+        .content { margin-top: 20px; text-indent: 2em; }
+        .example { background-color: #E3F2FD; padding: 15px; border-radius: 8px; margin-top: 15px; }
+    </style>
+</head>
+<body>
+    <h1>$title</h1>
+    <p class="brief">$brief</p>
+    
+    <h2>知识点概述</h2>
+    <div class="content">
+        <p>本知识点是语文学习中的重要内容，掌握它对于提升语言能力和文学素养具有重要意义。</p>
+    </div>
+    
+    <h2>核心要点</h2>
+    <ul>
+        <li>深入理解概念的本质和内涵</li>
+        <li>掌握相关的理论知识和方法</li>
+        <li>学会在实践中灵活运用</li>
+    </ul>
+    
+    <div class="example">
+        <strong>学习提示：</strong>结合具体例子理解知识点，多做练习巩固所学内容。
+    </div>
+</body>
+</html>''';
   }
 
   Future<void> _importSkills(Database db) async {
@@ -481,7 +764,7 @@ class ConfigImporter {
       'assets/test_data/skills.json',
     );
     final data = json.decode(jsonString);
-    final skills = data['skills'] as List;
+    final skills = (data['skills'] as List?) ?? [];
 
     final dao = SkillDao(db);
     for (final item in skills) {

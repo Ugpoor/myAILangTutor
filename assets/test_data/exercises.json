@@ -1,27 +1,133 @@
 {
-  "exercises": [
+  "tests": [
     {
-      "question": "四年级上第二单元测试",
-      "exerciseId": "T1",
-      "lessonUnit": "四年级上-第二单元",
-      "knowledgeTag": "字形辨析,近义词,阅读理解",
-      "progress": "已批阅",
-      "category": "单元测试",
-      "examPaper": "一、选择正确的字填空\n1. 教室里非常______(安静/宁静)\n2. 夜晚的湖面非常______(安静/平静)\n3. 她______地坐在角落看书(安静/宁静)\n\n二、近义词辨析\n4. 美丽和漂亮的区别\n5. 高兴和快乐的区别",
-      "answerSheet": "1. 宁静 2. 平静 3. 安静\n4. 美丽侧重外表，漂亮侧重好看\n5. 高兴侧重情绪，快乐侧重状态",
-      "answerKey": "1. 安静 2. 平静 3. 安静\n4. 美丽=外在好看，漂亮=令人赏心悦目\n5. 高兴=一时情绪，快乐=持久状态",
-      "grading": "第1题错误：应选\"安静\"。\"安静\"强调没有声响，\"宁静\"强调幽雅安静，教室环境用\"安静\"更合适。\n第4、5题基本正确，但辨析不够深入。",
+      "tid": "T1",
+      "title": "四年级上第二单元测试",
+      "lessonUnitList": ["2单元1课"],
+      "kids": ["字形辨析", "近义词", "阅读理解"],
+      "status": "已批阅",
+      "images": [
+        "exercises/T1/page_01.jpg",
+        "exercises/T1/page_02.jpg"
+      ],
       "lang": "cn"
     },
     {
-      "question": "阅读理解专项测试",
-      "exerciseId": "T2",
-      "lessonUnit": "五年级上-第一单元",
-      "knowledgeTag": "阅读理解,主旨归纳,借物喻人",
-      "progress": "未批阅",
-      "category": "专项练习",
-      "examPaper": "阅读《落花生》，回答：\n1. 概括文章主旨\n2. 找出文中\"借物喻人\"的语句\n3. 落花生和苹果、石榴的对比说明了什么？",
-      "answerSheet": "1. 文章写了一家人种花生、收花生、吃花生的事情。\n2. \"所以你们要像花生，它虽然不好看，可是很有用\"\n3. 说明了花生虽然外表不好看，但是很有用",
+      "tid": "T2",
+      "title": "阅读理解专项测试",
+      "lessonUnitList": ["1单元2课"],
+      "kids": ["阅读理解", "主旨归纳", "借物喻人"],
+      "status": "未开始",
+      "images": [
+        "exercises/T2/page_01.jpg"
+      ],
+      "lang": "cn"
+    },
+    {
+      "tid": "T3",
+      "title": "词语辨析练习",
+      "lessonUnitList": ["3单元1课", "3单元2课"],
+      "kids": ["词语辨析", "反义词", "词语搭配"],
+      "status": "进行中",
+      "images": [],
+      "lang": "cn"
+    }
+  ],
+  "questions": [
+    {
+      "question": "一、选择正确的字填空\n1. 教室里非常______(安静/宁静)\n2. 夜晚的湖面非常______(安静/平静)\n3. 她______地坐在角落看书(安静/宁静)",
+      "exerciseId": "T1-Q1",
+      "tid": "T1",
+      "kid": "字形辨析",
+      "progress": "已批阅",
+      "category": "填空题",
+      "correctAnswer": "1. 安静 2. 平静 3. 安静",
+      "answer": "1. 宁静 2. 平静 3. 安静",
+      "grading": "第1题错误：应选\"安静\"。\"安静\"强调没有声响，\"宁静\"强调幽雅安静，教室环境用\"安静\"更合适。",
+      "gradingResult": "错误",
+      "examPaper": {
+        "imgNum": 0,
+        "left-top": [100.0, 200.0],
+        "bottom-right": [500.0, 400.0]
+      },
+      "answerSheet": {
+        "imgNum": 1,
+        "left-top": [100.0, 500.0],
+        "bottom-right": [500.0, 600.0]
+      },
+      "gradingSheet": {
+        "imgNum": 1,
+        "left-top": [100.0, 700.0],
+        "bottom-right": [500.0, 900.0]
+      },
+      "lang": "cn"
+    },
+    {
+      "question": "二、近义词辨析\n4. 美丽和漂亮的区别\n5. 高兴和快乐的区别",
+      "exerciseId": "T1-Q2",
+      "tid": "T1",
+      "kid": "近义词",
+      "progress": "已批阅",
+      "category": "简答题",
+      "correctAnswer": "4. 美丽=外在好看，漂亮=令人赏心悦目\n5. 高兴=一时情绪，快乐=持久状态",
+      "answer": "4. 美丽侧重外表，漂亮侧重好看\n5. 高兴和快乐的区别",
+      "grading": "第4、5题基本正确，但辨析不够深入。",
+      "gradingResult": "部分正确",
+      "examPaper": {
+        "imgNum": 0,
+        "left-top": [100.0, 450.0],
+        "bottom-right": [500.0, 650.0]
+      },
+      "answerSheet": {
+        "imgNum": 1,
+        "left-top": [100.0, 650.0],
+        "bottom-right": [500.0, 750.0]
+      },
+      "gradingSheet": {
+        "imgNum": 1,
+        "left-top": [100.0, 950.0],
+        "bottom-right": [500.0, 1100.0]
+      },
+      "lang": "cn"
+    },
+    {
+      "question": "阅读《落花生》，回答：\n1. 概括文章主旨\n2. 找出文中\"借物喻人\"的语句\n3. 落花生和苹果、石榴的对比说明了什么？",
+      "exerciseId": "T2-Q1",
+      "tid": "T2",
+      "kid": "阅读理解",
+      "progress": "未答题",
+      "category": "简答题",
+      "correctAnswer": "1. 文章借落花生朴实无华、默默奉献的品格，说明人要做有用的人，不要做只讲体面而对别人没有好处的人。\n2. \"所以你们要像花生，它虽然不好看，可是很有用\"\n3. 说明了花生虽然外表不好看，但是很有用，强调内在价值的重要性。",
+      "gradingResult": null,
+      "examPaper": {
+        "imgNum": 0,
+        "left-top": [80.0, 150.0],
+        "bottom-right": [720.0, 500.0]
+      },
+      "lang": "cn"
+    },
+    {
+      "question": "选择正确的词语填空：\n1. 他______地接受了批评（虚心/骄傲）\n2. 同学们______地完成了任务（认真/马虎）",
+      "exerciseId": "T3-Q1",
+      "tid": "T3",
+      "kid": "词语辨析",
+      "progress": "未答题",
+      "category": "填空题",
+      "correctAnswer": "1. 虚心 2. 认真",
+      "gradingResult": null,
+      "lang": "cn"
+    },
+    {
+      "question": "写出下列词语的反义词：\n1. 光明 - ______\n2. 进步 - ______\n3. 诚实 - ______",
+      "exerciseId": "T3-Q2",
+      "tid": "T3",
+      "kid": "反义词",
+      "progress": "已批阅",
+      "category": "填空题",
+      "correctAnswer": "1. 黑暗 2. 退步 3. 虚伪",
+      "answer": "1. 黑暗 2. 退步 3. 诚实",
+      "grading": "第3题错误：诚实的反义词是\"虚伪\"，不是\"欺骗\"。诚实强调不说谎，反义词应为虚伪。",
+      "gradingResult": "错误",
       "lang": "cn"
     }
   ]

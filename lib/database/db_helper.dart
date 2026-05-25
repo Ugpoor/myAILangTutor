@@ -8,7 +8,7 @@ class DatabaseHelper {
   DatabaseHelper._internal();
 
   static Database? _database;
-  static const int _version = 28;
+  static const int _version = 32;
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -97,7 +97,6 @@ class DatabaseHelper {
         correct_answer TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         lang TEXT DEFAULT 'cn',
-        content_path TEXT,
         error_id TEXT,
         error_type TEXT,
         progress TEXT DEFAULT '待订正',
@@ -188,7 +187,10 @@ class DatabaseHelper {
         exam_paper TEXT,
         answer_sheet TEXT,
         answer_key TEXT,
+        grading_sheet TEXT,
         grading TEXT,
+        grading_result TEXT,
+        answer TEXT,
         source TEXT
       )
     ''');
@@ -221,7 +223,6 @@ class DatabaseHelper {
         wid TEXT UNIQUE,
         title TEXT NOT NULL,
         content_path TEXT,
-        thumbnail_path TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         lang TEXT DEFAULT 'cn',
         is_original INTEGER DEFAULT 0,
@@ -229,7 +230,8 @@ class DatabaseHelper {
         brief TEXT,
         kid TEXT,
         unit_number TEXT,
-        lesson_number TEXT
+        lesson_number TEXT,
+        test_recs TEXT
       )
     ''');
   }
@@ -393,6 +395,18 @@ class DatabaseHelper {
     if (oldVersion < 28) {
       await _upgradeToV28(db);
     }
+    if (oldVersion < 29) {
+      await _upgradeToV29(db);
+    }
+    if (oldVersion < 30) {
+      await _upgradeToV30(db);
+    }
+    if (oldVersion < 31) {
+      await _upgradeToV31(db);
+    }
+    if (oldVersion < 32) {
+      await _upgradeToV32(db);
+    }
   }
 
   Future<void> _upgradeToV24(Database db) async {
@@ -463,7 +477,10 @@ class DatabaseHelper {
         exam_paper TEXT,
         answer_sheet TEXT,
         answer_key TEXT,
+        grading_sheet TEXT,
         grading TEXT,
+        grading_result TEXT,
+        answer TEXT,
         source TEXT
       )
     ''');
@@ -477,6 +494,41 @@ class DatabaseHelper {
 
   Future<void> _upgradeToV28(Database db) async {
     await _createTestsTable(db);
+  }
+
+  Future<void> _upgradeToV29(Database db) async {
+    try {
+      await db.execute('ALTER TABLE questions ADD COLUMN grading_sheet TEXT');
+    } catch (_) {}
+  }
+
+  Future<void> _upgradeToV30(Database db) async {
+    try {
+      await db.execute('ALTER TABLE questions ADD COLUMN grading_result TEXT');
+    } catch (_) {}
+    try {
+      await db.execute('ALTER TABLE questions ADD COLUMN answer TEXT');
+    } catch (_) {}
+  }
+
+  Future<void> _upgradeToV31(Database db) async {
+    try {
+      await db.execute('ALTER TABLE portfolio_items ADD COLUMN test_recs TEXT');
+    } catch (_) {}
+  }
+
+  Future<void> _upgradeToV32(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${MoveRecordSchema.tableName} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        inbox_item_id TEXT NOT NULL,
+        from_category TEXT NOT NULL,
+        to_category TEXT NOT NULL,
+        from_path TEXT NOT NULL,
+        to_path TEXT NOT NULL,
+        moved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
   }
 
   Future<void> _upgradeToV23(Database db) async {

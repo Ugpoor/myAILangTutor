@@ -1,27 +1,59 @@
+import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 
+class ImageRegion {
+  final int imgNum;
+  final List<double> leftTop;
+  final List<double> bottomRight;
+
+  const ImageRegion({
+    required this.imgNum,
+    required this.leftTop,
+    required this.bottomRight,
+  });
+
+  Map<String, dynamic> toMap() => {
+    'imgNum': imgNum,
+    'left-top': leftTop,
+    'bottom-right': bottomRight,
+  };
+
+  static ImageRegion fromMap(Map<String, dynamic> map) => ImageRegion(
+    imgNum: map['imgNum'] as int,
+    leftTop: (map['left-top'] as List)
+        .map((e) => (e as num).toDouble())
+        .toList(),
+    bottomRight: (map['bottom-right'] as List)
+        .map((e) => (e as num).toDouble())
+        .toList(),
+  );
+}
+
 class Question {
-  final int? id;
-  final String question;
-  final String? correctAnswer;
-  final String? explanation;
-  final String? category;
-  final int difficulty;
-  final bool completed;
-  final DateTime? createdAt;
-  final String lang;
-  final String? contentPath;
-  final String? exerciseId;
-  final String? tid;
-  final int? lessonNumber;
-  final int? unitNumber;
-  final String? kid;
-  final String progress;
-  final Map<String, dynamic>? examPaper;
-  final Map<String, dynamic>? answerSheet;
-  final Map<String, dynamic>? answerKey;
-  final String? grading;
-  final String? source;
+  final int? id; // 数据库自增主键
+  final String question; // 题目内容（题干文本）
+  final String? correctAnswer; // 正确答案
+  final String? explanation; // 答案解析/说明
+  final String? category; // 题目分类（填空题、选择题、判断题、简答题、作文题）
+  final int difficulty; // 难度级别（1-5级）
+  final bool completed; // 是否已完成作答
+  final DateTime? createdAt; // 创建时间
+  final String lang; // 语言标识（cn/en）
+  final String? contentPath; // 内容文件路径（关联外部文件）
+  final String? exerciseId; // 题目唯一标识，格式为 tid + "-Q" + 序号（如 T1-Q1），用于跨模块引用和显示
+  final String? tid; // 关联的试卷ID（外键，关联 Test.tid）
+  final int? lessonNumber; // 单元号（如 1、2、3）
+  final int? unitNumber; // 课号（如 1、2、3）
+  final String? kid; // 关联知识点ID（格式：K+数字，如 K1）
+  final String progress; // 答题进度（未答题、已答题、已批阅、已订正）
+  final ImageRegion? examPaper; // 题目区域截图信息（试卷图片中的题目位置）
+  final ImageRegion? answerSheet; // 答题区域截图信息（答卷图片中的答题位置）
+  final ImageRegion? answerKey; // 答案区域截图信息（答案图片中的答案位置）
+  final ImageRegion? gradingSheet; // 批阅区域截图信息（已批改答卷中的批阅位置）
+  final String? grading; // 批阅意见/评语
+  final String? gradingResult; // 批改结果（正确/部分正确/错误/未评分）
+  final String? answer; // 用户答题结果（学生作答内容）
+  final String? source; // 来源（如：错题本、知识点、作品集）
 
   String? get lessonUnit {
     if (lessonNumber != null && unitNumber != null) {
@@ -50,25 +82,28 @@ class Question {
     this.examPaper,
     this.answerSheet,
     this.answerKey,
+    this.gradingSheet,
     this.grading,
+    this.gradingResult,
+    this.answer,
     this.source,
   });
 
   static List<String> get validCategories => [
-        '填空题',
-        '选择题',
-        '判断题',
-        '简答题',
-        '作文题',
-      ];
+    '填空题',
+    '选择题',
+    '判断题',
+    '简答题',
+    '作文题',
+  ];
 
   static List<String> get validCategoriesEn => [
-        'fill_blank',
-        'multiple_choice',
-        'true_false',
-        'short_answer',
-        'essay',
-      ];
+    'fill_blank',
+    'multiple_choice',
+    'true_false',
+    'short_answer',
+    'essay',
+  ];
 
   static String translateCategory(String category, String lang) {
     if (lang == 'en') {
@@ -122,10 +157,17 @@ class Question {
       'unit_number': unitNumber,
       'kid': kid,
       'progress': progress,
-      'exam_paper': examPaper != null ? _encodeMap(examPaper!) : null,
-      'answer_sheet': answerSheet != null ? _encodeMap(answerSheet!) : null,
-      'answer_key': answerKey != null ? _encodeMap(answerKey!) : null,
+      'exam_paper': examPaper != null ? jsonEncode(examPaper!.toMap()) : null,
+      'answer_sheet': answerSheet != null
+          ? jsonEncode(answerSheet!.toMap())
+          : null,
+      'answer_key': answerKey != null ? jsonEncode(answerKey!.toMap()) : null,
+      'grading_sheet': gradingSheet != null
+          ? jsonEncode(gradingSheet!.toMap())
+          : null,
       'grading': grading,
+      'grading_result': gradingResult,
+      'answer': answer,
       'source': source,
     };
   }
@@ -150,48 +192,23 @@ class Question {
       unitNumber: map['unit_number'] as int?,
       kid: map['kid'] as String?,
       progress: map['progress'] as String? ?? '未答题',
-      examPaper: map['exam_paper'] != null ? _decodeMap(map['exam_paper'] as String) : null,
-      answerSheet: map['answer_sheet'] != null ? _decodeMap(map['answer_sheet'] as String) : null,
-      answerKey: map['answer_key'] != null ? _decodeMap(map['answer_key'] as String) : null,
+      examPaper: map['exam_paper'] != null
+          ? ImageRegion.fromMap(jsonDecode(map['exam_paper'] as String))
+          : null,
+      answerSheet: map['answer_sheet'] != null
+          ? ImageRegion.fromMap(jsonDecode(map['answer_sheet'] as String))
+          : null,
+      answerKey: map['answer_key'] != null
+          ? ImageRegion.fromMap(jsonDecode(map['answer_key'] as String))
+          : null,
+      gradingSheet: map['grading_sheet'] != null
+          ? ImageRegion.fromMap(jsonDecode(map['grading_sheet'] as String))
+          : null,
       grading: map['grading'] as String?,
+      gradingResult: map['grading_result'] as String?,
+      answer: map['answer'] as String?,
       source: map['source'] as String?,
     );
-  }
-
-  static String _encodeMap(Map<String, dynamic> map) {
-    List<String> parts = [];
-    if (map['imagelink'] != null) {
-      parts.add('imagelink:${map['imagelink']}');
-    }
-    if (map['left-top'] != null) {
-      final lt = map['left-top'];
-      parts.add('left-top:${lt[0]},${lt[1]}');
-    }
-    if (map['bottom-right'] != null) {
-      final br = map['bottom-right'];
-      parts.add('bottom-right:${br[0]},${br[1]}');
-    }
-    return parts.join('|');
-  }
-
-  static Map<String, dynamic>? _decodeMap(String str) {
-    if (str.isEmpty) return null;
-    Map<String, dynamic> map = {};
-    final parts = str.split('|');
-    for (final part in parts) {
-      final idx = part.indexOf(':');
-      if (idx > 0) {
-        final key = part.substring(0, idx);
-        final value = part.substring(idx + 1);
-        if (key == 'left-top' || key == 'bottom-right') {
-          final coords = value.split(',').map((s) => double.tryParse(s) ?? 0).toList();
-          map[key] = coords.length >= 2 ? [coords[0], coords[1]] : [0, 0];
-        } else {
-          map[key] = value;
-        }
-      }
-    }
-    return map;
   }
 
   Question copyWith({
@@ -211,10 +228,13 @@ class Question {
     int? unitNumber,
     String? kid,
     String? progress,
-    Map<String, dynamic>? examPaper,
-    Map<String, dynamic>? answerSheet,
-    Map<String, dynamic>? answerKey,
+    ImageRegion? examPaper,
+    ImageRegion? answerSheet,
+    ImageRegion? answerKey,
+    ImageRegion? gradingSheet,
     String? grading,
+    String? gradingResult,
+    String? answer,
     String? source,
   }) {
     return Question(
@@ -237,7 +257,10 @@ class Question {
       examPaper: examPaper ?? this.examPaper,
       answerSheet: answerSheet ?? this.answerSheet,
       answerKey: answerKey ?? this.answerKey,
+      gradingSheet: gradingSheet ?? this.gradingSheet,
       grading: grading ?? this.grading,
+      gradingResult: gradingResult ?? this.gradingResult,
+      answer: answer ?? this.answer,
       source: source ?? this.source,
     );
   }
@@ -345,11 +368,7 @@ class QuestionDao {
   }
 
   Future<Question?> getById(int id) async {
-    final maps = await db.query(
-      'questions',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    final maps = await db.query('questions', where: 'id = ?', whereArgs: [id]);
     return maps.isNotEmpty ? Question.fromMap(maps.first) : null;
   }
 
@@ -363,14 +382,15 @@ class QuestionDao {
   }
 
   Future<int> delete(int id) async {
-    return await db.delete(
-      'questions',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    return await db.delete('questions', where: 'id = ?', whereArgs: [id]);
   }
 
-  Future<int> count({String? lang, String? category, bool? completed, String? progress}) async {
+  Future<int> count({
+    String? lang,
+    String? category,
+    bool? completed,
+    String? progress,
+  }) async {
     List<String> conditions = [];
     List<dynamic> args = [];
 
@@ -400,13 +420,30 @@ class QuestionDao {
 
   Future<int> deleteMathQuestions() async {
     const mathKeywords = [
-      'π=', 'π值', '勾股', '二次方程', '一元二次', 'x²=', 'x^2',
-      '√', '∑', '∫', 'sin(', 'cos(', 'tan(', 'log(', 'ln(',
-      'matrix', 'determinant', '微积分', '导数', '积分',
+      'π=',
+      'π值',
+      '勾股',
+      '二次方程',
+      '一元二次',
+      'x²=',
+      'x^2',
+      '√',
+      '∑',
+      '∫',
+      'sin(',
+      'cos(',
+      'tan(',
+      'log(',
+      'ln(',
+      'matrix',
+      'determinant',
+      '微积分',
+      '导数',
+      '积分',
     ];
 
     int deletedCount = 0;
-    
+
     for (final keyword in mathKeywords) {
       final result = await db.rawDelete(
         "DELETE FROM questions WHERE "
@@ -422,15 +459,13 @@ class QuestionDao {
   Future<int> deduplicateQuestions() async {
     int deletedCount = 0;
 
-    final duplicateById = await db.rawQuery(
-      """
+    final duplicateById = await db.rawQuery("""
       SELECT MIN(id) as keep_id, GROUP_CONCAT(id) as all_ids
       FROM questions
       WHERE exercise_id IS NOT NULL AND exercise_id != ''
       GROUP BY exercise_id
       HAVING COUNT(*) > 1
-      """,
-    );
+      """);
 
     for (final row in duplicateById) {
       final keepId = row['keep_id'] as int?;
@@ -453,10 +488,8 @@ class QuestionDao {
 
   Future<Map<String, int>> cleanQuestions() async {
     final dupDeleted = await deduplicateQuestions();
-    
-    return {
-      'duplicate_deleted': dupDeleted,
-    };
+
+    return {'duplicate_deleted': dupDeleted};
   }
 
   Future<int> nextExerciseIdNumber() async {
@@ -466,7 +499,7 @@ class QuestionDao {
     if (result.isEmpty) return 1;
     final lastId = result.first['exercise_id'] as String?;
     if (lastId == null) return 1;
-    final match = RegExp(r'T(\d+)').firstMatch(lastId);
+    final match = RegExp(r'T(\d+)').firstMatch(lastId!);
     if (match != null) return int.parse(match.group(1)!) + 1;
     return 1;
   }

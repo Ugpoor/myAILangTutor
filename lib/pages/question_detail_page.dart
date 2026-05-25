@@ -22,88 +22,60 @@ class QuestionDetailPage extends StatefulWidget {
 
 class _QuestionDetailPageState extends State<QuestionDetailPage> {
   late Question _question;
-
-  final List<TextEditingController> _questionControllers = [];
-  final List<TextEditingController> _correctAnswerControllers = [];
-  final List<TextEditingController> _explanationControllers = [];
-
+  late TextEditingController _questionController;
+  late TextEditingController _correctAnswerController;
+  late TextEditingController _explanationController;
   late TextEditingController _gradingController;
+  late TextEditingController _answerController;
+  late TextEditingController _gradingResultController;
 
+  String _progress = '未答题';
   String? _category;
   int _difficulty = 1;
-  String _progress = '未答题';
-  String? _kid;
-  int? _lessonNumber;
-  int? _unitNumber;
-  String? _source;
 
   final List<String> _categories = ['填空题', '选择题', '判断题', '简答题', '作文题'];
-
-  final List<String> _progressOptions = ['未答题', '未批阅', '已批阅', '已订正'];
+  final List<String> _progressOptions = ['未答题', '已答题', '未批阅', '已批阅', '已订正'];
+  final List<String> _gradingResultOptions = ['正确', '部分正确', '错误', '未评分'];
 
   @override
   void initState() {
     super.initState();
     _question = widget.question;
 
-    _questionControllers.add(TextEditingController(text: _question.question));
-
-    String answer = _question.correctAnswer ?? '';
-    _correctAnswerControllers.add(TextEditingController(text: answer));
-
-    _explanationControllers.add(
-      TextEditingController(text: _question.explanation ?? ''),
-    );
-
+    _questionController = TextEditingController(text: _question.question);
+    _correctAnswerController = TextEditingController(text: _question.correctAnswer ?? '');
+    _explanationController = TextEditingController(text: _question.explanation ?? '');
     _gradingController = TextEditingController(text: _question.grading ?? '');
+    _answerController = TextEditingController(text: _question.answer ?? '');
+    _gradingResultController = TextEditingController(text: _question.gradingResult ?? '');
 
-    _category = _categories.contains(_question.category)
-        ? _question.category
-        : null;
+    _category = _categories.contains(_question.category) ? _question.category : null;
     _difficulty = _question.difficulty;
     _progress = _question.progress;
-    _kid = _question.kid;
-    _lessonNumber = _question.lessonNumber;
-    _unitNumber = _question.unitNumber;
-    _source = _question.source;
   }
 
   @override
   void dispose() {
-    for (var controller in _questionControllers) {
-      controller.dispose();
-    }
-    for (var controller in _correctAnswerControllers) {
-      controller.dispose();
-    }
-    for (var controller in _explanationControllers) {
-      controller.dispose();
-    }
+    _questionController.dispose();
+    _correctAnswerController.dispose();
+    _explanationController.dispose();
     _gradingController.dispose();
+    _answerController.dispose();
+    _gradingResultController.dispose();
     super.dispose();
   }
 
   Future<void> _saveRecord() async {
     final updated = _question.copyWith(
-      question: _questionControllers.isNotEmpty
-          ? _questionControllers.map((c) => c.text.trim()).join('\n\n')
-          : '',
-      correctAnswer: _correctAnswerControllers.isNotEmpty
-          ? _correctAnswerControllers.map((c) => c.text.trim()).join('\n')
-          : null,
-      explanation: _explanationControllers.isNotEmpty
-          ? _explanationControllers.map((c) => c.text.trim()).join('\n')
-          : null,
-      grading: _gradingController.text.trim().isEmpty
-          ? null
-          : _gradingController.text.trim(),
+      question: _questionController.text.trim(),
+      correctAnswer: _correctAnswerController.text.trim().isEmpty ? null : _correctAnswerController.text.trim(),
+      explanation: _explanationController.text.trim().isEmpty ? null : _explanationController.text.trim(),
+      grading: _gradingController.text.trim().isEmpty ? null : _gradingController.text.trim(),
+      answer: _answerController.text.trim().isEmpty ? null : _answerController.text.trim(),
+      gradingResult: _gradingResultController.text.trim().isEmpty ? null : _gradingResultController.text.trim(),
       category: _category,
       difficulty: _difficulty,
       progress: _progress,
-      kid: _kid,
-      lessonNumber: _lessonNumber,
-      unitNumber: _unitNumber,
-      source: _source,
     );
 
     final db = await DatabaseHelper().database;
@@ -122,8 +94,8 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
         title: Text(widget.lang == 'cn' ? '确认删除' : 'Confirm Delete'),
         content: Text(
           widget.lang == 'cn'
-              ? '确定要删除题目 "${_question.question}" 吗？'
-              : 'Delete this question record?',
+              ? '确定要删除这道题目吗？'
+              : 'Delete this question?',
         ),
         actions: [
           TextButton(
@@ -152,7 +124,7 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
   @override
   Widget build(BuildContext context) {
     final tabs = [
-      widget.lang == 'cn' ? '取消' : 'Cancel',
+      widget.lang == 'cn' ? '返回' : 'Back',
       widget.lang == 'cn' ? '保存' : 'Save',
       widget.lang == 'cn' ? '删除' : 'Delete',
     ];
@@ -163,7 +135,7 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
         child: Column(
           children: [
             AppTitleBar(
-              title: widget.lang == 'cn' ? '题目详情' : 'Question Detail',
+              title: '${widget.lang == 'cn' ? '题目' : 'Question'} ${widget.question.exerciseId ?? widget.question.tid ?? ''}',
               onHomeTap: widget.onHomeTap,
             ),
             Expanded(
@@ -179,201 +151,19 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          if (_question.exerciseId != null)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF4CAF50),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                _question.exerciseId!,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          const SizedBox(width: 12),
-                          const Spacer(),
-                          DropdownButtonFormField<String>(
-                            initialValue: _progress,
-                            decoration: const InputDecoration(
-                              labelText: '进度 / Progress',
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                            items: _progressOptions
-                                .map(
-                                  (p) => DropdownMenuItem(
-                                    value: p,
-                                    child: Text(p),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (v) => setState(() => _progress = v!),
-                          ),
-                        ],
-                      ),
+                      _buildHeader(),
+                      const SizedBox(height: 20),
+                      _buildQuestionSection(),
                       const SizedBox(height: 16),
-
-                      Row(
-                        children: [
-                          Container(
-                            width: 4,
-                            height: 20,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF2196F3),
-                              borderRadius: BorderRadius.circular(2),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            widget.lang == 'cn' ? '【题目详情】' : 'Question Detail',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-
-                      ...List.generate(_questionControllers.length, (index) {
-                        return _buildQuestionCard(index);
-                      }),
-
-                      Text(
-                        widget.lang == 'cn' ? '【属性设置】' : 'Properties',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-
-                      DropdownButtonFormField<String>(
-                        initialValue: _category,
-                        decoration: InputDecoration(
-                          labelText: widget.lang == 'cn'
-                              ? '分类 / Category'
-                              : 'Category',
-                          border: const OutlineInputBorder(),
-                        ),
-                        items: _categories
-                            .map(
-                              (t) => DropdownMenuItem(value: t, child: Text(t)),
-                            )
-                            .toList(),
-                        onChanged: (v) => setState(() => _category = v),
-                      ),
-                      const SizedBox(height: 12),
-
-                      DropdownButtonFormField<int>(
-                        initialValue: _difficulty,
-                        decoration: InputDecoration(
-                          labelText: widget.lang == 'cn'
-                              ? '难度 / Difficulty'
-                              : 'Difficulty',
-                          border: const OutlineInputBorder(),
-                        ),
-                        items: List.generate(5, (index) => index + 1)
-                            .map(
-                              (d) => DropdownMenuItem(
-                                value: d,
-                                child: Text('${'★' * d}${'☆' * (5 - d)} ($d)'),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (v) => setState(() => _difficulty = v!),
-                      ),
-                      const SizedBox(height: 12),
-
-                      TextField(
-                        controller: TextEditingController(text: _kid ?? ''),
-                        decoration: InputDecoration(
-                          labelText: widget.lang == 'cn'
-                              ? '知识点ID / Kid'
-                              : 'Knowledge ID',
-                          border: const OutlineInputBorder(),
-                        ),
-                        onChanged: (v) => _kid = v.isEmpty ? null : v,
-                      ),
-                      const SizedBox(height: 12),
-
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: TextEditingController(
-                                text: _lessonNumber?.toString() ?? '',
-                              ),
-                              keyboardType: TextInputType.number,
-                              decoration: InputDecoration(
-                                labelText: widget.lang == 'cn'
-                                    ? '单元号'
-                                    : 'Lesson Number',
-                                border: const OutlineInputBorder(),
-                              ),
-                              onChanged: (v) => _lessonNumber = v.isEmpty
-                                  ? null
-                                  : int.tryParse(v),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: TextField(
-                              controller: TextEditingController(
-                                text: _unitNumber?.toString() ?? '',
-                              ),
-                              keyboardType: TextInputType.number,
-                              decoration: InputDecoration(
-                                labelText: widget.lang == 'cn'
-                                    ? '课号'
-                                    : 'Unit Number',
-                                border: const OutlineInputBorder(),
-                              ),
-                              onChanged: (v) => _unitNumber = v.isEmpty
-                                  ? null
-                                  : int.tryParse(v),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-
-                      if (_question.lessonUnit != null)
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.yellow[50],
-                            border: Border.all(color: Colors.yellow[300]!),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            '${widget.lang == 'cn' ? '课内标签' : 'Lesson Unit'}: ${_question.lessonUnit}',
-                            style: TextStyle(color: Colors.brown[700]),
-                          ),
-                        ),
-                      if (_question.lessonUnit != null)
-                        const SizedBox(height: 12),
-
-                      TextField(
-                        controller: TextEditingController(text: _source ?? ''),
-                        decoration: InputDecoration(
-                          labelText: widget.lang == 'cn'
-                              ? '来源 / Source'
-                              : 'Source',
-                          border: const OutlineInputBorder(),
-                        ),
-                        onChanged: (v) => _source = v.isEmpty ? null : v,
-                      ),
+                      _buildAnswerSection(),
+                      const SizedBox(height: 16),
+                      _buildExplanationSection(),
+                      const SizedBox(height: 16),
+                      if (_question.grading != null && _question.grading!.isNotEmpty) ...[
+                        _buildGradingSection(),
+                        const SizedBox(height: 16),
+                      ],
+                      _buildPropertiesSection(),
                     ],
                   ),
                 ),
@@ -383,11 +173,11 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
               tabs: tabs,
               selectedTab: '',
               onTabSelected: (tab) {
-                final cnCancel = widget.lang == 'cn' ? '取消' : 'Cancel';
+                final cnBack = widget.lang == 'cn' ? '返回' : 'Back';
                 final cnSave = widget.lang == 'cn' ? '保存' : 'Save';
                 final cnDelete = widget.lang == 'cn' ? '删除' : 'Delete';
 
-                if (tab == cnCancel) {
+                if (tab == cnBack) {
                   Navigator.of(context).pop(false);
                 } else if (tab == cnSave) {
                   _saveRecord();
@@ -404,9 +194,64 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
     );
   }
 
-  Widget _buildQuestionCard(int index) {
+  Widget _buildHeader() {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Row(
+        children: [
+          if (_question.tid != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF4CAF50),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                _question.tid!,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: _getProgressColor(_question.progress),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              _question.progress,
+              style: const TextStyle(fontSize: 12, color: Colors.white),
+            ),
+          ),
+          const Spacer(),
+          if (_question.kid != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.blue[100],
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                '知识: ${_question.kid}',
+                style: TextStyle(fontSize: 12, color: Colors.blue[700]),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuestionSection() {
+    return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.grey[50],
@@ -416,74 +261,246 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF2196F3),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: Text(
-                    '${index + 1}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                widget.lang == 'cn'
-                    ? '第${index + 1}题'
-                    : 'Question ${index + 1}',
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          TextField(
-            controller: _questionControllers[index],
-            maxLines: 3,
-            decoration: InputDecoration(
-              labelText: widget.lang == 'cn' ? '【题目】' : 'Question',
-              border: const OutlineInputBorder(),
-              contentPadding: const EdgeInsets.all(12),
+          Text(
+            widget.lang == 'cn' ? '【题目】' : 'Question',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF2196F3),
             ),
           ),
           const SizedBox(height: 8),
-
           TextField(
-            controller: _correctAnswerControllers[index],
-            maxLines: 2,
-            decoration: InputDecoration(
-              labelText: widget.lang == 'cn' ? '【正确答案】' : 'Correct Answer',
-              border: const OutlineInputBorder(),
-              contentPadding: const EdgeInsets.all(12),
-              filled: true,
-              fillColor: Colors.green[50],
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          TextField(
-            controller: _explanationControllers[index],
-            maxLines: 2,
-            decoration: InputDecoration(
-              labelText: widget.lang == 'cn' ? '【解析】' : 'Explanation',
-              border: const OutlineInputBorder(),
-              contentPadding: const EdgeInsets.all(12),
+            controller: _questionController,
+            maxLines: 5,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.all(12),
             ),
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildAnswerSection() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.green[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.green[300]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.lang == 'cn' ? '【正确答案】' : 'Correct Answer',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF4CAF50),
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _correctAnswerController,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.all(12),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            widget.lang == 'cn' ? '【学生答案】' : 'Student Answer',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF2196F3),
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _answerController,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.all(12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExplanationSection() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.orange[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.orange[300]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.lang == 'cn' ? '【解析】' : 'Explanation',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFFFF9800),
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _explanationController,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.all(12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGradingSection() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.purple[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.purple[300]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.lang == 'cn' ? '【批改结果】' : 'Grading Result',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF9C27B0),
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _gradingResultController,
+            maxLines: 1,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.all(12),
+              hintText: '正确 / 部分正确 / 错误',
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            widget.lang == 'cn' ? '【批阅意见】' : 'Grading Comment',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF9C27B0),
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _gradingController,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.all(12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPropertiesSection() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.lang == 'cn' ? '【属性】' : 'Properties',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: _progress,
+            decoration: const InputDecoration(
+              labelText: '进度 / Progress',
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.all(12),
+            ),
+            items: _progressOptions
+                .map(
+                  (p) => DropdownMenuItem(
+                    value: p,
+                    child: Text(p),
+                  ),
+                )
+                .toList(),
+            onChanged: (v) => setState(() => _progress = v!),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: _category,
+            decoration: InputDecoration(
+              labelText: widget.lang == 'cn' ? '分类 / Category' : 'Category',
+              border: const OutlineInputBorder(),
+              contentPadding: const EdgeInsets.all(12),
+            ),
+            items: _categories
+                .map(
+                  (t) => DropdownMenuItem(value: t, child: Text(t)),
+                )
+                .toList(),
+            onChanged: (v) => setState(() => _category = v),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<int>(
+            initialValue: _difficulty,
+            decoration: InputDecoration(
+              labelText: widget.lang == 'cn' ? '难度 / Difficulty' : 'Difficulty',
+              border: const OutlineInputBorder(),
+              contentPadding: const EdgeInsets.all(12),
+            ),
+            items: List.generate(5, (index) => index + 1)
+                .map(
+                  (d) => DropdownMenuItem(
+                    value: d,
+                    child: Text('${'★' * d}${'☆' * (5 - d)} ($d)'),
+                  ),
+                )
+                .toList(),
+            onChanged: (v) => setState(() => _difficulty = v!),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _getProgressColor(String status) {
+    switch (status) {
+      case '已批阅':
+        return const Color(0xFFFF9800);
+      case '已订正':
+        return const Color(0xFF4CAF50);
+      default:
+        return Colors.grey;
+    }
   }
 }

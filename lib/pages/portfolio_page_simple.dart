@@ -8,6 +8,10 @@ import '../components/input_area.dart';
 import '../components/dynamic_tag_selector.dart';
 import '../database/db_helper.dart';
 import '../database/models/portfolio_item.dart';
+import '../database/models/question.dart';
+import '../database/models/test.dart';
+import '../database/models/chat_message.dart';
+import '../services/llm_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'portfolio_detail_page.dart';
 
@@ -108,13 +112,179 @@ class _PortfolioPageSimpleState extends State<PortfolioPageSimple> {
   Future<void> _generateExercisesForSelected() async {
     if (_selectedIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.lang == 'cn' ? '请先选择非原创作品' : 'Select non-original items first')),
+        SnackBar(content: Text(widget.lang == 'cn' ? '请先选择作品' : 'Select items first')),
       );
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(widget.lang == 'cn' ? '练习生成功能开发中' : 'Exercise generation in development')),
-    );
+
+    final selectedItems = _allItems.where((item) => _selectedIds.contains(item.id)).toList();
+    final originalItems = selectedItems.where((item) => item.isOriginal).toList();
+    
+    if (originalItems.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(widget.lang == 'cn' ? '自由作品，不符合出题要求' : 'Original works do not meet the requirements for generating exercises')),
+      );
+      return;
+    }
+
+    final db = await DatabaseHelper().database;
+    late int loadingMsgId;
+
+    try {
+      final chatMsgDao = ChatMessageDao(db);
+      loadingMsgId = await chatMsgDao.insert(ChatMessage(
+        content: widget.lang == 'cn' ? '习题生成中...' : 'Generating exercises...',
+        isUser: false,
+        createdAt: DateTime.now(),
+        lang: widget.lang,
+      ));
+
+      final llmService = LlmService();
+      await llmService.init();
+
+      final portfolioContent = selectedItems.map((item) {
+        return '作品：${item.title}\n简介：${item.brief ?? ''}\n知识点：${item.kid ?? ''}';
+      }).join('\n\n');
+
+      final prompt = '''你是一位语文教育专家。请根据以下文学作品，分析其写作风格特点，并出一道模仿写作练习题。
+
+作品参考：
+$portfolioContent
+
+要求：
+1. 先分析上述作品的写作风格特点（叙事章法、文学修辞手法等）
+2. 根据这些特点，出一道习作题，要求学生模仿该风格进行写作
+3. 题目类型为"写作题"
+
+请以如下JSON格式回复（只回复JSON，不要其他文字）：
+{
+  "type": "writing",
+  "question": "写作题目内容",
+  "requirements": ["要求1", "要求2", "要求3"],
+  "explanation": "题目解析和写作指导"
+}
+
+注意：
+- question 是完整的写作题目描述
+- requirements 是具体的写作要求列表
+- explanation 是对题目的详细解析和写作指导
+''';
+
+      final response = await llmService.generateResponse(prompt);
+
+      if (response['success'] != true || response['response'] == null) {
+        throw Exception('LLM响应失败');
+      }
+
+      final jsonResponse = response['response'] as String;
+      final jsonMatch = RegExp(r'\{[\s\S]*\}').firstMatch(jsonResponse);
+      if (jsonMatch == null) {
+        throw Exception('未找到JSON数据');
+      }
+
+      final Map<String, dynamic> exerciseJson = json.decode(jsonMatch.group(0)!);
+
+      final testDao = TestDao(db);
+      final nextNum = await testDao.nextTidNumber();
+      final tid = 'T$nextNum';
+
+      final firstItem = selectedItems.first;
+      final workTitle = firstItem.title.contains('——') 
+          ? firstItem.title.split('——').first 
+          : firstItem.title;
+      
+      String exerciseTitle;
+      if (widget.lang == 'cn') {
+        if (selectedItems.length == 1) {
+          exerciseTitle = '关于《$workTitle》的写作手法模仿习作';
+        } else {
+          exerciseTitle = '关于多篇作品的写作手法综合练习';
+        }
+      } else {
+        if (selectedItems.length == 1) {
+          exerciseTitle = 'Writing Style Imitation: "$workTitle"';
+        } else {
+          exerciseTitle = 'Comprehensive Writing Practice';
+        }
+      }
+
+      await testDao.insert(Test(
+        tid: tid,
+        title: exerciseTitle,
+        createdAt: DateTime.now(),
+        lang: widget.lang,
+      ));
+
+      final questionDao = QuestionDao(db);
+      final question = Question(
+        tid: tid,
+        question: exerciseJson['question'] as String? ?? '',
+        correctAnswer: '',
+        explanation: exerciseJson['explanation'] as String?,
+        category: '写作题',
+        progress: '未答题',
+        source: '作品集',
+        createdAt: DateTime.now(),
+        lang: widget.lang,
+      );
+
+      await questionDao.insert(question);
+
+      for (final item in selectedItems) {
+        await _portfolioDao.addTestRec(item.id!, tid);
+      }
+
+      if (mounted) {
+        Navigator.of(context).pop();
+
+        final completedMsg = ChatMessage(
+          id: loadingMsgId,
+          content: widget.lang == 'cn' 
+              ? '已根据${selectedItems.length}篇作品生成写作练习题并添加到习题集'
+              : 'Generated writing exercise from ${selectedItems.length} portfolio items',
+          isUser: false,
+          createdAt: DateTime.now(),
+          lang: widget.lang,
+        );
+        await chatMsgDao.update(completedMsg);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(
+            widget.lang == 'cn' 
+                ? '已根据${selectedItems.length}篇作品生成写作练习题'
+                : 'Generated writing exercise from ${selectedItems.length} portfolio items',
+          )),
+        );
+      }
+
+    } catch (e) {
+      print('[GenerateExercises] 生成失败: $e');
+      if (mounted) {
+        try {
+          Navigator.of(context).pop();
+        } catch (_) {}
+
+        try {
+          final errorChatMsgDao = ChatMessageDao(db);
+          final errorMsg = ChatMessage(
+            id: loadingMsgId,
+            content: widget.lang == 'cn' 
+                ? '生成练习失败: ${e.toString()}'
+                : 'Failed to generate exercises: ${e.toString()}',
+            isUser: false,
+            createdAt: DateTime.now(),
+            lang: widget.lang,
+          );
+          await errorChatMsgDao.update(errorMsg);
+        } catch (_) {}
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(
+            widget.lang == 'cn' ? '生成练习失败' : 'Failed to generate exercises',
+          )),
+        );
+      }
+    }
   }
 
   void _showFilterDialog() {

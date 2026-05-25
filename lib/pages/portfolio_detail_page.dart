@@ -9,7 +9,6 @@ import '../components/html_preview.dart';
 import '../components/wysiwyg_editor.dart';
 import '../database/db_helper.dart';
 import '../database/models/portfolio_item.dart';
-import '../database/models/exercise.dart';
 import '../database/models/knowledge_point.dart';
 import '../services/llm_service.dart';
 

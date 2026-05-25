@@ -87,7 +87,6 @@ class ErrorRecordSchema {
     'correct_answer': 'TEXT',
     'created_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
     'lang': "TEXT DEFAULT 'cn'",
-    'content_path': 'TEXT',
     'error_id': 'TEXT',
     'error_type': 'TEXT',
     'progress': "TEXT DEFAULT '待订正'",
@@ -394,6 +393,24 @@ class InboxItemSchema {
     '手动添加',
     'AI抓取',
   ];
+}
+
+// ============================================================
+// 移动记录模块 (Move Record)
+// ============================================================
+
+class MoveRecordSchema {
+  static const String tableName = 'move_records';
+  
+  static const Map<String, String> columns = {
+    'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
+    'inbox_item_id': 'TEXT NOT NULL',
+    'from_category': 'TEXT NOT NULL',
+    'to_category': 'TEXT NOT NULL',
+    'from_path': 'TEXT NOT NULL',
+    'to_path': 'TEXT NOT NULL',
+    'moved_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+  };
 }
 
 // ============================================================

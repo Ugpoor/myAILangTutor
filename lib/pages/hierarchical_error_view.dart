@@ -163,7 +163,6 @@ $errorContent
           progress: '未答题',
           source: '错误本自动生成',
           exerciseId: 'T$nextNum',
-          contentPath: selectedRecords.first.contentPath,
           createdAt: DateTime.now(),
           lang: widget.lang,
         );

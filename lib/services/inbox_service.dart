@@ -12,6 +12,7 @@ import '../database/models/test.dart';
 import '../database/models/question.dart';
 import '../database/models/portfolio_item.dart';
 import '../database/models/knowledge_point.dart';
+import '../database/models/move_record.dart';
 import 'package:sqflite/sqflite.dart';
 import '../database/db_helper.dart' show DatabaseHelper;
 import 'llm_service.dart';
@@ -38,7 +39,6 @@ class IntentData {
 // 栏目和目录映射
 const Map<String, String> _columnDirectories = {
   '知识点': 'knowledge',
-  '错题本': 'errors',
   '习题集': 'exercises',
   '作品集': 'portfolio',
   '无法分类': 'unknown',
@@ -270,6 +270,11 @@ class InboxService {
       return;
     }
 
+    // 记录移动前的信息
+    final fromCategory = item.category;
+    final fromPath = item.filePath;
+    final inboxItemId = item.id?.toString() ?? item.filePath;
+
     // 获取新栏目的目录
     final newColumnDir = await getColumnDirectory(newColumn);
     final dirName = p.basename(oldDir.path);
@@ -303,6 +308,20 @@ class InboxService {
       final id = await _dbHelper.insertInboxItem(updatedItem);
       updatedItem.copyWith(id: id);
     }
+
+    // 记录移动历史
+    final moveRecord = MoveRecord(
+      inboxItemId: inboxItemId,
+      fromCategory: fromCategory,
+      toCategory: newColumn,
+      fromPath: fromPath,
+      toPath: finalPath,
+      movedAt: DateTime.now(),
+    );
+
+    final db = await _dbHelper.database;
+    final moveRecordDao = MoveRecordDao(db);
+    await moveRecordDao.insert(moveRecord);
     
     print('[MoveItem] 条目已移动到: $finalPath');
   }
@@ -949,7 +968,6 @@ $content
       whyWrong: data['whyWrong'] as String?,
       howPrevent: data['howPrevent'] as String?,
       notes: data['notes'] as String?,
-      contentPath: item.filePath,
       createdAt: item.createdAt,
       lang: 'cn',
       tid: data['tid'] as String?,
@@ -1052,7 +1070,6 @@ $content
         await dao.insert(ErrorRecord(
           errorId: 'T$nextNum',
           wrongWhere: item.title,
-          contentPath: item.filePath,
           progress: '待订正',
           createdAt: item.createdAt,
           lang: 'cn',

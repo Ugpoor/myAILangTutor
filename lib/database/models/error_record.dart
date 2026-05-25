@@ -12,7 +12,6 @@ class ErrorRecord {
   final String? correctAnswer; // 正确答案
   final DateTime? createdAt; // 创建时间
   final String lang; // 语言标识（cn/en）
-  final String? contentPath; // 内容文件路径
   final String? errorId; // 错误编号
   final List<String> eids; // 关联错类ID列表（使用点分ID，如 ['1', '1.1']），支持多对多关系
   final String progress; // 处理进度（待订正、已订正、已掌握、学习中）
@@ -23,8 +22,8 @@ class ErrorRecord {
   final String? howPrevent; // 预防方法
   final String? notes; // 备注
   final String? images; // 图片路径列表（JSON格式）
-  final String? tid; // 关联试卷ID（格式：T+数字，如 T1）
-  final String? qid; // 关联题目ID
+  final String? tid; // 关联试卷ID（格式：T+数字，如 T1）- 通过tid+qid定位习题集题目
+  final String? qid; // 关联题目ID - 与tid配合实现错题定位
   final String? gradeMemo; // 批改备注
   final String? correction; // 订正内容
   final String? kid; // 关联知识点ID（格式：K+数字，如 K1）
@@ -37,7 +36,6 @@ class ErrorRecord {
     this.correctAnswer,
     this.createdAt,
     this.lang = 'cn',
-    this.contentPath,
     this.errorId,
     this.eids = const [],
     this.progress = '待订正',
@@ -64,7 +62,6 @@ class ErrorRecord {
       'correct_answer': correctAnswer,
       'created_at': createdAt?.toIso8601String(),
       'lang': lang,
-      'content_path': contentPath,
       'error_id': errorId,
       'error_type': eids.isNotEmpty ? json.encode(eids) : null,
       'progress': progress,
@@ -100,7 +97,6 @@ class ErrorRecord {
           ? DateTime.parse(map['created_at'] as String)
           : null,
       lang: map['lang'] as String? ?? 'cn',
-      contentPath: map['content_path'] as String?,
       errorId: map['error_id'] as String?,
       eids: eidsList,
       progress: map['progress'] as String? ?? '待订正',
@@ -127,7 +123,6 @@ class ErrorRecord {
     String? correctAnswer,
     DateTime? createdAt,
     String? lang,
-    String? contentPath,
     String? errorId,
     List<String>? eids,
     String? progress,
@@ -152,7 +147,6 @@ class ErrorRecord {
       correctAnswer: correctAnswer ?? this.correctAnswer,
       createdAt: createdAt ?? this.createdAt,
       lang: lang ?? this.lang,
-      contentPath: contentPath ?? this.contentPath,
       errorId: errorId ?? this.errorId,
       eids: eids ?? this.eids,
       progress: progress ?? this.progress,

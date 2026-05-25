@@ -691,7 +691,6 @@ $errorContent
           category: category,
           progress: '未答题',
           source: '错误本',
-          contentPath: selectedRecords.first.contentPath,
           createdAt: DateTime.now(),
           lang: widget.lang,
         );
@@ -891,7 +890,6 @@ $errorContent
           category: category,
           progress: '未答题',
           source: '错误本',
-          contentPath: selectedRecords.first.contentPath,
           createdAt: DateTime.now(),
           lang: lang,
         );

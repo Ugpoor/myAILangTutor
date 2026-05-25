@@ -264,7 +264,6 @@ class AppService {
 
   Future<int> createPortfolioItem(String title, {
     String? contentPath,
-    String? thumbnailPath,
     bool isOriginal = false,
     String lang = 'cn',
   }) async {
@@ -272,7 +271,6 @@ class AppService {
     final item = PortfolioItem(
       title: title,
       contentPath: contentPath,
-      thumbnailPath: thumbnailPath,
       isOriginal: isOriginal,
       createdAt: DateTime.now(),
       lang: lang,
@@ -496,7 +494,6 @@ $content
         errorId: 'T$nextNum',
         wrongWhere: summary,
         correctAnswer: null,
-        contentPath: inboxItem.filePath,
         createdAt: inboxItem.createdAt,
         lang: 'cn',
       );
@@ -592,7 +589,6 @@ $content
       final portfolioItem = PortfolioItem(
         title: inboxItem.title,
         contentPath: inboxItem.filePath,
-        thumbnailPath: null,
         isOriginal: false,
         createdAt: inboxItem.createdAt,
         lang: 'cn',
@@ -649,13 +645,6 @@ $content
 
   Future<void> deleteByContentPath(String contentPath) async {
     await _ensureInitialized();
-    final errorRecords = await _errorRecordDao!.getAll();
-    for (final record in errorRecords) {
-      if (record.contentPath == contentPath) {
-        await _errorRecordDao!.delete(record.id!);
-        return;
-      }
-    }
     
     final knowledgePoints = await _knowledgePointDao!.getAll();
     for (final point in knowledgePoints) {

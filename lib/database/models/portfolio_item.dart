@@ -1,30 +1,31 @@
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
 /// 作品集数据模型
-/// 
+///
 /// 作品集记录以文档记录为主，每个作品是一个目录，包含md文档和富媒体文件。
 
 class PortfolioItem {
-  final int? id;                    // 数据库自增主键
-  final String? wid;                // 作品唯一标识，格式为 "W" + id（如 W1, W2），用于跨模块引用
-  final String title;               // 作品标题
-  final String? contentPath;        // 内容目录路径，作品详细内容存储在文件系统中
-  final String? thumbnailPath;      // 缩略图路径
-  final DateTime? createdAt;        // 创建时间
-  final String lang;                // 语言标识（cn/en）
-  final bool isOriginal;            // 是否原创
-  final String? aiReview;           // AI评语
-  final String? brief;              // 作品摘要/简介
-  final String? kid;                // 关联知识点ID（格式：K+数字，如 K1）
-  final String? unitNumber;         // 单元号
-  final String? lessonNumber;       // 课号
+  final int? id; // 数据库自增主键
+  final String? wid; // 作品唯一标识，格式为 "W" + id（如 W1, W2），用于跨模块引用
+  final String title; // 作品标题
+  final String? contentPath; // 内容目录路径，作品详细内容存储在文件系统中
+  final DateTime? createdAt; // 创建时间
+  final String lang; // 语言标识（cn/en）
+  final bool isOriginal; // 是否原创
+  final String? aiReview; // AI评语
+  final String? brief; // 作品摘要/简介
+  final String? kid; // 关联知识点ID（格式：K+数字，如 K1）
+  final String? unitNumber; // 单元号
+  final String? lessonNumber; // 课号
+  final String? testRecs; // 生成练习记录（逗号分隔的 tid 列表）
 
   PortfolioItem({
     this.id,
     this.wid,
     required this.title,
     this.contentPath,
-    this.thumbnailPath,
     this.createdAt,
     this.lang = 'cn',
     this.isOriginal = false,
@@ -33,6 +34,7 @@ class PortfolioItem {
     this.kid,
     this.unitNumber,
     this.lessonNumber,
+    this.testRecs,
   });
 
   Map<String, dynamic> toMap() {
@@ -41,7 +43,6 @@ class PortfolioItem {
       'wid': wid,
       'title': title,
       'content_path': contentPath,
-      'thumbnail_path': thumbnailPath,
       'created_at': createdAt?.toIso8601String(),
       'lang': lang,
       'is_original': isOriginal ? 1 : 0,
@@ -50,6 +51,7 @@ class PortfolioItem {
       'kid': kid,
       'unit_number': unitNumber,
       'lesson_number': lessonNumber,
+      'test_recs': testRecs,
     };
   }
 
@@ -59,7 +61,6 @@ class PortfolioItem {
       wid: map['wid'] as String?,
       title: map['title'] as String,
       contentPath: map['content_path'] as String?,
-      thumbnailPath: map['thumbnail_path'] as String?,
       createdAt: map['created_at'] != null
           ? DateTime.parse(map['created_at'] as String)
           : null,
@@ -70,6 +71,7 @@ class PortfolioItem {
       kid: map['kid'] as String?,
       unitNumber: map['unit_number'] as String?,
       lessonNumber: map['lesson_number'] as String?,
+      testRecs: map['test_recs'] as String?,
     );
   }
 
@@ -78,7 +80,6 @@ class PortfolioItem {
     String? wid,
     String? title,
     String? contentPath,
-    String? thumbnailPath,
     DateTime? createdAt,
     String? lang,
     bool? isOriginal,
@@ -87,13 +88,13 @@ class PortfolioItem {
     String? kid,
     String? unitNumber,
     String? lessonNumber,
+    String? testRecs,
   }) {
     return PortfolioItem(
       id: id ?? this.id,
       wid: wid ?? this.wid,
       title: title ?? this.title,
       contentPath: contentPath ?? this.contentPath,
-      thumbnailPath: thumbnailPath ?? this.thumbnailPath,
       createdAt: createdAt ?? this.createdAt,
       lang: lang ?? this.lang,
       isOriginal: isOriginal ?? this.isOriginal,
@@ -102,6 +103,7 @@ class PortfolioItem {
       kid: kid ?? this.kid,
       unitNumber: unitNumber ?? this.unitNumber,
       lessonNumber: lessonNumber ?? this.lessonNumber,
+      testRecs: testRecs ?? this.testRecs,
     );
   }
 }
@@ -115,9 +117,18 @@ class PortfolioDao {
     final id = await db.insert('portfolio_items', item.toMap());
     if (id > 0 && item.wid == null) {
       final wid = 'W$id';
+
+      final documentsDir = await getApplicationDocumentsDirectory();
+      final portfolioDir = Directory('${documentsDir.path}/portfolio/$wid');
+      if (!await portfolioDir.exists()) {
+        await portfolioDir.create(recursive: true);
+      }
+
+      final contentPath = portfolioDir.path;
+
       await db.update(
         'portfolio_items',
-        {'wid': wid},
+        {'wid': wid, 'content_path': contentPath},
         where: 'id = ?',
         whereArgs: [id],
       );
@@ -200,11 +211,7 @@ class PortfolioDao {
   }
 
   Future<int> delete(int id) async {
-    return await db.delete(
-      'portfolio_items',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    return await db.delete('portfolio_items', where: 'id = ?', whereArgs: [id]);
   }
 
   Future<int> deleteAll() async {
@@ -237,12 +244,50 @@ class PortfolioDao {
   }
 
   Future<List<String>> getAllKids() async {
-    final result = await db.rawQuery('SELECT DISTINCT kid FROM portfolio_items WHERE kid IS NOT NULL');
+    final result = await db.rawQuery(
+      'SELECT DISTINCT kid FROM portfolio_items WHERE kid IS NOT NULL',
+    );
     return result.map((map) => map['kid'] as String).toList();
   }
 
   Future<List<String>> getAllUnitNumbers() async {
-    final result = await db.rawQuery('SELECT DISTINCT unit_number FROM portfolio_items WHERE unit_number IS NOT NULL');
+    final result = await db.rawQuery(
+      'SELECT DISTINCT unit_number FROM portfolio_items WHERE unit_number IS NOT NULL',
+    );
     return result.map((map) => map['unit_number'] as String).toList();
+  }
+
+  Future<void> addTestRec(int id, String tid) async {
+    final item = await getById(id);
+    if (item == null) return;
+
+    List<String> recs = item.testRecs != null && item.testRecs!.isNotEmpty
+        ? item.testRecs!.split(',')
+        : [];
+
+    if (!recs.contains(tid)) {
+      recs.add(tid);
+      await update(item.copyWith(testRecs: recs.join(',')));
+    }
+  }
+
+  Future<void> removeTestRec(int id, String tid) async {
+    final item = await getById(id);
+    if (item == null) return;
+
+    List<String> recs = item.testRecs != null && item.testRecs!.isNotEmpty
+        ? item.testRecs!.split(',')
+        : [];
+
+    recs.remove(tid);
+    await update(item.copyWith(testRecs: recs.join(',')));
+  }
+
+  Future<List<String>> getTestRecs(int id) async {
+    final item = await getById(id);
+    if (item == null || item.testRecs == null || item.testRecs!.isEmpty) {
+      return [];
+    }
+    return item.testRecs!.split(',');
   }
 }

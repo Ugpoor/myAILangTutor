@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../components/app_title_bar.dart';
 import '../components/submenu_tabs.dart';
 import '../components/tag_styles.dart';
+import '../components/html_preview.dart';
 import '../database/models/knowledge_point.dart';
 import '../database/models/knowledge_outline.dart';
 import '../database/db_helper.dart';
@@ -25,7 +26,6 @@ class KnowledgePointDetailPage extends StatefulWidget {
 class _KnowledgePointDetailPageState extends State<KnowledgePointDetailPage> {
   late KnowledgePoint _point;
   late TextEditingController _titleController;
-  late TextEditingController _contentController;
   late TextEditingController _cidController;
   late TextEditingController _unitNumberController;
   late TextEditingController _lessonNumberController;
@@ -41,7 +41,6 @@ class _KnowledgePointDetailPageState extends State<KnowledgePointDetailPage> {
     _point = widget.point;
     _titleController = TextEditingController(text: _point.title);
     _cidController = TextEditingController(text: _point.cid);
-    _contentController = TextEditingController(text: '');
     _unitNumberController = TextEditingController(text: _point.unitNumber ?? '');
     _lessonNumberController = TextEditingController(text: _point.lessonNumber ?? '');
     
@@ -68,7 +67,6 @@ class _KnowledgePointDetailPageState extends State<KnowledgePointDetailPage> {
   void dispose() {
     _titleController.dispose();
     _cidController.dispose();
-    _contentController.dispose();
     _unitNumberController.dispose();
     _lessonNumberController.dispose();
     _cidSearchController.dispose();
@@ -90,6 +88,40 @@ class _KnowledgePointDetailPageState extends State<KnowledgePointDetailPage> {
     if (mounted) {
       Navigator.of(context).pop(true);
     }
+  }
+
+  /// 构建 HTML 预览区（不可编辑）
+  Widget _buildHtmlPreview() {
+    if (_point.contentPath == null) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.grey[100],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey[300]!),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.lang == 'cn' ? '详细内容' : 'Detailed Content',
+              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              widget.lang == 'cn' ? '（暂无内容）' : '(No content)',
+              style: TextStyle(color: Colors.grey[400]),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return HtmlPreview(
+      filePath: _point.contentPath,
+      showAppBar: false,
+    );
   }
 
   Future<void> _deleteRecord() async {
@@ -274,13 +306,15 @@ class _KnowledgePointDetailPageState extends State<KnowledgePointDetailPage> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      TextField(
-                        controller: _contentController,
-                        maxLines: 6,
-                        decoration: InputDecoration(
-                          labelText: widget.lang == 'cn' ? '【详细内容】' : 'Detailed Content',
-                          border: const OutlineInputBorder(),
+                      // 详细内容 - 使用 HTML 预览
+                      Container(
+                        width: double.infinity,
+                        height: 300,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey),
                         ),
+                        child: _buildHtmlPreview(),
                       ),
                       const SizedBox(height: 12),
                       // 类ID（CID）- 一屏宽，样式比照课内标签

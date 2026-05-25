@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
 /// 知识点数据模型
@@ -134,13 +136,35 @@ class KnowledgePointDao {
   Future<int> insert(KnowledgePoint point) async {
     final id = await db.insert('knowledge_points', point.toMap());
     if (id > 0) {
-      final kid = 'K$id';
-      await db.update(
-        'knowledge_points',
-        {'kid': kid},
-        where: 'id = ?',
-        whereArgs: [id],
-      );
+      // 如果已经有 wid 和 contentPath，则不重新生成
+      if (point.kid == null || point.contentPath == null) {
+        final kid = 'K$id';
+
+        final documentsDir = await getApplicationDocumentsDirectory();
+        final knowledgeDir = Directory('${documentsDir.path}/knowledge/$kid');
+        if (!await knowledgeDir.exists()) {
+          await knowledgeDir.create(recursive: true);
+        }
+
+        final contentPath = knowledgeDir.path;
+
+        await db.update(
+          'knowledge_points',
+          {'kid': kid, 'content_path': contentPath},
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      } else {
+        // 只更新 kid（如果已经有 contentPath）
+        if (point.kid != null) {
+          await db.update(
+            'knowledge_points',
+            {'kid': point.kid},
+            where: 'id = ?',
+            whereArgs: [id],
+          );
+        }
+      }
     }
     return id;
   }
