@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../pages/entry_page.dart';
 
 class SubmenuTabs extends StatelessWidget {
   final List<String> tabs;
@@ -6,6 +7,7 @@ class SubmenuTabs extends StatelessWidget {
   final Function(String) onTabSelected;
   final VoidCallback? onHomeTap;
   final String lang;
+  final bool useGlobalHome;
 
   const SubmenuTabs({
     super.key,
@@ -14,6 +16,7 @@ class SubmenuTabs extends StatelessWidget {
     required this.onTabSelected,
     this.onHomeTap,
     this.lang = 'cn',
+    this.useGlobalHome = false,
   });
 
   @override
@@ -34,7 +37,16 @@ class SubmenuTabs extends StatelessWidget {
       child: Row(
         children: [
           GestureDetector(
-            onTap: onHomeTap,
+            onTap: () {
+              if (useGlobalHome) {
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => const EntryPage()),
+                  (route) => false,
+                );
+              } else if (onHomeTap != null) {
+                onHomeTap!();
+              }
+            },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(

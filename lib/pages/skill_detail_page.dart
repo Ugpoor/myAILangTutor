@@ -369,7 +369,7 @@ class _SkillDetailPageState extends State<SkillDetailPage> {
                   _copyPrompt();
                 }
               },
-              onHomeTap: widget.onHomeTap,
+              useGlobalHome: true,
               lang: widget.lang,
             ),
           ],

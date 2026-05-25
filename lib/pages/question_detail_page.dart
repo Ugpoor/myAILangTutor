@@ -178,14 +178,14 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                 final cnDelete = widget.lang == 'cn' ? '删除' : 'Delete';
 
                 if (tab == cnBack) {
-                  Navigator.of(context).pop(false);
+                  Navigator.of(context).pop();
                 } else if (tab == cnSave) {
                   _saveRecord();
                 } else if (tab == cnDelete) {
                   _deleteRecord();
                 }
               },
-              onHomeTap: widget.onHomeTap,
+              useGlobalHome: true,
               lang: widget.lang,
             ),
           ],

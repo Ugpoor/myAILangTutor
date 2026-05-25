@@ -895,6 +895,7 @@ ${combinedContent.toString()}
         builder: (context) => KnowledgePointDetailPage(
           lang: widget.lang,
           point: point,
+          knowledgePointDao: _knowledgePointDao,
           onHomeTap: widget.onHomeTap,
         ),
       ),

@@ -315,7 +315,7 @@ class _ErrorRecordDetailPageState extends State<ErrorRecordDetailPage> {
                   _delete();
                 }
               },
-              onHomeTap: widget.onHomeTap,
+              useGlobalHome: true,
               lang: widget.lang,
             ),
           ],

@@ -148,7 +148,7 @@ class _PaperDetailPageState extends State<PaperDetailPage> {
               onTabSelected: (tab) {
                 Navigator.of(context).pop();
               },
-              onHomeTap: widget.onHomeTap,
+              useGlobalHome: true,
               lang: widget.lang,
             ),
           ],

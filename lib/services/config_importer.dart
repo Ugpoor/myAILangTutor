@@ -531,6 +531,7 @@ class ConfigImporter {
           createdAt: DateTime.now(),
           lang: item['lang'] as String? ?? 'cn',
           testRecs: item['testRecs'] as String?,
+          aiReview: item['aiReview'] as String?,
         ),
       );
     }
