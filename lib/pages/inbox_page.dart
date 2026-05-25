@@ -282,8 +282,8 @@ class InboxPageState extends State<InboxPage> {
 
     // Base action tabs always shown
     if (_isProcessing) {
-      // Show placeholder while processing — user can't interact anyway
-      tabs.add(''); // empty placeholder
+      // Show processing indicator while processing
+      tabs.add(widget.lang == 'cn' ? '收件箱整理中...' : 'Organizing...');
     } else {
       tabs.addAll([
         widget.lang == 'cn' ? '筛选' : 'Filter',
@@ -628,6 +628,8 @@ class InboxPageState extends State<InboxPage> {
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
                             ),
+                            softWrap: true,
+                            overflow: TextOverflow.visible,
                           ),
                         ),
                         if (!item.isValid)

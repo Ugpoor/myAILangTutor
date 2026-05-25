@@ -815,71 +815,64 @@ ${combinedContent.toString()}
         onTap: () => _showPointDetail(point),
         child: Padding(
           padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Checkbox(
-                    value: isSelected,
-                    onChanged: (value) {
-                      setState(() {
-                        if (value == true) {
-                          _selectedIds.add(point.id!);
-                        } else {
-                          _selectedIds.remove(point.id!);
-                        }
-                      });
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              Checkbox(
+                value: isSelected,
+                onChanged: (value) {
+                  setState(() {
+                    if (value == true) {
+                      _selectedIds.add(point.id!);
+                    } else {
+                      _selectedIds.remove(point.id!);
+                    }
+                  });
+                },
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      point.kid != null 
+                          ? '${point.kid}.${point.title}' 
+                          : point.title,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                      softWrap: true,
+                      overflow: TextOverflow.visible,
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 6,
                       children: [
-                        Row(
-                          children: [
-                            Text(
-                              point.kid != null 
-                                  ? '${point.kid}.${point.title}' 
-                                  : point.title,
-                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                        if (point.unitNumber != null || point.lessonNumber != null)
+                          TagStyles.lessonUnitTag(
+                            '${point.unitNumber != null ? '${point.unitNumber}单元' : ''}'
+                            '${point.unitNumber != null && point.lessonNumber != null ? ' ' : ''}'
+                            '${point.lessonNumber != null ? '${point.lessonNumber}课' : ''}',
+                          ),
+                        if (point.cid != null)
+                          TagStyles.knowledgeTag('分类: ${point.cid}'),
+                        if (point.cid != null && _exerciseCountByCid[point.cid!] != null && _exerciseCountByCid[point.cid!]! > 0)
+                          TagStyles.exerciseTag('同类考过${_exerciseCountByCid[point.cid!]}次'),
+                        if (point.cid != null && _errorCountByCid[point.cid!] != null && _errorCountByCid[point.cid!]! > 0)
+                          TagStyles.errorTypeTag('同类错${_errorCountByCid[point.cid!]}次'),
+                        if ((point.testTimes ?? 0) > 0)
+                          TagStyles.exerciseTag('测试${point.testTimes}次'),
+                        if (point.lastPracticeTime != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(color: const Color(0xFFF5F5F5), borderRadius: BorderRadius.circular(4)),
+                            child: Text(
+                              _formatTime(point.lastPracticeTime!),
+                              style: const TextStyle(fontSize: 11, color: Colors.grey),
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Wrap(
-                          spacing: 6,
-                          children: [
-                            if (point.unitNumber != null || point.lessonNumber != null)
-                              TagStyles.lessonUnitTag(
-                                '${point.unitNumber != null ? '${point.unitNumber}单元' : ''}'
-                                '${point.unitNumber != null && point.lessonNumber != null ? ' ' : ''}'
-                                '${point.lessonNumber != null ? '${point.lessonNumber}课' : ''}',
-                              ),
-                            if (point.cid != null)
-                              TagStyles.knowledgeTag('分类: ${point.cid}'),
-                            if (point.cid != null && _exerciseCountByCid[point.cid!] != null && _exerciseCountByCid[point.cid!]! > 0)
-                              TagStyles.exerciseTag('同类考过${_exerciseCountByCid[point.cid!]}次'),
-                            if (point.cid != null && _errorCountByCid[point.cid!] != null && _errorCountByCid[point.cid!]! > 0)
-                              TagStyles.errorTypeTag('同类错${_errorCountByCid[point.cid!]}次'),
-                            if ((point.testTimes ?? 0) > 0)
-                              TagStyles.exerciseTag('测试${point.testTimes}次'),
-                            if (point.lastPracticeTime != null)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(color: const Color(0xFFF5F5F5), borderRadius: BorderRadius.circular(4)),
-                                child: Text(
-                                  _formatTime(point.lastPracticeTime!),
-                                  style: const TextStyle(fontSize: 11, color: Colors.grey),
-                                ),
-                              ),
-                          ],
-                        ),
+                          ),
                       ],
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),

@@ -1242,8 +1242,8 @@ $errorContent
                         Expanded(
                           child: Text(
                             record.wrongWhere ?? record.question ?? record.errorId ?? "",
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            softWrap: true,
+                            overflow: TextOverflow.visible,
                             style: const TextStyle(fontWeight: FontWeight.w500),
                           ),
                         ),

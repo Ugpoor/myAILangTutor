@@ -451,7 +451,13 @@ $portfolioContent
                           '${item.wid ?? ""} ',
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
-                        Expanded(child: Text(item.title)),
+                        Expanded(
+                            child: Text(
+                              item.title,
+                              softWrap: true,
+                              overflow: TextOverflow.visible,
+                            ),
+                          ),
                         if (item.isOriginal)
                           Padding(
                             padding: const EdgeInsets.only(left: 4),
