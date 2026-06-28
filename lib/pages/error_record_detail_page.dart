@@ -3,7 +3,7 @@ import '../components/app_title_bar.dart';
 import '../components/submenu_tabs.dart';
 import '../database/models/error_record.dart';
 
-/// 错误本详情编辑页面 - 从分组视图或列表页进入
+/// 错题本详情编辑页面 - 从分组视图或列表页进入
 /// SubmenuTabs: 返回 / 保存 / 删除
 
 class ErrorRecordDetailPage extends StatefulWidget {

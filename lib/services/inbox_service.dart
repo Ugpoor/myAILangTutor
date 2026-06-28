@@ -13,26 +13,43 @@ import '../database/models/question.dart';
 import '../database/models/portfolio_item.dart';
 import '../database/models/knowledge_point.dart';
 import '../database/models/move_record.dart';
+import '../database/models/skill.dart';
 import 'package:sqflite/sqflite.dart';
 import '../database/db_helper.dart' show DatabaseHelper;
 import 'llm_service.dart';
 
-typedef ProcessProgressCallback = void Function(int current, int total, String reasoning);
+typedef ProcessProgressCallback =
+    void Function(int current, int total, String reasoning);
+
+class SkillConfig {
+  static Map<String, String> _keywordPatterns = {};
+
+  static Future<void> loadFromSkills() async {
+    final db = await DatabaseHelper().database;
+    final skillDao = SkillDao(db);
+
+    final skills = await skillDao.getAll(category: '内部');
+
+    for (final skill in skills) {
+      if (skill.internalFunction != null && skill.parameters != null) {
+        _keywordPatterns[skill.internalFunction!] = skill.parameters!;
+      }
+    }
+  }
+
+  static String? getPattern(String functionName) {
+    return _keywordPatterns[functionName];
+  }
+}
 
 class IntentData {
   final String subject;
   final String text;
 
-  IntentData({
-    required this.subject,
-    required this.text,
-  });
+  IntentData({required this.subject, required this.text});
 
   factory IntentData.fromJson(Map<String, dynamic> json) {
-    return IntentData(
-      subject: json['subject'] ?? '',
-      text: json['text'] ?? '',
-    );
+    return IntentData(subject: json['subject'] ?? '', text: json['text'] ?? '');
   }
 }
 
@@ -41,6 +58,7 @@ const Map<String, String> _columnDirectories = {
   '知识点': 'knowledge',
   '习题集': 'exercises',
   '作品集': 'portfolio',
+  '错题本': 'errors',
   '无法分类': 'unknown',
   '未知归类': 'inbox',
 };
@@ -58,6 +76,53 @@ class ClassificationResult {
     this.newTitle,
     this.content,
   });
+}
+
+/// 文件日志工具，用于调试 JSON 解析流程
+/// 使用 StringBuffer 收集日志，在 flush 时一次性写入文件
+class _ParseLog {
+  static File? _logFile;
+  static bool _initialized = false;
+  static final StringBuffer _buffer = StringBuffer();
+  static String? _logPath;
+
+  static Future<void> init() async {
+    if (_initialized) return;
+    try {
+      final docDir = await getApplicationDocumentsDirectory();
+      _logPath = '${docDir.path}/parse_debug.log';
+      _logFile = File(_logPath!);
+      // 清空旧日志
+      await _logFile!.writeAsString('=== Parse Debug Log ${DateTime.now()} ===\n');
+      _initialized = true;
+      print('[ParseLog] 日志文件: $_logPath');
+    } catch (e) {
+      print('[ParseLog] 初始化失败: $e');
+    }
+  }
+
+  /// 同步写入日志（收集到 buffer）
+  static void log(String message) {
+    final text = '[${DateTime.now().toIso8601String()}] $message';
+    print(text); // 同时输出到 logcat
+    _buffer.writeln(text);
+  }
+
+  /// 异步 flush buffer 到文件
+  static Future<void> flush() async {
+    if (_buffer.isEmpty) return;
+    try {
+      if (_logFile != null) {
+        await _logFile!.writeAsString(_buffer.toString(), mode: FileMode.append);
+        _buffer.clear();
+      }
+    } catch (e) {
+      print('[ParseLog] flush 失败: $e');
+    }
+  }
+
+  /// 获取日志文件路径
+  static String? get logPath => _logPath;
 }
 
 class InboxService {
@@ -94,6 +159,31 @@ class InboxService {
     return result;
   }
 
+  /// 解析文件路径：如果存储的路径不存在，在所有栏目目录中搜索同名目录
+  /// 用于修复之前操作失败导致 DB 路径与实际文件位置不一致的情况
+  Future<String> _resolveFilePath(String filePath) async {
+    final dir = Directory(filePath);
+    if (await dir.exists()) {
+      return filePath;
+    }
+
+    // 存储的路径不存在，搜索所有栏目目录
+    final dirName = p.basename(filePath);
+    print('[ResolvePath] 路径不存在: $filePath，搜索目录名: $dirName');
+
+    final allDirs = await getAllColumnDirectories();
+    for (final entry in allDirs.entries) {
+      final candidatePath = '${entry.value.path}/$dirName';
+      if (await Directory(candidatePath).exists()) {
+        print('[ResolvePath] 找到文件: $candidatePath (栏目: ${entry.key})');
+        return candidatePath;
+      }
+    }
+
+    print('[ResolvePath] 未找到文件，返回原路径: $filePath');
+    return filePath;
+  }
+
   // 从文件系统扫描所有条目
   Future<List<InboxItem>> scanAllItemsFromFileSystem() async {
     final result = <InboxItem>[];
@@ -123,8 +213,16 @@ class InboxService {
     return result;
   }
 
+  // 有效分类列表（非默认分类）
+  static const Set<String> _validCategories = {
+    '错题本', '习题集', '作品集', '知识点',
+  };
+
   // 从目录创建条目
-  Future<InboxItem?> _createItemFromDirectory(String columnName, Directory dir) async {
+  Future<InboxItem?> _createItemFromDirectory(
+    String columnName,
+    Directory dir,
+  ) async {
     try {
       final htmlFile = File('${dir.path}/index.html');
       if (!await htmlFile.exists()) {
@@ -143,6 +241,18 @@ class InboxService {
       final status = dbItem?.status ?? '未处理';
       final isValid = dbItem != null;
 
+      // 优先使用 DB 中的分类（如果是有效分类）；否则使用目录名
+      String category;
+      if (dbItem != null && _validCategories.contains(dbItem.category)) {
+        category = dbItem.category;
+      } else if (_validCategories.contains(columnName)) {
+        category = columnName;
+      } else if (dbItem != null && dbItem.category.isNotEmpty) {
+        category = dbItem.category;
+      } else {
+        category = columnName;
+      }
+
       return InboxItem(
         id: dbItem?.id,
         title: title,
@@ -150,7 +260,7 @@ class InboxService {
         url: url,
         filePath: dir.path,
         content: dbItem?.content ?? '',
-        category: columnName,
+        category: category,
         status: status,
         createdAt: createdAt,
         updatedAt: dbItem?.updatedAt,
@@ -226,7 +336,7 @@ class InboxService {
   // 下载并保存HTML
   Future<void> _downloadAndSaveHtml(String url, Directory itemDir) async {
     final htmlFile = File('${itemDir.path}/index.html');
-    
+
     try {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
@@ -269,6 +379,15 @@ class InboxService {
   Future<void> moveItemToColumn(InboxItem item, String newColumn) async {
     final oldDir = Directory(item.filePath);
     if (!await oldDir.exists()) {
+      print('[MoveItem] 源目录不存在: ${item.filePath}，跳过移动');
+      // 即使源目录不存在，仍然更新 DB 中的分类信息
+      if (item.id != null) {
+        final updatedItem = item.copyWith(
+          category: newColumn,
+          updatedAt: DateTime.now(),
+        );
+        await _dbHelper.updateInboxItem(updatedItem);
+      }
       return;
     }
 
@@ -280,14 +399,19 @@ class InboxService {
     // 获取新栏目的目录
     final newColumnDir = await getColumnDirectory(newColumn);
     final dirName = p.basename(oldDir.path);
-    
+
     // 确定最终目标路径
     String finalPath = '${newColumnDir.path}/$dirName';
-    
-    // 如果目标目录已存在，添加后缀
-    if (await Directory(finalPath).exists()) {
+
+    // 如果源路径和目标路径相同（同目录移动），跳过 rename
+    if (finalPath == oldDir.path) {
+      print('[MoveItem] 源路径与目标路径相同，跳过文件移动: $finalPath');
+    } else if (await Directory(finalPath).exists()) {
+      // 如果目标目录已存在，添加后缀
       var suffix = 1;
-      while (await Directory('${newColumnDir.path}/${dirName}_$suffix').exists()) {
+      while (await Directory(
+        '${newColumnDir.path}/${dirName}_$suffix',
+      ).exists()) {
         suffix++;
       }
       finalPath = '${newColumnDir.path}/${dirName}_$suffix';
@@ -311,20 +435,24 @@ class InboxService {
       // 注意：InboxItem 是不可变对象，插入后不需要更新本地引用
     }
 
-    // 记录移动历史
-    final moveRecord = MoveRecord(
-      inboxItemId: inboxItemId,
-      fromCategory: fromCategory,
-      toCategory: newColumn,
-      fromPath: fromPath,
-      toPath: finalPath,
-      movedAt: DateTime.now(),
-    );
+    // 记录移动历史（非关键操作，失败不中断主流程）
+    try {
+      final moveRecord = MoveRecord(
+        inboxItemId: inboxItemId,
+        fromCategory: fromCategory,
+        toCategory: newColumn,
+        fromPath: fromPath,
+        toPath: finalPath,
+        movedAt: DateTime.now(),
+      );
 
-    final db = await _dbHelper.database;
-    final moveRecordDao = MoveRecordDao(db);
-    await moveRecordDao.insert(moveRecord);
-    
+      final db = await _dbHelper.database;
+      final moveRecordDao = MoveRecordDao(db);
+      await moveRecordDao.insert(moveRecord);
+    } catch (e) {
+      print('[MoveItem] 移动历史记录保存失败（不影响主流程）: $e');
+    }
+
     print('[MoveItem] 条目已移动到: $finalPath');
   }
 
@@ -379,11 +507,16 @@ class InboxService {
       bool match = true;
 
       if (keyword != null && keyword.isNotEmpty) {
-        match = match && item.title.toLowerCase().contains(keyword.toLowerCase());
+        match =
+            match && item.title.toLowerCase().contains(keyword.toLowerCase());
       }
 
       if (source != null && source.isNotEmpty) {
-        match = match && source.any((s) => item.source.toLowerCase().contains(s.toLowerCase()));
+        match =
+            match &&
+            source.any(
+              (s) => item.source.toLowerCase().contains(s.toLowerCase()),
+            );
       }
 
       if (category != null && category.isNotEmpty) {
@@ -399,7 +532,9 @@ class InboxService {
       }
 
       if (contentKeyword != null && contentKeyword.isNotEmpty) {
-        match = match && item.content.toLowerCase().contains(contentKeyword.toLowerCase());
+        match =
+            match &&
+            item.content.toLowerCase().contains(contentKeyword.toLowerCase());
       }
 
       return match;
@@ -412,9 +547,11 @@ class InboxService {
     print('[SortLog] ========== 开始分类处理 (unified): ${item.title}');
 
     // Step 1: Extract headings and text content from HTML
-    final htmlPath = '${item.filePath}/index.html';
+    // 解析文件路径，修复可能的路径不一致问题
+    final resolvedPath = await _resolveFilePath(item.filePath);
+    final htmlPath = '$resolvedPath/index.html';
     final file = File(htmlPath);
-    
+
     if (!await file.exists()) {
       throw Exception('HTML文件不存在: $htmlPath');
     }
@@ -435,7 +572,7 @@ class InboxService {
     // Step 3: Two-stage classification using LLM
     // Stage 1: First classify into broad categories
     String category = await _firstStageClassification(textContent);
-    
+
     // Stage 2: If classified as exercise-related, further determine if it's error book or exercise set
     String stageReasoning = '';
     if (category == '习题相关') {
@@ -456,7 +593,8 @@ class InboxService {
 
   /// First stage: Classify into broad categories
   Future<String> _firstStageClassification(String content) async {
-    final systemPrompt = '''你是一位专业的文档分类助手。请将文档归类到以下四大类别之一。
+    final systemPrompt =
+        '''你是一位专业的文档分类助手。请将文档归类到以下四大类别之一。
 
 === 分类定义 ===
 1，「习题相关」：包含题目、答案、练习题、试卷、答题等学习练习相关内容（无论是否有错误分析）
@@ -494,7 +632,8 @@ $content
 
   /// Second stage: Determine if exercise-related content is error book or exercise set
   Future<String> _secondStageClassification(String content) async {
-    final systemPrompt = '''你是一位专业的文档分类助手。请判断以下习题相关文档属于哪一类。
+    final systemPrompt =
+        '''你是一位专业的文档分类助手。请判断以下习题相关文档属于哪一类。
 
 === 分类定义 ===
 1，「错题本」：文档中包含答卷、批改痕迹、错误分析、技巧总结、"错在哪里"、"正确答案是"、"我的答案"、"批阅"等订正相关信息。核心特征是"有错且有分析与修正"。
@@ -508,7 +647,7 @@ $content
 请只回复一个数字（1 或 2）。''';
 
     final response = await _llmService.generateResponse(systemPrompt);
-    
+
     if (response['success'] == true) {
       final resp = response['response'] as String;
       if (resp.contains('1')) {
@@ -524,10 +663,14 @@ $content
   // Extract heading tags from HTML content
   List<String> _extractHeadingsFromHtml(String html) {
     final List<String> headings = [];
-    final regex = RegExp(r'<h([1-6])[^>]*>(.*?)</h[1-6]>', caseSensitive: false);
-    
+    final regex = RegExp(
+      r'<h([1-6])[^>]*>(.*?)</h[1-6]>',
+      caseSensitive: false,
+    );
+
     for (final match in regex.allMatches(html)) {
-      final text = match.group(2)?.replaceAll(RegExp(r'<[^>]+>'), '').trim() ?? '';
+      final text =
+          match.group(2)?.replaceAll(RegExp(r'<[^>]+>'), '').trim() ?? '';
       if (text.isNotEmpty && text.length > 2) {
         headings.add(text);
       }
@@ -538,25 +681,36 @@ $content
   // Extract clean text from HTML
   String _extractTextFromHtmlFile(String html) {
     var text = html
-        .replaceAll(RegExp(r'<script[^>]*>[\s\S]*?</script>', caseSensitive: false), '')
-        .replaceAll(RegExp(r'<style[^>]*>[\s\S]*?</style>', caseSensitive: false), '')
+        .replaceAll(
+          RegExp(r'<script[^>]*>[\s\S]*?</script>', caseSensitive: false),
+          '',
+        )
+        .replaceAll(
+          RegExp(r'<style[^>]*>[\s\S]*?</style>', caseSensitive: false),
+          '',
+        )
         .replaceAll(RegExp(r'<[^>]+>'), '')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
 
     if (text.length > 30000) {
-      text = text.substring(0, 30000) + '\n...(truncated ${text.length - 30000} more chars)';
+      text =
+          text.substring(0, 30000) +
+          '\n...(truncated ${text.length - 30000} more chars)';
     }
     return text;
   }
 
   // Use LLM to select the best title from candidates
   Future<String> _selectBestTitle(List<String> titles, String content) async {
-    final titlesList = titles.asMap().entries
+    final titlesList = titles
+        .asMap()
+        .entries
         .map((entry) => '${entry.key + 1}、"${entry.value}"')
         .join('\n');
 
-    final prompt = '''请选择最能反映以下内容的标题，只需回复序号（如：1、2、3等）。
+    final prompt =
+        '''请选择最能反映以下内容的标题，只需回复序号（如：1、2、3等）。
 
 内容摘要：
 $content
@@ -567,7 +721,7 @@ $titlesList
 请只回复序号。''';
 
     final response = await _llmService.generateResponse(prompt);
-    
+
     if (response['success'] == true) {
       final responseText = response['response'] as String;
       final match = RegExp(r'(\d+)').firstMatch(responseText);
@@ -585,7 +739,8 @@ $titlesList
 
   // Classify by content string only (legacy method, kept for batch processing)
   Future<Map<String, String>> classifyByLlm(String content) async {
-    final systemPrompt = '''你是一位专业的文档分类助手。请判断以下文档内容最属于哪个分类栏目（每篇文档只能归入一个类别，不可多选）。
+    final systemPrompt =
+        '''你是一位专业的文档分类助手。请判断以下文档内容最属于哪个分类栏目（每篇文档只能归入一个类别，不可多选）。
 
 请先阅读下方【分类定义】，再仔细阅读待分类文档，最后从 5 个选项中选出唯一最匹配的一个。
 
@@ -636,18 +791,12 @@ $content
       final aiReply = '分类结果：$category\n\n分类依据：$reasoning';
       await _saveClassificationChat(content, aiReply);
 
-      return {
-        'category': category,
-        'reasoning': reasoning
-      };
+      return {'category': category, 'reasoning': reasoning};
     } catch (e) {
       print('LLM分类失败: $e');
       final aiReply = '分类结果：无法分类（LLM请求失败）';
       await _saveClassificationChat(content, aiReply);
-      return {
-        'category': '无法分类',
-        'reasoning': 'LLM请求失败: $e'
-      };
+      return {'category': '无法分类', 'reasoning': 'LLM请求失败: $e'};
     }
   }
 
@@ -704,13 +853,18 @@ $content
 
       // Save as a single AI reply to chat_messages table
       await _saveChatMessage(aiReply.toString(), false);
-      print('[ChatLog] [Classification] Saved full chat record for: ${item.title}');
+      print(
+        '[ChatLog] [Classification] Saved full chat record for: ${item.title}',
+      );
     } catch (e) {
       print('[ChatLogError] 保存完整分类记录失败: $e');
     }
   }
 
-  Future<void> processItems(List<InboxItem> items, {ProcessProgressCallback? onProgress}) async {
+  Future<void> processItems(
+    List<InboxItem> items, {
+    ProcessProgressCallback? onProgress,
+  }) async {
     for (int i = 0; i < items.length; i++) {
       final result = await processAndClassifyItem(items[i]);
       final reasoning = result['reasoning']!;
@@ -722,49 +876,85 @@ $content
   }
 
   /// Unified batch processing: use classifyItem (reads from file) for consistent behavior
-  Future<Map<String, String>> processAndClassifyItem(InboxItem item) async {
+  /// If [useManualCategory] is true, it skips AI classification and uses item.category directly
+  Future<Map<String, String>> processAndClassifyItem(
+    InboxItem item, {
+    bool useManualCategory = false,
+  }) async {
     print('[SortLog] ========== 开始分类处理 (unified): ${item.title}');
 
     try {
-      // Use unified classifyItem which handles: HTML reading → heading extraction → title optimization → LLM classification
-      final result = await classifyItem(item);
-      final category = result.category;
-      final reasoning = result.reasoning;
-      final newTitle = result.newTitle;
-      final content = result.content;
-      print('[SortLog] 分类结果: $category (标题: $newTitle)');
+      String category;
+      String reasoning;
+      String? newTitle;
+      String? content;
+
+      // 首先解析文件路径，修复之前操作失败导致的路径不一致问题
+      final resolvedFilePath = await _resolveFilePath(item.filePath);
+      final resolvedItem = item.filePath != resolvedFilePath
+          ? item.copyWith(filePath: resolvedFilePath)
+          : item;
+
+      if (useManualCategory ||
+          item.category != '未知归类' && item.category != '无法分类') {
+        // 使用手工指定的分类
+        category = item.category;
+        reasoning = '手工分类';
+        newTitle = item.title;
+        // 从HTML文件中提取内容
+        try {
+          final htmlPath = '${resolvedFilePath}/index.html';
+          final file = File(htmlPath);
+          if (await file.exists()) {
+            final htmlContent = await file.readAsString(encoding: utf8);
+            content = _extractTextFromHtmlFile(htmlContent);
+          }
+        } catch (e) {
+          content = item.content;
+        }
+        print('[SortLog] 使用手工分类: $category');
+      } else {
+        // 使用AI自动分类
+        final result = await classifyItem(resolvedItem);
+        category = result.category;
+        reasoning = result.reasoning;
+        newTitle = result.newTitle;
+        content = result.content;
+        print('[SortLog] AI分类结果: $category (标题: $newTitle)');
+      }
 
       // Determine actual file path after potential move
-      String finalFilePath = item.filePath;
-      bool fileMoved = false;
-      if (item.category != category || newTitle != null) {
-        await moveItemToColumn(item, category);
+      String finalFilePath = resolvedFilePath;
+      if (resolvedItem.category != category || newTitle != null) {
+        await moveItemToColumn(resolvedItem, category);
 
         // Find actual moved path (may have _N suffix)
         final newColumnDir = await getColumnDirectory(category);
-        final dirName = p.basename(item.filePath);
-        var suffix = 1;
+        final dirName = p.basename(resolvedFilePath);
         final candidatePath = '${newColumnDir.path}/$dirName';
         if (await Directory(candidatePath).exists()) {
           finalFilePath = candidatePath;
-          fileMoved = true;
         } else {
-          while (suffix <= 10) {
+          // 检查是否带后缀
+          bool found = false;
+          for (var suffix = 1; suffix <= 10; suffix++) {
             final searchPath = '${newColumnDir.path}/${dirName}_$suffix';
             if (await Directory(searchPath).exists()) {
               finalFilePath = searchPath;
-              fileMoved = true;
+              found = true;
               break;
             }
-            suffix++;
+          }
+          // 如果找不到，可能源文件不存在或已在目标位置，保留当前路径
+          if (!found) {
+            // 再次检查原始路径是否仍然存在
+            if (await Directory(resolvedFilePath).exists()) {
+              finalFilePath = resolvedFilePath;
+            }
+            print('[SortLog] 警告: 文件移动后未在目标目录找到，使用路径: $finalFilePath');
           }
         }
-
-        // 验证文件是否成功移动
-        if (!fileMoved) {
-          throw Exception('文件移动失败，目标路径不存在');
-        }
-        print('[SortLog] 文件已成功移动到: $finalFilePath');
+        print('[SortLog] 文件路径: $finalFilePath');
       }
 
       // Build updated item with latest data
@@ -781,12 +971,13 @@ $content
 
       // Write through to corresponding module table
       final moduleInserted = await _writeToModuleTable(updatedItem);
-      
+
       // 验证目标栏目数据库是否成功插入记录
       if (!moduleInserted) {
-        throw Exception('目标栏目数据库记录插入失败');
+        print('[SortLog] 警告: 目标栏目数据库记录插入失败，但分类已完成');
+      } else {
+        print('[SortLog] 目标栏目数据库记录已成功插入');
       }
-      print('[SortLog] 目标栏目数据库记录已成功插入');
 
       // Save full chat history to conversation database
       await _saveFullClassificationChat(
@@ -798,23 +989,15 @@ $content
 
       print('[SortLog] ========== 分类处理完成 (unified) ==========');
 
-      return {
-        'category': category,
-        'reasoning': reasoning,
-      };
+      return {'category': category, 'reasoning': reasoning};
     } catch (e) {
       print('[SortLog] 分类处理异常: $e');
-      
+
       // 更新状态为整理失败
-      final failedItem = item.copyWith(
-        status: '整理失败',
-      );
+      final failedItem = item.copyWith(status: '整理失败');
       await updateItemInfo(failedItem);
-      
-      return {
-        'category': '无法分类',
-        'reasoning': '处理失败: $e，请人工处理',
-      };
+
+      return {'category': '无法分类', 'reasoning': '处理失败: $e，请人工处理'};
     }
   }
 
@@ -824,13 +1007,27 @@ $content
 
     // 如果 content 为空或只有占位符，跳过智能解析，返回 false 表示未成功插入
     if (item.content.isEmpty || item.content == '正在处理中...') {
-      print('[WriteThrough] 内容未就绪，跳过智能解析');
+      _ParseLog.log(' 内容未就绪，跳过智能解析');
       return false;
     }
 
     try {
+      // 对于错题本，先尝试直接解析内容为 JSON（支持数组和单对象）
+      if (item.category == '错题本') {
+        final directResult = await _tryDirectJsonInsert(db, item);
+        if (directResult) {
+          return true;
+        }
+        // 直接 JSON 解析失败，回退到 LLM 解析
+        _ParseLog.log(' 直接JSON解析失败，尝试LLM解析');
+      }
+
       // 调用 LLM 将 content 解析为目标模块的数据结构
-      final parsedData = await parseContentForCategory(item.content, item.title, item.category);
+      final parsedData = await parseContentForCategory(
+        item.content,
+        item.title,
+        item.category,
+      );
 
       switch (item.category) {
         case '错题本':
@@ -846,18 +1043,887 @@ $content
           await _insertKnowledgePoint(db, item, parsedData);
           return true;
         default:
-          print('[WriteThrough] 未知分类: ${item.category}');
+          _ParseLog.log(' 未知分类: ${item.category}');
           return false;
       }
     } catch (e) {
-      print('[WriteThrough] LLM 解析失败: $e');
+      _ParseLog.log(' LLM 解析失败: $e');
       // LLM 失败时降级为仅标题插入
       return await _fallbackInsertModuleTable(item);
     }
   }
 
+  /// 尝试直接解析内容为 JSON 并批量插入错题记录
+  /// 支持 JSON 数组（多条错题）和单个 JSON 对象
+  /// 内容可能包含非 JSON 的网页文本（如标题、页脚），需要先提取 JSON 部分
+  /// 当标准 JSON 解析失败时，自动启用高容错解析机制
+  Future<bool> _tryDirectJsonInsert(Database db, InboxItem item) async {
+    try {
+      // 初始化文件日志
+      await _ParseLog.init();
+      final content = item.content.trim();
+      _ParseLog.log(' ========== _tryDirectJsonInsert 开始 ==========');
+      _ParseLog.log(' 日志文件路径: ${_ParseLog.logPath}');
+      _ParseLog.log(' content 长度: ${content.length}');
+      _ParseLog.log(' content 前200字符: ${content.length > 200 ? content.substring(0, 200) : content}');
+
+      // Step 1: 尝试直接解析整个内容
+      dynamic decoded;
+      try {
+        decoded = json.decode(content);
+        _ParseLog.log(' 直接 json.decode 成功，类型: ${decoded.runtimeType}');
+      } catch (e) {
+        _ParseLog.log(' 直接 json.decode 失败: $e');
+        // 直接解析失败，尝试从内容中提取 JSON 部分
+        final jsonStr = _extractJsonFromContent(content);
+        if (jsonStr == null) {
+          _ParseLog.log(' 未找到可解析的JSON内容');
+          return false;
+        }
+        _ParseLog.log(' 提取的 jsonStr 长度: ${jsonStr.length}');
+        _ParseLog.log(' 提取的 jsonStr 前200字符: ${jsonStr.length > 200 ? jsonStr.substring(0, 200) : jsonStr}');
+        try {
+          decoded = json.decode(jsonStr);
+          _ParseLog.log(' 提取后 json.decode 成功，类型: ${decoded.runtimeType}');
+        } catch (e) {
+          _ParseLog.log(' 提取后 json.decode 失败: $e');
+          _ParseLog.log(' 标准JSON解析失败，尝试高容错解析');
+          // 标准解析失败，进入高容错解析流程
+          return await _tolerantJsonInsert(db, item, jsonStr);
+        }
+      }
+
+      if (decoded is List) {
+        // JSON 数组：批量插入多条错题
+        _ParseLog.log(' 检测到JSON数组，共 ${decoded.length} 条记录');
+        int successCount = 0;
+        for (int i = 0; i < decoded.length; i++) {
+          final entry = decoded[i];
+          _ParseLog.log(' 处理数组第 $i 项，类型: ${entry.runtimeType}');
+          if (entry is Map<String, dynamic>) {
+            try {
+              await _insertErrorRecord(db, item, entry);
+              successCount++;
+              _ParseLog.log(' 第 $i 项插入成功');
+            } catch (e) {
+              _ParseLog.log(' 第 $i 项插入失败: $e');
+            }
+          } else {
+            _ParseLog.log(' 第 $i 项不是 Map，跳过');
+          }
+        }
+        _ParseLog.log(' 成功插入 $successCount/${decoded.length} 条记录');
+        _ParseLog.log(' ========== _tryDirectJsonInsert 结束 ==========');
+        await _ParseLog.flush();
+        return successCount > 0;
+      } else if (decoded is Map<String, dynamic>) {
+        // 单个 JSON 对象
+        _ParseLog.log(' 检测到单个JSON对象');
+        await _insertErrorRecord(db, item, decoded);
+        _ParseLog.log(' ========== _tryDirectJsonInsert 结束 ==========');
+        await _ParseLog.flush();
+        return true;
+      } else {
+        _ParseLog.log(' 解析结果既不是List也不是Map，类型: ${decoded.runtimeType}');
+      }
+      _ParseLog.log(' ========== _tryDirectJsonInsert 结束 ==========');
+      await _ParseLog.flush();
+      return false;
+    } catch (e) {
+      _ParseLog.log(' _tryDirectJsonInsert 异常: $e');
+      await _ParseLog.flush();
+      return false;
+    }
+  }
+
+  /// 高容错 JSON 解析与插入
+  /// 当标准 json.decode 失败时使用：先分割 JSON 对象，再逐对象容错解析键值对
+  Future<bool> _tolerantJsonInsert(Database db, InboxItem item, String jsonStr) async {
+    try {
+      _ParseLog.log(' ========== _tolerantJsonInsert 开始 ==========');
+      final trimmed = jsonStr.trim();
+      _ParseLog.log(' 容错解析输入长度: ${trimmed.length}');
+      _ParseLog.log(' 容错解析输入前200字符: ${trimmed.length > 200 ? trimmed.substring(0, 200) : trimmed}');
+      if (trimmed.startsWith('[')) {
+        // JSON 数组：分割成独立对象后逐个容错解析
+        final rawObjects = _splitJsonArrayObjects(trimmed);
+        _ParseLog.log(' 容错解析：初始分割出 ${rawObjects.length} 个JSON对象');
+
+        // 检测并拆分被合并的对象（基于已知属性名重复）
+        final objects = _detectAndSplitMergedObjects(rawObjects);
+        if (objects.length != rawObjects.length) {
+          _ParseLog.log(' 属性边界检测后共 ${objects.length} 个对象');
+        }
+
+        for (int idx = 0; idx < objects.length; idx++) {
+          final preview = objects[idx].length > 100 ? objects[idx].substring(0, 100) : objects[idx];
+          _ParseLog.log(' 对象[$idx] 长度:${objects[idx].length} 预览:$preview');
+        }
+        int successCount = 0;
+        for (int idx = 0; idx < objects.length; idx++) {
+          final objStr = objects[idx];
+          _ParseLog.log(' 正在容错解析对象[$idx]，长度:${objStr.length}');
+          final map = _tolerantParseObject(objStr);
+          _ParseLog.log(' 对象[$idx] 解析出 ${map.length} 个键值对，键: ${map.keys.toList()}');
+          if (map.isNotEmpty) {
+            try {
+              await _insertErrorRecord(db, item, map);
+              successCount++;
+              _ParseLog.log(' 对象[$idx] 插入成功');
+            } catch (e) {
+              _ParseLog.log(' 对象[$idx] 插入失败: $e');
+            }
+          } else {
+            _ParseLog.log(' 对象[$idx] 解析结果为空，跳过插入');
+          }
+        }
+        _ParseLog.log(' 容错解析成功插入 $successCount/${objects.length} 条记录');
+        _ParseLog.log(' ========== _tolerantJsonInsert 结束 ==========');
+        await _ParseLog.flush();
+        return successCount > 0;
+      } else if (trimmed.startsWith('{')) {
+        // 单个 JSON 对象
+        _ParseLog.log(' 容错解析：单个JSON对象');
+        final map = _tolerantParseObject(trimmed);
+        _ParseLog.log(' 解析出 ${map.length} 个键值对，键: ${map.keys.toList()}');
+        if (map.isNotEmpty) {
+          await _insertErrorRecord(db, item, map);
+          _ParseLog.log(' ========== _tolerantJsonInsert 结束 ==========');
+          await _ParseLog.flush();
+          return true;
+        }
+      } else {
+        _ParseLog.log(' 容错解析：既不是数组也不是对象，开头字符: ${trimmed.isNotEmpty ? trimmed[0] : "空"}');
+      }
+      _ParseLog.log(' ========== _tolerantJsonInsert 结束 ==========');
+      await _ParseLog.flush();
+      return false;
+    } catch (e) {
+      _ParseLog.log(' 容错JSON解析失败: $e');
+      await _ParseLog.flush();
+      return false;
+    }
+  }
+
+  /// 从混合文本中智能提取 JSON 部分
+  /// 策略（按优先级）：
+  ///   1. 属性锚定法：找到第一个 `errorId": "数字"` 的位置，向前找 `[`，向后找最后一个 `}`
+  ///   2. 括号匹配法：查找所有 `[`，尝试括号匹配，验证提取结果
+  ///   3. 回退到 JSON 对象提取
+  String? _extractJsonFromContent(String content) {
+    _ParseLog.log(' _extractJsonFromContent 开始，content 长度:${content.length}');
+    // 去掉首尾可能的引号
+    var trimmed = content.trim();
+    final hadQuotes = trimmed.startsWith('"') && trimmed.endsWith('"');
+    if (hadQuotes) {
+      trimmed = trimmed.substring(1, trimmed.length - 1).trim();
+      _ParseLog.log(' 去掉首尾引号，剩余长度:${trimmed.length}');
+    }
+
+    // 策略1：属性锚定法 — 最可靠
+    final anchored = _extractByPropertyAnchor(trimmed);
+    if (anchored != null) {
+      _ParseLog.log(' 属性锚定法成功，长度:${anchored.length}');
+      return anchored;
+    }
+
+    // 策略2：括号匹配法
+    final bestJsonArray = _findBestJsonArray(trimmed);
+    if (bestJsonArray != null) {
+      _ParseLog.log(' 括号匹配法成功，长度:${bestJsonArray.length}');
+      return bestJsonArray;
+    }
+
+    // 策略3：回退到 JSON 对象
+    final bestJsonObject = _findBestJsonObject(trimmed);
+    if (bestJsonObject != null) {
+      _ParseLog.log(' 回退到JSON对象，长度:${bestJsonObject.length}');
+      return bestJsonObject;
+    }
+
+    _ParseLog.log(' 未找到可解析的JSON内容');
+    return null;
+  }
+
+  /// 属性锚定法：利用已知属性名定位真正的 JSON 数据区域
+  /// 找到第一个 `"errorId": "数字"` 的位置，作为数据开始的标志
+  /// 向前找到 `[`（数组开始），向后找到最后的 `}`（数组结束）
+  String? _extractByPropertyAnchor(String text) {
+    // 使用正则匹配 errorId": "纯数字" 模式（避免匹配模板中的 errorId": "错误编号"）
+    final pattern = RegExp(r'"errorId"\s*:\s*"\d+"');
+    final firstMatch = pattern.firstMatch(text);
+    if (firstMatch == null) return null;
+
+    final firstErrorIdPos = firstMatch.start;
+    _ParseLog.log(' 属性锚定：第一个 errorId":数字 在位置 $firstErrorIdPos');
+
+    // 向前找 [ — 从 firstErrorIdPos 往前搜索
+    int arrayStart = text.lastIndexOf('[', firstErrorIdPos);
+    if (arrayStart < 0) {
+      // 如果前面没有 [，试试找第一个 {
+      arrayStart = text.lastIndexOf('{', firstErrorIdPos);
+      if (arrayStart < 0) return null;
+    }
+    _ParseLog.log(' 属性锚定：向前找到 [ 位置 $arrayStart');
+
+    // 向后找最后一个 } 
+    int lastBrace = text.lastIndexOf('}');
+    if (lastBrace <= firstErrorIdPos) return null;
+    _ParseLog.log(' 属性锚定：向后找到 } 位置 $lastBrace');
+
+    String jsonStr;
+    if (text[arrayStart] == '[') {
+      jsonStr = text.substring(arrayStart, lastBrace + 1) + ']';
+      _ParseLog.log(' 属性锚定：补上了 ]');
+    } else {
+      jsonStr = text.substring(arrayStart, lastBrace + 1);
+    }
+
+    // 验证：提取的内容应该包含多个 errorId（多个对象）
+    final errorIdCount = pattern.allMatches(jsonStr).length;
+    _ParseLog.log(' 属性锚定：提取内容包含 $errorIdCount 个 errorId');
+
+    if (errorIdCount >= 1) {
+      return jsonStr;
+    }
+    return null;
+  }
+
+  /// 在文本中查找最佳 JSON 数组
+  /// 遍历所有 `[` 位置，验证后面是否为有效的 JSON 数组
+  String? _findBestJsonArray(String text) {
+    int searchFrom = 0;
+    String? bestCandidate;
+    int bestLength = 0;
+
+    while (searchFrom < text.length) {
+      final arrayStart = text.indexOf('[', searchFrom);
+      if (arrayStart < 0) break;
+
+      // 检查 [ 后面是否紧跟 JSON 对象特征：跳过空白后应该是 { 或 [
+      int checkPos = arrayStart + 1;
+      while (checkPos < text.length && ' \t\n\r'.contains(text[checkPos])) {
+        checkPos++;
+      }
+
+      if (checkPos >= text.length) break;
+
+      // 数组内第一个有效字符应该是 { 或 [ 或 "（字符串）或 数字/布尔/null
+      final nextChar = text[checkPos];
+      final isArrayLike = nextChar == '{' || nextChar == '[' || nextChar == '"';
+      final isValueLike = nextChar == 't' || nextChar == 'f' || nextChar == 'n' ||
+          (nextChar.codeUnitAt(0) >= 48 && nextChar.codeUnitAt(0) <= 57); // 数字
+
+      if (!isArrayLike && !isValueLike) {
+        searchFrom = arrayStart + 1;
+        continue;
+      }
+
+      // 尝试括号匹配
+      final arrayEnd = _findMatchingBracket(text, arrayStart, '[', ']');
+      if (arrayEnd > arrayStart) {
+        final candidate = text.substring(arrayStart, arrayEnd + 1);
+
+        // 验证：提取的内容应该包含至少一个 {（JSON 对象特征）
+        if (candidate.contains('{')) {
+          // 检查括号是否大致平衡
+          final inner = candidate.substring(1, candidate.length - 1);
+          final braceCount = _countBraces(inner);
+          _ParseLog.log(' 候选数组位置:$arrayStart, 长度:${candidate.length}, {计数:${braceCount}');
+
+          if (braceCount > 0) {
+            // 优先选择包含最多 JSON 对象的候选
+            if (candidate.length > bestLength) {
+              bestCandidate = candidate;
+              bestLength = candidate.length;
+            }
+          }
+        }
+      }
+
+      searchFrom = arrayStart + 1;
+    }
+
+    return bestCandidate;
+  }
+
+  /// 在文本中查找最佳 JSON 对象
+  String? _findBestJsonObject(String text) {
+    int searchFrom = 0;
+    String? bestCandidate;
+    int bestLength = 0;
+
+    while (searchFrom < text.length) {
+      final objectStart = text.indexOf('{', searchFrom);
+      if (objectStart < 0) break;
+
+      // 检查 { 后面是否紧跟 "（JSON 键名特征）
+      int checkPos = objectStart + 1;
+      while (checkPos < text.length && ' \t\n\r'.contains(text[checkPos])) {
+        checkPos++;
+      }
+
+      if (checkPos >= text.length) break;
+
+      final nextChar = text[checkPos];
+      // JSON 对象的第一个字符应该是 "（键名）
+      if (nextChar != '"') {
+        searchFrom = objectStart + 1;
+        continue;
+      }
+
+      final objectEnd = _findMatchingBracket(text, objectStart, '{', '}');
+      if (objectEnd > objectStart) {
+        final candidate = text.substring(objectStart, objectEnd + 1);
+        // 检查是否包含 ":（键值对特征）
+        if (candidate.contains('":') || candidate.contains('" :')) {
+          if (candidate.length > bestLength) {
+            bestCandidate = candidate;
+            bestLength = candidate.length;
+          }
+        }
+      }
+
+      searchFrom = objectStart + 1;
+    }
+
+    return bestCandidate;
+  }
+
+  /// 简单计算字符串中未转义的 { 和 } 的数量差
+  /// 返回 > 0 表示有未闭合的 {，< 0 表示有额外的 }
+  int _countBraces(String text) {
+    int count = 0;
+    bool inString = false;
+    for (int i = 0; i < text.length; i++) {
+      if (inString) {
+        if (text[i] == '\\' && i + 1 < text.length) {
+          i++;
+        } else if (text[i] == '"') {
+          inString = false;
+        }
+      } else {
+        if (text[i] == '"') {
+          inString = true;
+        } else if (text[i] == '{') {
+          count++;
+        } else if (text[i] == '}') {
+          count--;
+        }
+      }
+    }
+    return count;
+  }
+
+  /// 找到匹配的括号位置（考虑字符串内的括号）
+  int _findMatchingBracket(String text, int start, String open, String close) {
+    int depth = 0;
+    bool inString = false;
+    for (int i = start; i < text.length; i++) {
+      if (inString) {
+        if (text[i] == '\\' && i + 1 < text.length) {
+          i++; // 跳过转义字符
+        } else if (text[i] == '"') {
+          inString = false;
+        }
+      } else {
+        if (text[i] == '"') {
+          inString = true;
+        } else if (text[i] == open[0]) {
+          depth++;
+        } else if (text[i] == close[0]) {
+          depth--;
+          if (depth == 0) return i;
+        }
+      }
+    }
+    return -1; // 未找到匹配的括号
+  }
+
+  /// 将 JSON 数组内容分割成独立的 JSON 对象字符串
+  /// 策略：找到每个顶层 } 的位置，从上一个分隔点到该 } 位置为一个对象
+  /// 使用 depth 追踪，只在 depth==0 时的 } 才是顶层对象结束
+  List<String> _splitJsonArrayObjects(String arrayStr) {
+    _ParseLog.log(' _splitJsonArrayObjects 开始，输入长度:${arrayStr.length}');
+    final result = <String>[];
+    final trimmed = arrayStr.trim();
+
+    if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) {
+      _ParseLog.log(' 输入不以 [ 开头或不以 ] 结尾，无法分割');
+      return result;
+    }
+
+    // 去掉外层 []
+    final inner = trimmed.substring(1, trimmed.length - 1).trim();
+    _ParseLog.log(' 去掉外层[]后 inner 长度:${inner.length}');
+    if (inner.isEmpty) {
+      _ParseLog.log(' inner 为空，无对象');
+      return result;
+    }
+
+    // 策略：逐字符扫描，追踪 depth 和 inString
+    // 只在 depth==0 且 inString==false 时遇到 } ，认为是一个对象的结束
+    int depth = 0;
+    bool inString = false;
+    int lastSplit = 0; // 上一个分割点
+    final current = StringBuffer();
+
+    for (int i = 0; i < inner.length; i++) {
+      final ch = inner[i];
+
+      if (inString) {
+        if (ch == '\\' && i + 1 < inner.length) {
+          current.write(ch);
+          current.write(inner[i + 1]);
+          i++;
+        } else if (ch == '"') {
+          // 简单 toggle：遇到 " 就切换 inString
+          // 这样做的原因：我们只关心对象边界（depth==0 时的逗号/大括号），
+          // 不需要正确解析字符串值内容
+          inString = false;
+          current.write(ch);
+        } else {
+          current.write(ch);
+        }
+      } else {
+        if (ch == '"') {
+          inString = true;
+          current.write(ch);
+        } else if (ch == '{') {
+          depth++;
+          current.write(ch);
+        } else if (ch == '}') {
+          depth--;
+          current.write(ch);
+          // depth 回到 0 表示一个完整的顶层对象结束
+          if (depth == 0) {
+            final objStr = current.toString().trim();
+            if (objStr.isNotEmpty) {
+              result.add(objStr);
+            }
+            current.clear();
+          }
+        } else if (ch == ',' && depth == 0) {
+          // depth==0 时的逗号是对象之间的分隔符，跳过即可
+          // （对象已经在 } 处被收集了）
+        } else {
+          current.write(ch);
+        }
+      }
+    }
+
+    // 处理可能的尾部残余
+    if (current.isNotEmpty) {
+      final objStr = current.toString().trim();
+      if (objStr.startsWith('{') && objStr.isNotEmpty) {
+        result.add(objStr);
+      }
+    }
+
+    _ParseLog.log(' _splitJsonArrayObjects 结束，共分割出 ${result.length} 个对象');
+    return result;
+  }
+
+  /// 已知错误本对象的全部属性名（用于识别对象边界）
+  static const List<String> _knownErrorRecordProperties = [
+    'correctAnswer', 'errorId', 'eids', 'progress', 'question',
+    'wrongAnswer', 'wrongWhere', 'whyWrong', 'howPrevent', 'notes',
+    'images', 'tid', 'qid', 'gradeMemo', 'correction', 'kid',
+    'unitNumber', 'lessonNumber', 'cid',
+  ];
+
+  /// 检测并拆分被合并的多个对象
+  /// 当 _splitJsonArrayObjects 返回少量对象（尤其只有1个）时，
+  /// 检查每个对象是否包含重复的已知属性名。若发现重复，
+  /// 说明多个对象被错误合并，需要按属性重复位置重新拆分。
+  List<String> _detectAndSplitMergedObjects(List<String> objects) {
+    final result = <String>[];
+    for (final objStr in objects) {
+      final splitResults = _splitByPropertyBoundaries(objStr);
+      if (splitResults.length > 1) {
+        _ParseLog.log(' 检测到合并对象，拆分为 ${splitResults.length} 个');
+        result.addAll(splitResults);
+      } else {
+        result.add(objStr);
+      }
+    }
+    return result;
+  }
+
+  /// 基于已知属性名重复位置拆分合并的对象
+  /// 策略：
+  ///   1. 扫描文本中所有已知属性名的出现位置
+  ///   2. 对出现多次的属性，其重复位置即为对象边界候选
+  ///   3. 在候选边界附近寻找 `}","` 或 `},{"` 等分隔符
+  ///   4. 若无显式分隔符，寻找前一个 `}` 到后一个 `{` 之间的范围作为边界
+  List<String> _splitByPropertyBoundaries(String text) {
+    // 步骤1：收集所有已知属性名的出现位置
+    final occurrences = <String, List<int>>{};
+    for (final prop in _knownErrorRecordProperties) {
+      final pattern = '"$prop"';
+      int pos = 0;
+      while (true) {
+        final idx = text.indexOf(pattern, pos);
+        if (idx < 0) break;
+        occurrences.putIfAbsent(prop, () => []).add(idx);
+        pos = idx + 1;
+      }
+    }
+
+    // 步骤2：找出出现次数 > 1 的属性（说明有多个对象）
+    final duplicateProps = occurrences.entries
+        .where((e) => e.value.length > 1)
+        .toList();
+
+    if (duplicateProps.isEmpty) {
+      return [text]; // 无重复属性，无需拆分
+    }
+
+    // 步骤3：使用第一个出现多次的属性来确定边界
+    // 优先使用 errorId（最稳定的对象标识符）
+    var chosenProp = duplicateProps.firstWhere(
+      (e) => e.key == 'errorId',
+      orElse: () => duplicateProps.first,
+    );
+
+    final positions = chosenProp.value;
+    _ParseLog.log(' 属性 "${chosenProp.key}" 出现 ${positions.length} 次，位置: $positions');
+
+    // 步骤4：在相邻出现位置之间寻找对象边界
+    final boundaries = <int>[]; // 每个边界是前一个对象结束的位置（不含）
+    for (int i = 0; i < positions.length - 1; i++) {
+      final startOfNextObj = positions[i + 1];
+      // 在 [positions[i], startOfNextObj) 范围内找最合适的分隔点
+      final splitPoint = _findObjectSeparator(text, positions[i], startOfNextObj);
+      if (splitPoint > 0) {
+        boundaries.add(splitPoint);
+      }
+    }
+
+    if (boundaries.isEmpty) {
+      return [text]; // 无法找到边界
+    }
+
+    // 步骤5：按边界拆分
+    final results = <String>[];
+    int start = 0;
+    for (final end in boundaries) {
+      final segment = text.substring(start, end).trim();
+      if (segment.isNotEmpty && segment.startsWith('{')) {
+        results.add(segment);
+      }
+      start = end;
+    }
+    // 最后一段
+    final lastSegment = text.substring(start).trim();
+    if (lastSegment.isNotEmpty && lastSegment.startsWith('{')) {
+      results.add(lastSegment);
+    }
+
+    return results.isNotEmpty ? results : [text];
+  }
+
+  /// 在指定范围内寻找对象分隔符
+  /// 优先找 `}","{` 或 `}, {` 或 `}{` 等模式
+  /// 若无显式分隔符，找前一个 `}` 的位置
+  int _findObjectSeparator(String text, int searchStart, int searchEnd) {
+    // 在 searchStart+10（跳过第一个属性本身）到 searchEnd 之间搜索
+    final from = searchStart + 10;
+    final to = searchEnd;
+
+    // 策略1：寻找 `}","{` 或 `},"{` 或 `}{` 模式
+    for (int i = from; i < to - 2; i++) {
+      // 检查 "},{ 模式
+      if (i + 3 < to && text.substring(i, i + 3) == '},{') {
+        return i + 1; // 在 } 后分割
+      }
+      // 检查 "}, { 模式
+      if (i + 4 < to && text.substring(i, i + 4) == '}, {') {
+        return i + 1; // 在 } 后分割
+      }
+      // 检查 "}{ 模式（无逗号分隔）
+      if (i + 2 < to && text.substring(i, i + 2) == '}{') {
+        return i + 1; // 在 } 后分割
+      }
+    }
+
+    // 策略2：找 searchEnd 之前的最后一个 }
+    for (int i = searchEnd - 1; i > from; i--) {
+      if (text[i] == '}') {
+        // 验证这个 } 后面紧跟逗号或 { 或 ] 或 文本结束
+        int j = i + 1;
+        while (j < text.length && ' \t\n\r'.contains(text[j])) j++;
+        if (j >= text.length || ',]{'.contains(text[j])) {
+          return i + 1;
+        }
+      }
+    }
+
+    return -1; // 未找到
+  }
+
+  /// 高容错 JSON 对象解析
+  /// 逐字符扫描提取 "key": value 键值对
+  /// 即使 JSON 格式不完整（缺少闭合符号、引号未转义等），也能尽可能提取属性
+  Map<String, dynamic> _tolerantParseObject(String objStr) {
+    _ParseLog.log(' _tolerantParseObject 开始，输入长度:${objStr.length}');
+    final result = <String, dynamic>{};
+    int i = 0;
+
+    while (i < objStr.length) {
+      // 跳过空白和分隔符
+      while (i < objStr.length && ' \t\n\r,{}'.contains(objStr[i])) {
+        i++;
+      }
+      if (i >= objStr.length) break;
+
+      // 查找键名：必须以 " 开头
+      if (objStr[i] != '"') {
+        // 跳过非键名内容
+        i++;
+        continue;
+      }
+
+      // 读取键名
+      final keyStart = i + 1;
+      var keyEnd = keyStart;
+      while (keyEnd < objStr.length && objStr[keyEnd] != '"') {
+        keyEnd++;
+      }
+      if (keyEnd >= objStr.length) {
+        _ParseLog.log(' 键名未闭合，终止解析');
+        break;
+      }
+
+      final key = objStr.substring(keyStart, keyEnd);
+      i = keyEnd + 1;
+
+      // 跳过空白和冒号
+      while (i < objStr.length && ' \t\n\r'.contains(objStr[i])) {
+        i++;
+      }
+      if (i >= objStr.length || objStr[i] != ':') {
+        _ParseLog.log(' 键 "$key" 后未找到冒号，跳过');
+        continue;
+      }
+      i++; // 跳过冒号
+
+      // 跳过空白
+      while (i < objStr.length && ' \t\n\r'.contains(objStr[i])) {
+        i++;
+      }
+      if (i >= objStr.length) {
+        _ParseLog.log(' 键 "$key" 后无值，终止解析');
+        break;
+      }
+
+      // 读取值
+      dynamic value;
+      final valueStartPos = i;
+
+      if (objStr[i] == '"') {
+        // 字符串值
+        i++;
+        final sb = StringBuffer();
+        while (i < objStr.length) {
+          if (objStr[i] == '\\' && i + 1 < objStr.length) {
+            // 转义字符
+            final next = objStr[i + 1];
+            if (next == '"') {
+              sb.write('"');
+            } else if (next == '\\') {
+              sb.write('\\');
+            } else if (next == 'n') {
+              sb.write('\n');
+            } else if (next == 't') {
+              sb.write('\t');
+            } else if (next == 'r') {
+              sb.write('\r');
+            } else if (next == 'b') {
+              sb.write('\b');
+            } else if (next == 'f') {
+              sb.write('\f');
+            } else {
+              sb.write(next);
+            }
+            i += 2;
+          } else if (objStr[i] == '"') {
+            // 智能判断：是字符串结束还是未转义的内部双引号
+            int j = i + 1;
+            while (j < objStr.length && ' \t\n\r'.contains(objStr[j])) {
+              j++;
+            }
+            if (j >= objStr.length || ',}]'.contains(objStr[j])) {
+              // 后面跟着分隔符或结束符，确认为字符串结束
+              i++;
+              break;
+            } else {
+              // 未转义的双引号（如 "我"），当作字符串内容保留
+              sb.write('"');
+              i++;
+            }
+          } else {
+            sb.write(objStr[i]);
+            i++;
+          }
+        }
+        value = sb.toString();
+        final valPreview = value.length > 50 ? '${value.substring(0, 50)}...' : value;
+        _ParseLog.log(' 键 "$key" = 字符串(长度${value.length}): $valPreview');
+      } else if (objStr[i] == '[') {
+        // 数组值
+        final valueStartLocal = i;
+        var depth = 1;
+        i++;
+        while (i < objStr.length && depth > 0) {
+          if (objStr[i] == '\\' && i + 1 < objStr.length) {
+            i += 2;
+            continue;
+          }
+          if (objStr[i] == '"') {
+            // 跳过字符串
+            i++;
+            while (i < objStr.length) {
+              if (objStr[i] == '\\' && i + 1 < objStr.length) {
+                i += 2;
+              } else if (objStr[i] == '"') {
+                i++;
+                break;
+              } else {
+                i++;
+              }
+            }
+            continue;
+          }
+          if (objStr[i] == '[') depth++;
+          else if (objStr[i] == ']') depth--;
+          if (depth > 0) i++;
+        }
+        if (i < objStr.length) i++; // 跳过 ]
+
+        final arrayStr = objStr.substring(valueStartLocal, i);
+        try {
+          value = json.decode(arrayStr);
+          _ParseLog.log(' 键 "$key" = 数组(长度${(value as List).length})');
+        } catch (_) {
+          // 简单分割数组元素
+          final inner = arrayStr.substring(1, arrayStr.length - 1);
+          value = _splitArrayElements(inner)
+              .map((s) {
+                final trimmed = s.trim();
+                if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+                  return trimmed.substring(1, trimmed.length - 1);
+                }
+                return trimmed;
+              })
+              .where((s) => s.isNotEmpty)
+              .toList();
+          _ParseLog.log(' 键 "$key" = 数组(简单分割，长度${(value as List).length})');
+        }
+      } else if (objStr[i] == '{') {
+        // 嵌套对象（简单处理：作为字符串保留）
+        final valueStartLocal = i;
+        var depth = 1;
+        i++;
+        while (i < objStr.length && depth > 0) {
+          if (objStr[i] == '\\' && i + 1 < objStr.length) {
+            i += 2;
+            continue;
+          }
+          if (objStr[i] == '"') {
+            i++;
+            while (i < objStr.length) {
+              if (objStr[i] == '\\' && i + 1 < objStr.length) {
+                i += 2;
+              } else if (objStr[i] == '"') {
+                i++;
+                break;
+              } else {
+                i++;
+              }
+            }
+            continue;
+          }
+          if (objStr[i] == '{') depth++;
+          else if (objStr[i] == '}') depth--;
+          if (depth > 0) i++;
+        }
+        if (i < objStr.length) i++; // 跳过 }
+        value = objStr.substring(valueStartLocal, i);
+        _ParseLog.log(' 键 "$key" = 嵌套对象(长度${value.toString().length})');
+      } else {
+        // 数字、布尔、null
+        final valueStartLocal = i;
+        while (i < objStr.length && !' \t\n\r,}'.contains(objStr[i])) {
+          i++;
+        }
+        final raw = objStr.substring(valueStartLocal, i);
+        if (raw == 'true') {
+          value = true;
+        } else if (raw == 'false') {
+          value = false;
+        } else if (raw == 'null') {
+          value = null;
+        } else {
+          final numValue = num.tryParse(raw);
+          value = numValue ?? raw;
+        }
+        _ParseLog.log(' 键 "$key" = $value');
+      }
+
+      result[key] = value;
+    }
+
+    _ParseLog.log(' _tolerantParseObject 结束，共解析 ${result.length} 个键值对: ${result.keys.toList()}');
+    return result;
+  }
+
+  /// 简单分割数组元素（考虑嵌套和字符串）
+  List<String> _splitArrayElements(String inner) {
+    final result = <String>[];
+    int depth = 0;
+    bool inString = false;
+    final current = StringBuffer();
+
+    for (int i = 0; i < inner.length; i++) {
+      final ch = inner[i];
+      if (ch == '\\' && i + 1 < inner.length) {
+        current.write(ch);
+        current.write(inner[i + 1]);
+        i++;
+        continue;
+      }
+      if (inString) {
+        if (ch == '"') inString = false;
+        current.write(ch);
+      } else {
+        if (ch == '"') {
+          inString = true;
+          current.write(ch);
+        } else if (ch == '[' || ch == '{') {
+          depth++;
+          current.write(ch);
+        } else if (ch == ']' || ch == '}') {
+          depth--;
+          current.write(ch);
+        } else if (ch == ',' && depth == 0) {
+          result.add(current.toString());
+          current.clear();
+        } else {
+          current.write(ch);
+        }
+      }
+    }
+
+    if (current.isNotEmpty) {
+      result.add(current.toString());
+    }
+
+    return result;
+  }
+
   // ========== 核心方法：通过 LLM 将 inbox item 内容解析为目标模块数据结构 ==========
-  
+
   /// 根据目标分类，调用 LLM 解析 content 为结构化数据
   Future<Map<String, dynamic>> parseContentForCategory(
     String content,
@@ -865,8 +1931,9 @@ $content
     String category,
   ) async {
     final schemaPrompt = _getSchemaPrompt(category);
-    
-    final systemPrompt = '''你是一位教育数据解析专家。请将用户收藏的文档内容解析为结构化的学习目标数据。
+
+    final systemPrompt =
+        '''你是一位教育数据解析专家。请将用户收藏的文档内容解析为结构化的学习目标数据。
 
 === 分类定义 ===
 $_getCategoryDefinition(category)
@@ -897,7 +1964,7 @@ $content
 }''';
 
     final response = await _llmService.generateResponse(systemPrompt);
-    
+
     if (response['success'] != true || response['response'] == null) {
       throw Exception('LLM parsing failed');
     }
@@ -905,7 +1972,7 @@ $content
     // 从 LLM 响应中提取 JSON
     final jsonStr = response['response']!;
     final jsonMatch = RegExp(r'\{[\s\S]*\}').firstMatch(jsonStr);
-    
+
     if (jsonMatch == null) {
       throw Exception('No JSON found in response');
     }
@@ -940,7 +2007,7 @@ $content
   "howPrevent": "预防建议/改进措施",
   "notes": "备注或解题技巧总结"
 }''';
-      
+
       case '习题集':
         return '''【习题集数据结构】
 注意：一篇文档可能包含多道题目，请将所有题目放入 exercises 数组中。
@@ -969,7 +2036,7 @@ $content
 - 如果文档只有1道题，exercises 数组只包含1个对象
 - 如果有多个题目，每个题目都要完整提取
 ''';
-      
+
       case '作品集':
         return '''【作品集数据结构】
 {
@@ -980,8 +2047,8 @@ $content
   "lessonUnit": "课时单元",
   "aiReview": "AI 评语/分析报告"
 }
-注：作品正文保留在 filePath 指向的 HTML 文件中，数据库只存元数据。''' ;
-      
+注：作品正文保留在 filePath 指向的 HTML 文件中，数据库只存元数据。''';
+
       case '知识点':
         return '''【知识点数据结构】
 {
@@ -992,7 +2059,7 @@ $content
   "difficulty": 1,
   "knowledgeTag": "关键词/标签"
 }''';
-      
+
       default:
         throw Exception('Unknown category: $category');
     }
@@ -1016,14 +2083,83 @@ $content
 
   // ========== 各模块的具体插入方法 ==========
 
-  Future<void> _insertErrorRecord(Database db, InboxItem item, Map<String, dynamic> data) async {
+  /// 判断该 JSON 对象是否表示一个"无错误"的题目
+  /// 特征：
+  ///   1. correctAnswer 与 wrongAnswer 相同（答案与答题一致）
+  ///   2. wrongWhere / whyWrong 为 "无" 或空
+  ///   3. wrongAnswer 为空
+  bool _isNoErrorRecord(Map<String, dynamic> data) {
+    final correctAnswer = data['correctAnswer']?.toString().trim() ?? '';
+    final wrongAnswer = data['wrongAnswer']?.toString().trim() ?? '';
+    final wrongWhere = data['wrongWhere']?.toString().trim() ?? '';
+    final whyWrong = data['whyWrong']?.toString().trim() ?? '';
+    final notes = data['notes']?.toString().trim() ?? '';
+
+    // 条件1：答案与答题一致（无错误）
+    if (correctAnswer.isNotEmpty &&
+        wrongAnswer.isNotEmpty &&
+        correctAnswer == wrongAnswer) {
+      return true;
+    }
+
+    // 条件2：wrongWhere 或 whyWrong 为 "无"
+    if (wrongWhere == '无' || whyWrong == '无') {
+      return true;
+    }
+
+    // 条件3：wrongWhere / whyWrong / wrongAnswer 全为空
+    if (wrongWhere.isEmpty && whyWrong.isEmpty && wrongAnswer.isEmpty) {
+      return true;
+    }
+
+    // 条件4：notes 字段标记为"情感辨析正确"或"文本常识理解正确"等无错提示
+    if (notes.contains('正确') || notes.contains('无错') || notes.contains('无误')) {
+      return true;
+    }
+
+    return false;
+  }
+
+  Future<void> _insertErrorRecord(
+    Database db,
+    InboxItem item,
+    Map<String, dynamic> data,
+  ) async {
+    // 过滤无错误的题目
+    if (_isNoErrorRecord(data)) {
+      _ParseLog.log(' 跳过无错误题目: correctAnswer=${data['correctAnswer']}, wrongAnswer=${data['wrongAnswer']}, wrongWhere=${data['wrongWhere']}, whyWrong=${data['whyWrong']}, notes=${data['notes']}');
+      return;
+    }
+
     final dao = ErrorRecordDao(db);
     final nextNum = await dao.nextErrorIdNumber();
+
+    // 解析 eids 字段：支持 List<String> 格式（如 ["2.2", "1.1"]）
+    List<String> eids = [];
+    final eidsData = data['eids'];
+    if (eidsData is List) {
+      eids = eidsData.map((e) => e.toString()).toList();
+    } else if (eidsData is String && eidsData.isNotEmpty) {
+      eids = [eidsData];
+    }
+    // 兼容旧格式：如果 eids 为空但有 errorType，使用 errorType
+    if (eids.isEmpty && data['errorType'] is String) {
+      eids = [data['errorType'] as String];
+    }
+
+    // 解析 images 字段：支持 List<String> 格式
+    String? images;
+    final imagesData = data['images'];
+    if (imagesData is List) {
+      images = json.encode(imagesData);
+    } else if (imagesData is String) {
+      images = imagesData;
+    }
 
     final record = ErrorRecord(
       errorId: 'T$nextNum',
       correctAnswer: data['correctAnswer'] as String?,
-      eids: (data['errorType'] as String?) != null ? [data['errorType'] as String] : [],
+      eids: eids,
       progress: data['progress'] ?? '待订正',
       question: data['question'] as String?,
       wrongAnswer: data['wrongAnswer'] as String?,
@@ -1031,6 +2167,7 @@ $content
       whyWrong: data['whyWrong'] as String?,
       howPrevent: data['howPrevent'] as String?,
       notes: data['notes'] as String?,
+      images: images,
       createdAt: item.createdAt,
       lang: 'cn',
       tid: data['tid'] as String?,
@@ -1044,10 +2181,14 @@ $content
     );
 
     await dao.insert(record);
-    print('[WriteThrough] 错题本条目已创建: T$nextNum');
+    _ParseLog.log(' 错题本条目已创建: T$nextNum');
   }
 
-  Future<void> _insertExercise(Database db, InboxItem item, Map<String, dynamic> data) async {
+  Future<void> _insertExercise(
+    Database db,
+    InboxItem item,
+    Map<String, dynamic> data,
+  ) async {
     final testDao = TestDao(db);
     final questionDao = QuestionDao(db);
     final nextNum = await testDao.nextTidNumber();
@@ -1058,46 +2199,58 @@ $content
     if (item.filePath.isNotEmpty) {
       final dir = Directory(item.filePath);
       if (await dir.exists()) {
-        final files = await dir.list().where((entity) => 
-          entity.path.endsWith('.jpg') || 
-          entity.path.endsWith('.jpeg') || 
-          entity.path.endsWith('.png')
-        ).toList();
+        final files = await dir
+            .list()
+            .where(
+              (entity) =>
+                  entity.path.endsWith('.jpg') ||
+                  entity.path.endsWith('.jpeg') ||
+                  entity.path.endsWith('.png'),
+            )
+            .toList();
         images = files.map((f) => f.path).toList();
       }
     }
 
     // 先插入 Test 记录
-    await testDao.insert(Test(
-      tid: tid,
-      title: data['title'] ?? item.title ?? '收件箱导入',
-      lessonUnitList: [],
-      kids: [],
-      images: images,
-      status: '未开始',
-      createdAt: item.createdAt,
-      lang: 'cn',
-    ));
+    await testDao.insert(
+      Test(
+        tid: tid,
+        title: data['title'] ?? item.title ?? '收件箱导入',
+        lessonUnitList: [],
+        kids: [],
+        images: images,
+        status: '未开始',
+        createdAt: item.createdAt,
+        lang: 'cn',
+      ),
+    );
 
     // 再插入对应的 Question 记录
-    await questionDao.insert(Question(
-      tid: tid,
-      question: data['question'] ?? '',
-      correctAnswer: data['correctAnswer'] as String?,
-      explanation: data['explanation'] as String?,
-      progress: '未答题',
-      kid: null,
-      unitNumber: null,
-      lessonNumber: null,
-      createdAt: item.createdAt,
-      lang: 'cn',
-      contentPath: item.filePath.isNotEmpty ? item.filePath : null,
-    ));
+    await questionDao.insert(
+      Question(
+        tid: tid,
+        question: data['question'] ?? '',
+        correctAnswer: data['correctAnswer'] as String?,
+        explanation: data['explanation'] as String?,
+        progress: '未答题',
+        kid: null,
+        unitNumber: null,
+        lessonNumber: null,
+        createdAt: item.createdAt,
+        lang: 'cn',
+        contentPath: item.filePath.isNotEmpty ? item.filePath : null,
+      ),
+    );
 
-    print('[WriteThrough] 习题集条目已创建: $tid');
+    _ParseLog.log(' 习题集条目已创建: $tid');
   }
 
-  Future<void> _insertPortfolioItem(Database db, InboxItem item, Map<String, dynamic> data) async {
+  Future<void> _insertPortfolioItem(
+    Database db,
+    InboxItem item,
+    Map<String, dynamic> data,
+  ) async {
     final dao = PortfolioDao(db);
 
     final portfolio = PortfolioItem(
@@ -1114,10 +2267,14 @@ $content
     );
 
     await dao.insert(portfolio);
-    print('[WriteThrough] 作品集条目已创建');
+    _ParseLog.log(' 作品集条目已创建');
   }
 
-  Future<void> _insertKnowledgePoint(Database db, InboxItem item, Map<String, dynamic> data) async {
+  Future<void> _insertKnowledgePoint(
+    Database db,
+    InboxItem item,
+    Map<String, dynamic> data,
+  ) async {
     final dao = KnowledgePointDao(db);
 
     final point = KnowledgePoint(
@@ -1133,7 +2290,7 @@ $content
     );
 
     await dao.insert(point);
-    print('[WriteThrough] 知识点条目已创建');
+    _ParseLog.log(' 知识点条目已创建');
   }
 
   // ========== 降级策略：LLM 失败时的简单插入 ==========
@@ -1145,13 +2302,15 @@ $content
       case '错题本':
         final dao = ErrorRecordDao(db);
         final nextNum = await dao.nextErrorIdNumber();
-        await dao.insert(ErrorRecord(
-          errorId: 'T$nextNum',
-          wrongWhere: item.title,
-          progress: '待订正',
-          createdAt: item.createdAt,
-          lang: 'cn',
-        ));
+        await dao.insert(
+          ErrorRecord(
+            errorId: 'T$nextNum',
+            wrongWhere: item.title,
+            progress: '待订正',
+            createdAt: item.createdAt,
+            lang: 'cn',
+          ),
+        );
         print('[Fallback] 错题本条目已创建（仅标题）: T$nextNum');
         return true;
 
@@ -1160,69 +2319,81 @@ $content
         final questionDao = QuestionDao(db);
         final nextNum = await testDao.nextTidNumber();
         final tid = 'T$nextNum';
-        
+
         // 获取文档中的图片路径
         List<String> images = [];
         if (item.filePath.isNotEmpty) {
           final dir = Directory(item.filePath);
           if (await dir.exists()) {
-            final files = await dir.list().where((entity) => 
-              entity.path.endsWith('.jpg') || 
-              entity.path.endsWith('.jpeg') || 
-              entity.path.endsWith('.png')
-            ).toList();
+            final files = await dir
+                .list()
+                .where(
+                  (entity) =>
+                      entity.path.endsWith('.jpg') ||
+                      entity.path.endsWith('.jpeg') ||
+                      entity.path.endsWith('.png'),
+                )
+                .toList();
             images = files.map((f) => f.path).toList();
           }
         }
-        
-        await testDao.insert(Test(
-          tid: tid,
-          title: item.title,
-          lessonUnitList: [],
-          kids: [],
-          images: images,
-          status: '未开始',
-          createdAt: item.createdAt,
-          lang: 'cn',
-        ));
-        
-        await questionDao.insert(Question(
-          tid: tid,
-          question: item.title,
-          correctAnswer: null,
-          explanation: null,
-          progress: '未答题',
-          kid: null,
-          unitNumber: null,
-          lessonNumber: null,
-          createdAt: item.createdAt,
-          lang: 'cn',
-          contentPath: item.filePath.isNotEmpty ? item.filePath : null,
-        ));
+
+        await testDao.insert(
+          Test(
+            tid: tid,
+            title: item.title,
+            lessonUnitList: [],
+            kids: [],
+            images: images,
+            status: '未开始',
+            createdAt: item.createdAt,
+            lang: 'cn',
+          ),
+        );
+
+        await questionDao.insert(
+          Question(
+            tid: tid,
+            question: item.title,
+            correctAnswer: null,
+            explanation: null,
+            progress: '未答题',
+            kid: null,
+            unitNumber: null,
+            lessonNumber: null,
+            createdAt: item.createdAt,
+            lang: 'cn',
+            contentPath: item.filePath.isNotEmpty ? item.filePath : null,
+          ),
+        );
         print('[Fallback] 习题集条目已创建（仅标题）');
         return true;
 
       case '作品集':
         final dao = PortfolioDao(db);
-        await dao.insert(PortfolioItem(
-          title: item.title,
-          contentPath: item.filePath,
-          isOriginal: false,
-          createdAt: item.createdAt,
-          lang: 'cn',
-        ));
+        await dao.insert(
+          PortfolioItem(
+            title: item.title,
+            contentPath: item.filePath,
+            isOriginal: false,
+            createdAt: item.createdAt,
+            lang: 'cn',
+          ),
+        );
         print('[Fallback] 作品集条目已创建（仅标题）');
         return true;
 
       case '知识点':
         final dao = KnowledgePointDao(db);
-        await dao.insert(KnowledgePoint(
-          title: item.title,
-          contentPath: item.filePath,
-          createdAt: item.createdAt,
-          lang: 'cn',
-          cid: '',
-        ));
+        await dao.insert(
+          KnowledgePoint(
+            title: item.title,
+            contentPath: item.filePath,
+            createdAt: item.createdAt,
+            lang: 'cn',
+            cid: '',
+          ),
+        );
         print('[Fallback] 知识点条目已创建');
         return true;
 
@@ -1374,7 +2545,8 @@ $content
 
       final parts = mainDomain.split('.');
       if (parts.length >= 2) {
-        final topDomain = '${parts[parts.length - 2]}.${parts[parts.length - 1]}';
+        final topDomain =
+            '${parts[parts.length - 2]}.${parts[parts.length - 1]}';
         for (final entry in sourceDomains.entries) {
           if (topDomain == entry.key || topDomain.endsWith('.${entry.key}')) {
             return entry.value;
@@ -1389,8 +2561,7 @@ $content
   }
 
   // 添加测试数据
-  Future<void> addTestData() async {
-  }
+  Future<void> addTestData() async {}
 
   // 归档条目
   Future<void> archiveItems(List<InboxItem> items) async {

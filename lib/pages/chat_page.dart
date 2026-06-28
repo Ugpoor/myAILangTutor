@@ -49,7 +49,7 @@ class _ChatPageState extends State<ChatPage> {
       {'label': widget.lang == 'cn' ? '收件箱' : 'Inbox', 'value': 'inbox'},
       {'label': widget.lang == 'cn' ? '首页' : 'Home', 'value': 'home'},
       {'label': widget.lang == 'cn' ? '知识点' : 'Knowledge', 'value': 'knowledge'},
-      {'label': widget.lang == 'cn' ? '错误本' : 'Errors', 'value': 'error'},
+      {'label': widget.lang == 'cn' ? '错题本' : 'Errors', 'value': 'error'},
       {'label': widget.lang == 'cn' ? '习题集' : 'Exercises', 'value': 'exercise'},
       {'label': widget.lang == 'cn' ? '作品集' : 'Portfolio', 'value': 'portfolio'},
       {'label': widget.lang == 'cn' ? '技能库' : 'Skills', 'value': 'skills'},

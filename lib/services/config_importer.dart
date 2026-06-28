@@ -20,6 +20,9 @@ class ConfigImporter {
   factory ConfigImporter() => _instance;
   ConfigImporter._internal();
 
+  /// 最近一次导入的错误详情（null 表示全部成功）
+  String? lastErrorMessage;
+
   Future<String> get _appDocumentsPath async {
     final dir = await getApplicationDocumentsDirectory();
     return dir.path;
@@ -210,27 +213,88 @@ class ConfigImporter {
   }
 
   Future<bool> importAllConfig({bool clearExisting = true}) async {
+    lastErrorMessage = null;
+    final errors = <String>[];
+
     try {
       final db = await DatabaseHelper().database;
 
       if (clearExisting) {
         await _clearAllTables(db);
+        print('[ConfigImporter] 已清除所有表数据');
       }
 
-      // 导入大纲数据（不覆盖已有的大纲数据）
-      await _importErrorTypeOutlines(db, skipIfExists: !clearExisting);
-      await _importKnowledgeOutlines(db, skipIfExists: !clearExisting);
+      // 逐步导入，每步独立容错
+      try {
+        await _importErrorTypeOutlines(db, skipIfExists: !clearExisting);
+        print('[ConfigImporter] 已导入错类大纲');
+      } catch (e) {
+        errors.add('错类大纲: $e');
+        print('[ConfigImporter] 导入错类大纲失败: $e');
+      }
 
-      // 导入其他测试数据
-      await _importErrorRecords(db);
-      await _importExercises(db);
-      await _importPortfolioItems(db);
-      await _importKnowledgePoints(db);
-      await _importSkills(db);
+      try {
+        await _importKnowledgeOutlines(db, skipIfExists: !clearExisting);
+        print('[ConfigImporter] 已导入知识点大纲');
+      } catch (e) {
+        errors.add('知识点大纲: $e');
+        print('[ConfigImporter] 导入知识点大纲失败: $e');
+      }
+
+      try {
+        await _importErrorRecords(db);
+        print('[ConfigImporter] 已导入错误记录');
+      } catch (e) {
+        errors.add('错误记录: $e');
+        print('[ConfigImporter] 导入错误记录失败: $e');
+      }
+
+      try {
+        await _importExercises(db);
+        print('[ConfigImporter] 已导入习题');
+      } catch (e) {
+        errors.add('习题集: $e');
+        print('[ConfigImporter] 导入习题失败: $e');
+      }
+
+      try {
+        await _importPortfolioItems(db);
+        print('[ConfigImporter] 已导入作品集');
+      } catch (e) {
+        errors.add('作品集: $e');
+        print('[ConfigImporter] 导入作品集失败: $e');
+      }
+
+      try {
+        await _importKnowledgePoints(db);
+        print('[ConfigImporter] 已导入知识点');
+      } catch (e) {
+        errors.add('知识点: $e');
+        print('[ConfigImporter] 导入知识点失败: $e');
+      }
+
+      try {
+        print('[ConfigImporter] 准备导入技能...');
+        await _importSkills(db);
+        final skillCount = Sqflite.firstIntValue(
+          await db.rawQuery('SELECT COUNT(*) FROM skills'),
+        );
+        print('[ConfigImporter] 导入后 skills 表记录数: $skillCount');
+      } catch (e) {
+        errors.add('技能库: $e');
+        print('[ConfigImporter] 导入技能失败: $e');
+      }
+
+      if (errors.isNotEmpty) {
+        lastErrorMessage = '以下项目导入失败: ${errors.join("; ")}';
+        print('[ConfigImporter] $lastErrorMessage');
+        return false;
+      }
 
       return true;
     } catch (e) {
-      print('[ConfigImporter] 导入配置数据失败: $e');
+      lastErrorMessage = '导入配置数据失败: $e';
+      print('[ConfigImporter] $lastErrorMessage');
       return false;
     }
   }
@@ -246,6 +310,7 @@ class ConfigImporter {
       'questions',
       'portfolio_items',
       'knowledge_points',
+      'skills',
     ];
     
     for (final table in tables) {
@@ -489,9 +554,6 @@ class ConfigImporter {
     final data = json.decode(jsonString);
     final items = (data['portfolio_items'] as List?) ?? [];
 
-    final llmService = LlmService();
-    await llmService.init();
-
     final appDocDir = await getApplicationDocumentsDirectory();
     final portfolioBaseDir = Directory('${appDocDir.path}/portfolio');
     if (!await portfolioBaseDir.exists()) {
@@ -513,9 +575,10 @@ class ConfigImporter {
 
       final htmlPath = '${itemDir.path}/index.html';
       if (!await File(htmlPath).exists()) {
-        final htmlContent = await _generatePortfolioHtml(title, brief, isOriginal, llmService);
+        // 直接使用默认模板，避免导入时依赖 LLM 网络请求
+        final htmlContent = _generateDefaultPortfolioHtml(title, brief, isOriginal);
         await File(htmlPath).writeAsString(htmlContent);
-        print('[ConfigImporter] 动态生成作品集HTML: $htmlPath');
+        print('[ConfigImporter] 生成作品集HTML: $htmlPath');
       }
 
       await dao.insert(
@@ -651,9 +714,6 @@ class ConfigImporter {
     final data = json.decode(jsonString);
     final points = (data['knowledge_points'] as List?) ?? [];
 
-    final llmService = LlmService();
-    await llmService.init();
-
     final appDocDir = await getApplicationDocumentsDirectory();
     final knowledgeBaseDir = Directory('${appDocDir.path}/knowledge');
     if (!await knowledgeBaseDir.exists()) {
@@ -674,9 +734,10 @@ class ConfigImporter {
 
       final htmlPath = '${itemDir.path}/index.html';
       if (!await File(htmlPath).exists()) {
-        final htmlContent = await _generateKnowledgeHtml(title, brief, llmService);
+        // 直接使用默认模板，避免导入时依赖 LLM 网络请求
+        final htmlContent = _generateDefaultKnowledgeHtml(title, brief);
         await File(htmlPath).writeAsString(htmlContent);
-        print('[ConfigImporter] 动态生成知识点HTML: $htmlPath');
+        print('[ConfigImporter] 生成知识点HTML: $htmlPath');
       }
 
       await dao.insert(
@@ -761,31 +822,70 @@ class ConfigImporter {
   }
 
   Future<void> _importSkills(Database db) async {
-    final jsonString = await rootBundle.loadString(
-      'assets/test_data/skills.json',
-    );
-    final data = json.decode(jsonString);
-    final skills = (data['skills'] as List?) ?? [];
-
-    final dao = SkillDao(db);
-    for (final item in skills) {
-      await dao.insert(
-        Skill(
-          name: item['name'],
-          skillId: item['skillId'],
-          category: item['category'],
-          prerequisite: item['prerequisite'],
-          promptText: item['promptText'],
-          internalFunction: item['internalFunction'],
-          parameters: item['parameters'],
-          returnType: item['returnType'],
-          description: item['description'],
-          createdAt: DateTime.now(),
-          lang: item['lang'] ?? 'cn',
-        ),
+    try {
+      print('[ConfigImporter] 尝试读取 skills.json...');
+      
+      // 首先检查应用目录中是否有旧的 skills.json 文件，如果有则删除
+      final appDocumentsPath = await _appDocumentsPath;
+      final appSkillsPath = '$appDocumentsPath/test_data/skills.json';
+      final appSkillsFile = File(appSkillsPath);
+      if (await appSkillsFile.exists()) {
+        print('[ConfigImporter] 发现应用目录中有旧的 skills.json，删除它');
+        await appSkillsFile.delete();
+      }
+      
+      // 强制从资源文件读取
+      final jsonString = await rootBundle.loadString(
+        'assets/test_data/skills.json',
       );
+      print('[ConfigImporter] 成功读取 skills.json，长度: ${jsonString.length}');
+      
+      // 打印前200个字符来确认内容
+      print('[ConfigImporter] skills.json 内容预览: ${jsonString.substring(0, jsonString.length > 200 ? 200 : jsonString.length)}...');
+      
+      final data = json.decode(jsonString);
+      print('[ConfigImporter] JSON解析成功');
+      
+      final skills = (data['skills'] as List?) ?? [];
+      print('[ConfigImporter] 技能列表长度: ${skills.length}');
+      
+      // 打印第一个技能的信息
+      if (skills.isNotEmpty) {
+        final firstSkill = skills[0];
+        print('[ConfigImporter] 第一个技能: name=${firstSkill['name']}, skillId=${firstSkill['skillId']}, category=${firstSkill['category']}');
+      }
+      
+      if (skills.isEmpty) {
+        print('[ConfigImporter] 警告：skills.json 中没有技能数据');
+        return;
+      }
+
+      final dao = SkillDao(db);
+      int count = 0;
+      for (final item in skills) {
+        await dao.insert(
+          Skill(
+            name: item['name'],
+            skillId: item['skillId'],
+            category: item['category'],
+            prerequisite: item['prerequisite'],
+            promptText: item['promptText'],
+            internalFunction: item['internalFunction'],
+            parameters: item['parameters'],
+            returnType: item['returnType'],
+            description: item['description'],
+            createdAt: DateTime.now(),
+            lang: item['lang'] ?? 'cn',
+          ),
+        );
+        count++;
+        print('[ConfigImporter] 已导入技能: ${item['name']} (${item['skillId']})');
+      }
+      print('[ConfigImporter] 导入技能完成: 共 $count 条');
+    } catch (e, stackTrace) {
+      print('[ConfigImporter] 导入技能失败: $e');
+      print('[ConfigImporter] 堆栈跟踪: $stackTrace');
     }
-    print('[ConfigImporter] 导入技能: ${skills.length} 条');
   }
 
   Future<bool> exportErrorTypeOutlinesToConfig() async {
@@ -920,17 +1020,19 @@ class ConfigImporter {
     if (await appConfigFile.exists()) {
       print('[ConfigImporter] 从应用目录读取配置: $appConfigPath');
       return await appConfigFile.readAsString();
-    } else {
-      final defaultConfigPath = 'lib/pages/$fileName';
-      print('[ConfigImporter] 从默认配置目录读取: $defaultConfigPath');
+    }
+
+    // 从打包资源读取（debug 和 release/APK 均有效）
+    final assetPaths = ['lib/pages/$fileName', 'assets/test_data/$fileName'];
+    for (final assetPath in assetPaths) {
       try {
-        // 使用 rootBundle 读取资源文件
-        return await rootBundle.loadString(defaultConfigPath);
+        print('[ConfigImporter] 从打包资源读取: $assetPath');
+        return await rootBundle.loadString(assetPath);
       } catch (e) {
-        print('[ConfigImporter] 资源文件读取失败，尝试文件系统: $e');
-        // 回退到文件系统读取（用于开发环境）
-        return await File(defaultConfigPath).readAsString();
+        print('[ConfigImporter] 资源 $assetPath 读取失败: $e');
       }
     }
+
+    throw Exception('配置文件 $fileName 在所有路径均未找到');
   }
 }

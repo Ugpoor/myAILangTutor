@@ -14,7 +14,7 @@ import '../components/chat_bubble_list.dart';
 import '../components/webview_extractor.dart';
 import '../services/llm_service.dart';
 import '../services/inbox_service.dart';
-import '../database/models/inbox_item.dart';
+import '../services/share_intent_service.dart';
 import '../database/db_helper.dart';
 
 class MainScreen extends StatefulWidget {
@@ -43,6 +43,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   bool _showClipboardDialog = false;
   String? _detectedClipboardContent;
   String _lastClipboardContent = '';
+  bool _shareIntentProcessed = false; // 防止重复处理分享意图
   
   final GlobalKey<InboxPageState> inboxPageKey = GlobalKey<InboxPageState>();
 
@@ -51,7 +52,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _initLlmService();
-    _checkClipboard();
+    // 延迟到首帧之后处理分享意图和剪贴板，确保 Navigator 已就绪
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _checkShareIntent();
+      if (!_shareIntentProcessed) {
+        _checkClipboard();
+      }
+    });
   }
 
   @override
@@ -63,9 +71,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      Future.delayed(const Duration(milliseconds: 100), () {
+      Future.delayed(const Duration(milliseconds: 100), () async {
         if (mounted) {
-          _checkClipboard();
+          _shareIntentProcessed = false; // 重置锁，允许处理新的分享
+          await ShareIntentService().init();
+          _checkShareIntent();
+          if (!_shareIntentProcessed) {
+            _checkClipboard();
+          }
         }
       });
     }
@@ -113,6 +126,77 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       }
     } catch (e, stackTrace) {
       print('[Clipboard] 读取剪贴板出错: $e');
+    }
+  }
+
+  /// 检查来自 Android Share Intent 的转发内容
+  /// 直接提取 URL 并下载网页保存到收件箱（一步完成）
+  Future<void> _checkShareIntent() async {
+    try {
+      final sharedText = ShareIntentService().sharedText;
+      print('[ShareIntent] _checkShareIntent: sharedText=${sharedText?.substring(0, sharedText.length > 50 ? 50 : sharedText.length) ?? "null"}, processed=$_shareIntentProcessed, mounted=$mounted');
+      if (sharedText == null || sharedText.isEmpty || _shareIntentProcessed) return;
+
+      _shareIntentProcessed = true;
+      print('[ShareIntent] 处理分享内容');
+
+      final sharedTitle = ShareIntentService().sharedTitle ?? '';
+      final urlRegExp = RegExp(r'https?://[^\s]+');
+      final match = urlRegExp.firstMatch(sharedText);
+      final url = match?.group(0) ?? '';
+
+      if (url.isEmpty) {
+        // 没有 URL，直接保存纯文本为收件箱条目
+        final now = DateTime.now();
+        final title = '分享文本 ${now.month}/${now.day} ${now.hour}:${now.minute.toString().padLeft(2, '0')}';
+        final pendingItem = await _inboxService.createPendingClipboardItem('');
+        if (pendingItem != null) {
+          final jsonResult = '{"title":"${sharedTitle.isNotEmpty ? sharedTitle : title}","textContent":"${sharedText.replaceAll('"', '\\"').replaceAll('\n', '\\n')}","filePath":"${pendingItem.filePath}","url":""}';
+          await _inboxService.updateClipboardItemWithContent(pendingItem.id!, jsonResult);
+          _handleSaveComplete();
+        }
+        ShareIntentService().clearSharedData();
+        return;
+      }
+
+      // 有 URL，创建待处理条目并启动 WebView 下载
+      final pendingItem = await _inboxService.createPendingClipboardItem(url);
+      if (pendingItem == null) {
+        ShareIntentService().clearSharedData();
+        return;
+      }
+
+      final itemId = pendingItem.id!;
+      ShareIntentService().clearSharedData();
+
+      if (mounted) {
+        final navigator = Navigator.of(context);
+        navigator.push(
+          MaterialPageRoute(
+            builder: (ctx) => WebViewExtractor(
+              url: url,
+              targetDirectory: pendingItem.filePath,
+              onContentExtracted: (result) async {
+                navigator.pop();
+
+                if (result != null) {
+                  try {
+                    await _inboxService.updateClipboardItemWithContent(itemId, result);
+                  } catch (e) {
+                    print('[ShareIntent] 更新条目失败: $e');
+                  }
+                } else {
+                  await _inboxService.updateItemStatusWithCleanup(itemId, 'error');
+                }
+
+                _handleSaveComplete();
+              },
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      print('[ShareIntent] 处理失败: $e');
     }
   }
 
@@ -491,7 +575,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                   },
                   onMenuItemTap: (index) {
                     final menuLabels = _lang == 'cn'
-                        ? ['收件箱', '错误本', '知识点', '习题集', '作品集', '技能库']
+                        ? ['收件箱', '错题本', '知识点', '习题集', '作品集', '技能库']
                         : [
                             'Inbox',
                             'Errors',

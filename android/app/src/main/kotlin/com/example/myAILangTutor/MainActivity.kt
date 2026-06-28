@@ -19,6 +19,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         handleShareIntent(intent)
     }
 
@@ -47,6 +48,8 @@ class MainActivity : FlutterActivity() {
                     data["subject"] = sharedSubject
                     result.success(data)
                     clearSharedData()
+                    // 清除 intent action 防止旧数据被重新投递
+                    intent?.action = null
                 }
                 "getSharedText" -> {
                     result.success(sharedText)

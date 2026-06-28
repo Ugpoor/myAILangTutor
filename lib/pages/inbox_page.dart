@@ -316,35 +316,188 @@ class InboxPageState extends State<InboxPage> {
 
     final itemsToProcess = _allItems.where((item) => _selectedItemKeys.contains(_getItemKey(item))).toList();
 
-    setState(() {
-      _isProcessing = true;
-      _loadingMessage = widget.lang == 'cn'
-          ? '开始整理 ${itemsToProcess.length} 个条目...'
-          : 'Starting to organize ${itemsToProcess.length} items...';
-    });
+    // 过滤掉已处理的条目
+    final alreadyProcessed = itemsToProcess.where((item) => item.status == '已处理' || item.status == '整理失败').toList();
+    final pendingItems = itemsToProcess.where((item) => item.status != '已处理' && item.status != '整理失败').toList();
 
-    await _inboxService.processItems(itemsToProcess, onProgress: (current, total, reasoning) {
+    if (alreadyProcessed.isNotEmpty) {
       if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(widget.lang == 'cn'
+                ? '${alreadyProcessed.length} 个条目已处理，将跳过'
+                : '${alreadyProcessed.length} items already processed, will skip'),
+          ),
+        );
+      }
+    }
+
+    if (pendingItems.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(widget.lang == 'cn' ? '没有需要整理的条目' : 'No items to organize')),
+        );
+      }
+      setState(() {
+        _selectedItemKeys.clear();
+      });
+      return;
+    }
+
+    // 询问用户是使用AI自动分类还是手工分类
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(widget.lang == 'cn' ? '选择整理方式' : 'Choose Organization Method'),
+        content: Text(widget.lang == 'cn'
+            ? '请选择如何整理这些条目：'
+            : 'Please choose how to organize these items:'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('auto'),
+            child: Text(widget.lang == 'cn' ? 'AI自动分类' : 'AI Auto Classification'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('manual'),
+            child: Text(widget.lang == 'cn' ? '手工分类' : 'Manual Classification'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(null),
+            child: Text(widget.lang == 'cn' ? '取消' : 'Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (choice == null) return;
+
+    if (choice == 'auto') {
+      // AI自动分类
+      setState(() {
+        _isProcessing = true;
+        _loadingMessage = widget.lang == 'cn'
+            ? '开始整理 ${pendingItems.length} 个条目...'
+            : 'Starting to organize ${pendingItems.length} items...';
+      });
+
+      await _inboxService.processItems(pendingItems, onProgress: (current, total, reasoning) {
+        if (mounted) {
+          setState(() {
+            _loadingMessage = widget.lang == 'cn'
+                ? '[$current/$total] 正在处理：$reasoning'
+                : '[$current/$total] Processing: $reasoning';
+          });
+        }
+      });
+
+      await loadItems();
+
+      setState(() {
+        _selectedItemKeys.clear();
+        _isProcessing = false;
+        _loadingMessage = widget.lang == 'cn' ? '整理完成！' : 'Organization complete!';
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(widget.lang == 'cn' ? '整理完成' : 'Organized successfully')),
+        );
+      }
+    } else if (choice == 'manual') {
+      // 手工分类
+      final selectedCategory = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(widget.lang == 'cn' ? '选择分类' : 'Select Category'),
+          content: Text(widget.lang == 'cn'
+              ? '请将这些条目分类到哪个栏目？'
+              : 'Which section should these items be classified into?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(null),
+              child: Text(widget.lang == 'cn' ? '取消' : 'Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop('错题本'),
+              child: const Text('错题本'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop('习题集'),
+              child: const Text('习题集'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop('作品集'),
+              child: const Text('作品集'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop('知识点'),
+              child: const Text('知识点'),
+            ),
+          ],
+        ),
+      );
+
+      if (selectedCategory == null) return;
+
+      // 执行批量手工分类
+      setState(() {
+        _isProcessing = true;
+        _loadingMessage = widget.lang == 'cn'
+            ? '正在将 ${pendingItems.length} 个条目分类到 $selectedCategory...'
+            : 'Classifying ${pendingItems.length} items to $selectedCategory...';
+      });
+
+      try {
+        // 逐个处理条目
+        int successCount = 0;
+        for (int i = 0; i < pendingItems.length; i++) {
+          final item = pendingItems[i];
+          try {
+            final tempItem = item.copyWith(
+              category: selectedCategory,
+              status: '处理中',
+            );
+            await _inboxService.processAndClassifyItem(tempItem, useManualCategory: true);
+            successCount++;
+            
+            // 更新进度
+            if (mounted) {
+              setState(() {
+                _loadingMessage = widget.lang == 'cn'
+                  ? '[${i+1}/${pendingItems.length}] 正在分类 $selectedCategory'
+                  : '[${i+1}/${pendingItems.length}] Classifying to $selectedCategory';
+              });
+            }
+          } catch (e) {
+            print('Failed to process item ${item.title}: $e');
+          }
+        }
+
+        await loadItems();
+
         setState(() {
-          _loadingMessage = widget.lang == 'cn'
-              ? '[$current/$total] 正在处理：$reasoning'
-              : '[$current/$total] Processing: $reasoning';
+          _selectedItemKeys.clear();
+          _isProcessing = false;
+          _loadingMessage = widget.lang == 'cn' ? '整理完成！' : 'Organization complete!';
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(widget.lang == 'cn'
+                ? '手工分类完成！成功分类 $successCount/${pendingItems.length} 个条目到 $selectedCategory'
+                : 'Manual classification complete! Successfully classified $successCount/${pendingItems.length} items to $selectedCategory')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(widget.lang == 'cn' ? '分类失败: $e' : 'Classification failed: $e')),
+          );
+        }
+        setState(() {
+          _isProcessing = false;
         });
       }
-    });
-
-    await loadItems();
-
-    setState(() {
-      _selectedItemKeys.clear();
-      _isProcessing = false;
-      _loadingMessage = widget.lang == 'cn' ? '整理完成！' : 'Organization complete!';
-    });
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.lang == 'cn' ? '整理完成' : 'Organized successfully')),
-      );
     }
   }
 

@@ -4,7 +4,7 @@ import '../components/submenu_tabs.dart';
 import '../database/models/error_record.dart';
 import 'error_record_detail_page.dart';
 
-/// 错误本分组汇总视图 - 按错类→知识点层级显示
+/// 错题本分组汇总视图 - 按错类→知识点层级显示
 /// ErrorType作为目录条目，KnowledgeTag作为二级条目（长条按钮样式），嵌入原始错误记录文本
 
 class ErrorRecordGroupedView extends StatefulWidget {
@@ -147,7 +147,7 @@ class _ErrorRecordGroupedViewState extends State<ErrorRecordGroupedView> {
         child: Column(
           children: [
             AppTitleBar(
-              title: '${widget.lang == 'cn' ? '错误本-' : 'Error Records - '}$_groupModeLabel',
+              title: '${widget.lang == 'cn' ? '错题本-' : 'Error Records - '}$_groupModeLabel',
             ),
             Expanded(
               child: Container(

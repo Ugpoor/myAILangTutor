@@ -25,126 +25,184 @@ class DemoDataInitializer {
       await db.rawQuery('SELECT COUNT(*) FROM skills'),
     );
     if (skillCount != null && skillCount > 0) {
+      // 表非空，但仍需确保 8 个预置技能都存在（旧版安装可能缺少）
+      await _ensurePresetSkills(db);
       _initialized = true;
       return;
     }
 
+    // 表为空，首次启动，插入全部示例数据
     await _insertSampleSkills(db);
     await _insertSampleErrorTypeOutlines(db);
     await _insertSampleKnowledgeOutlines(db);
-    await _insertSampleErrorRecords(db);
-    await _insertSampleExercises(db);
-    await _insertSamplePortfolioItems(db);
-    await _insertSampleKnowledgePoints(db);
-    await _insertSampleEfficiencyRecords(db);
-    await _insertSampleScheduleItems(db);
-
+    
     _initialized = true;
+  }
+
+  /// 检查 8 个预置技能是否都在数据库中，缺失的逐个补入
+  Future<void> _ensurePresetSkills(Database db) async {
+    final presetIds = ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8'];
+    final dao = SkillDao(db);
+
+    for (final id in presetIds) {
+      final result = await db.rawQuery(
+        'SELECT COUNT(*) FROM skills WHERE skill_id = ?', [id],
+      );
+      final count = Sqflite.firstIntValue(result);
+      if (count == null || count == 0) {
+        print('[DemoInit] 预置技能 $id 缺失，补入');
+        await _insertSingleSkill(dao, id);
+      }
+    }
+  }
+
+  /// 按 ID 插入单个预置技能
+  Future<void> _insertSingleSkill(SkillDao dao, String skillId) async {
+    switch (skillId) {
+      case 's1':
+        await dao.insert(Skill(
+          skillId: 's1', name: '获取错误本', category: '外部',
+          promptText: '请将以上试卷和答卷、批改内容的图片，识别并按如下结构整理：{"correctAnswer": "正确答案", "errorId": "错误编号", "eids": ["关联错类ID列表，使用点分ID，如1、1.1"], "progress": "处理进度（待订正、已订正、已掌握、学习中）", "question": "题目内容", "wrongAnswer": "错误答案", "wrongWhere": "错在哪里（错误原因的概括描述）", "whyWrong": "错误原因", "howPrevent": "预防方法", "notes": "备注", "images": "图片路径列表（JSON格式）", "tid": "关联试卷ID（格式：T+数字）", "qid": "关联题目ID", "gradeMemo": "批改备注", "correction": "订正内容", "kid": "关联知识点ID（格式：K+数字）", "unitNumber": "单元号", "lessonNumber": "课号", "cid": "知识点大纲分类ID"}。请只要回复json格式，不要其它内容',
+          description: '与AI对话时，新开一个主题，避免话题混淆，将审批后的答题卷拍照上传，注意试卷顺序。然后将该提示语复制到AI对话软件，要求回复。检查结构无误后，复制粘贴链接或者转发回收件箱。',
+          createdAt: DateTime.now(), lang: 'cn',
+        ));
+        break;
+      case 's2':
+        await dao.insert(Skill(
+          skillId: 's2', name: '获取习题集', category: '外部',
+          promptText: '请将以上试卷和练习题内容的图片，识别并按如下结构整理：{"test": {"tid": "试卷ID（格式：T+数字）", "title": "试卷标题", "lessonUnitList": ["课时单元标识列表"], "kids": ["关联知识点ID列表"], "status": "状态（未开始、进行中、已完成）", "images": ["图片路径列表"]}, "questions": [{"question": "题目内容", "correctAnswer": "正确答案", "explanation": "答案解析", "category": "题目分类（填空题、选择题、判断题、简答题、作文题）", "difficulty": "难度级别（1-5）", "exerciseId": "题目唯一标识", "tid": "关联试卷ID", "lessonNumber": "单元号", "unitNumber": "课号", "kid": "关联知识点ID", "progress": "答题进度（未答题、已答题、已批阅、已订正）", "grading": "批阅意见", "answer": "用户答题结果"}]}。请只要回复json格式，不要其它内容',
+          description: '与AI对话时，新开一个主题，避免话题混淆，将试卷拍照上传，注意题目顺序。然后将该提示语复制到AI对话软件，要求回复。检查结构无误后，复制粘贴链接或者转发回收件箱。',
+          createdAt: DateTime.now(), lang: 'cn',
+        ));
+        break;
+      case 's3':
+        await dao.insert(Skill(
+          skillId: 's3', name: '获取作品集', category: '外部',
+          promptText: '请将以上对话内容，识别为作品记录，若有图片，请ocr识别文字，再整理。内容按如下结构整理：{"title": "作品标题", "contentPath": "内容目录路径", "isOriginal": "是否原创（true/false）", "aiReview": "AI评语/分析报告", "brief": "作品摘要/简介", "kid": "关联知识点ID（格式：K+数字）", "unitNumber": "单元号", "lessonNumber": "课号", "testRecs": "生成练习记录（逗号分隔的tid列表）", "content": "全文搜索内容"}。请只要回复json格式，不要其它内容',
+          description: '与AI对话时，新开一个主题，避免话题混淆，将作品内容或图片上传。然后将该提示语复制到AI对话软件，要求回复。检查结构无误后，复制粘贴链接或者转发回收件箱。注意aiReview字段需要AI给出内容的评析。',
+          createdAt: DateTime.now(), lang: 'cn',
+        ));
+        break;
+      case 's4':
+        await dao.insert(Skill(
+          skillId: 's4', name: '获取知识点', category: '外部',
+          promptText: '请将以上对话内容，识别为知识点，若有图片，请ocr识别文字，再整理。内容按如下结构整理：{"kid": "知识点唯一标识（格式：K+数字）", "title": "知识点标题", "unitNumber": "单元号", "lessonNumber": "课号", "cid": "知识点大纲分类ID", "contentPath": "内容文件路径", "knowledgeTag": "知识标签", "testTimes": "测试次数", "errorTimes": "错误次数", "brief": "知识点摘要/简介", "content": "全文搜索内容"}。请只要回复json格式，不要其它内容',
+          description: '与AI对话时，新开一个主题，避免话题混淆，将知识内容或图片上传。然后将该提示语复制到AI对话软件，要求回复。检查结构无误后，复制粘贴链接或者转发回收件箱。',
+          createdAt: DateTime.now(), lang: 'cn',
+        ));
+        break;
+      case 's5':
+        await dao.insert(Skill(
+          skillId: 's5', name: '收件箱区分练习类打分', category: '内部',
+          internalFunction: '_firstStageClassification',
+          parameters: r'题目|(第\d+题)|测试|test|TEST|Question|填空|选择|是非|简答|_[^_\s]*|\bA\b|\bB\b|\bC\b|\bD\b|\ba\b|\bb\b|\bc\b|\bd\b|错在哪|为何错|如何防|错误分析|批阅|正确答案是|得分|^错误|^\d[、.）]\s*',
+          returnType: '数值',
+          description: '收件箱第一次根据关键词和llm模型分类条目，将符合练习类与不符合练习类的作二分。用户修改参数内容，即可改变final keywords的取值。',
+          createdAt: DateTime.now(), lang: 'cn',
+        ));
+        break;
+      case 's6':
+        await dao.insert(Skill(
+          skillId: 's6', name: '收件箱错题本分类', category: '内部',
+          internalFunction: '_classifyExerciseType',
+          parameters: '错误|得分|错在哪|为何错|如何防|批阅|正确答案|我的答案|批改|订正|错解|正误分析',
+          returnType: '文本',
+          description: '收件箱第二次分类，在被分为符合练习类的条目中继续判断，进一步分为"错题本"或者"习题集"。',
+          createdAt: DateTime.now(), lang: 'cn',
+        ));
+        break;
+      case 's7':
+        await dao.insert(Skill(
+          skillId: 's7', name: '收件箱作品集分类', category: '内部',
+          internalFunction: '_classifyNonExerciseType',
+          parameters: '作者|作品欣赏|原创|小说|节选|散文|诗歌|杂文|读后感|作文|范文|文学作品',
+          returnType: '文本',
+          description: '收件箱第二次分类，在被分为非练习类的条目中继续判断，进一步分为"作品集"或者"知识点"。',
+          createdAt: DateTime.now(), lang: 'cn',
+        ));
+        break;
+      case 's8':
+        await dao.insert(Skill(
+          skillId: 's8', name: '单元标签打标', category: '内部',
+          internalFunction: 'allocateUnitLesson',
+          parameters: '- unit: 1\n  title: 春天\n  lessons:\n    - lesson: 1\n      title: 燕子来了\n    - lesson: 2\n      title: 北国的春天\n- unit: 2\n  title: 夏天\n  lessons:\n    - lesson: 1\n      title: 荷塘月色\n    - lesson: 2\n      title: 夏日绝句\n- unit: 3\n  title: 秋天\n  lessons:\n    - lesson: 1\n      title: 秋天的怀念\n    - lesson: 2\n      title: 秋思',
+          returnType: '无',
+          description: '收件箱完成分类后，给各条目打上单元标签，广泛用于四大栏目条目的课内标签打标。',
+          createdAt: DateTime.now(), lang: 'cn',
+        ));
+        break;
+    }
   }
 
   Future<void> _insertSampleSkills(Database db) async {
     final dao = SkillDao(db);
 
-    // 外部技能1：错误本格式指令
+    // === 外部技能 s1-s4：提示语模板，用户复制到外部 AI 使用 ===
+
     await dao.insert(Skill(
-      skillId: 'S1',
-      name: '错误本格式识别',
-      category: '外部',
-      prerequisite: null,
-      promptText: '''请将以下内容按照错误本格式整理输出。格式要求如下：
-
-【题目】（原题内容）
-【我的答案】（我写的答案）
-【正确答案】（正确答案）
-【错在哪里】（具体错在哪个步骤或哪个知识点）
-【为什么错】（错误原因分析：概念混淆/计算失误/审题不清/知识遗漏/推理错误）
-【如何避免】（预防同类错误的措施）
-
-示例：
-输入：小明写了一道成语填空题："杯（龙）明珠"，他写了答案"杯（明）明珠"。
-
-输出：
-【题目】杯（龙）明珠
-【我的答案】杯（明）明珠
-【正确答案】杯（龙）明珠
-【错在哪里】将成语"杯龙明珠"中的"龙"字误写为"明"。
-【为什么错】知识遗漏——没有掌握"杯龙明珠"这个成语的正确写法，望文生义地将"杯明"理解成杯子明亮。实际上"杯龙"指酒杯中的龙形倒影，典故出自《晋书》。
-【如何避免】1. 积累常见成语典故；2. 对不确定字的成语要查字典确认；3. 建立个人错题本，定期复习易错成语
-
-请严格按照以上格式整理以下内容：''',
-      description: '将AI助手的分析结果按照统一格式整理成错误本条目，方便录入学习系统。复制此提示语，粘贴到豆包/元宝等外部AI中，配合答卷照片或题目内容使用。',
-      createdAt: DateTime.now(),
-      lang: 'cn',
+      skillId: 's1', name: '获取错误本', category: '外部',
+      promptText: '请将以上试卷和答卷、批改内容的图片，识别并按如下结构整理：{"correctAnswer": "正确答案", "errorId": "错误编号", "eids": ["关联错类ID列表，使用点分ID，如1、1.1"], "progress": "处理进度（待订正、已订正、已掌握、学习中）", "question": "题目内容", "wrongAnswer": "错误答案", "wrongWhere": "错在哪里（错误原因的概括描述）", "whyWrong": "错误原因", "howPrevent": "预防方法", "notes": "备注", "images": "图片路径列表（JSON格式）", "tid": "关联试卷ID（格式：T+数字）", "qid": "关联题目ID", "gradeMemo": "批改备注", "correction": "订正内容", "kid": "关联知识点ID（格式：K+数字）", "unitNumber": "单元号", "lessonNumber": "课号", "cid": "知识点大纲分类ID"}。请只要回复json格式，不要其它内容',
+      description: '与AI对话时，新开一个主题，避免话题混淆，将审批后的答题卷拍照上传，注意试卷顺序。然后将该提示语复制到AI对话软件，要求回复。检查结构无误后，复制粘贴链接或者转发回收件箱。',
+      createdAt: DateTime.now(), lang: 'cn',
     ));
 
-    // 外部技能2：作品集采集与赏析
     await dao.insert(Skill(
-      skillId: 'S2',
-      name: '作品集采集与赏析',
-      category: '外部',
-      prerequisite: null,
-      promptText: '''请对以下文章进行采集整理和赏析分析：
-
-第一步：采集整理
-- 标题：
-- 作者：
-- 出处/来源：
-- 正文：（完整收录原文）
-
-第二步：赏析分析
-1. 内容概述（50字以内概括文章主旨）
-2. 写作手法（至少分析3种手法，如比喻、拟人、排比等，引用原文说明）
-3. 结构分析（文章层次、过渡、首尾呼应等）
-4. 语言特色（遣词造句的特点和效果）
-5. 情感表达（作者情感脉络和表达方式）
-6. 仿写建议（提供一个基于本文手法的仿写练习方向）
-
-请对以下内容进行分析：''',
-      description: '采集文章内容并进行系统化赏析分析，生成结构化的评析报告。复制此提示语，粘贴到豆包/元宝等外部AI中，配合采集的文章内容使用。',
-      createdAt: DateTime.now(),
-      lang: 'cn',
+      skillId: 's2', name: '获取习题集', category: '外部',
+      promptText: '请将以上试卷和练习题内容的图片，识别并按如下结构整理：{"test": {"tid": "试卷ID（格式：T+数字）", "title": "试卷标题", "lessonUnitList": ["课时单元标识列表"], "kids": ["关联知识点ID列表"], "status": "状态（未开始、进行中、已完成）", "images": ["图片路径列表"]}, "questions": [{"question": "题目内容", "correctAnswer": "正确答案", "explanation": "答案解析", "category": "题目分类（填空题、选择题、判断题、简答题、作文题）", "difficulty": "难度级别（1-5）", "exerciseId": "题目唯一标识", "tid": "关联试卷ID", "lessonNumber": "单元号", "unitNumber": "课号", "kid": "关联知识点ID", "progress": "答题进度（未答题、已答题、已批阅、已订正）", "grading": "批阅意见", "answer": "用户答题结果"}]}。请只要回复json格式，不要其它内容',
+      description: '与AI对话时，新开一个主题，避免话题混淆，将试卷拍照上传，注意题目顺序。然后将该提示语复制到AI对话软件，要求回复。检查结构无误后，复制粘贴链接或者转发回收件箱。',
+      createdAt: DateTime.now(), lang: 'cn',
     ));
 
-    // 内部技能3：练习题批改
     await dao.insert(Skill(
-      skillId: 'S3',
-      name: '练习题批改',
-      category: '内部',
-      prerequisite: null,
-      internalFunction: '练习题批改',
-      parameters: 'exercise_id: 习题ID',
-      returnType: 'grading_result',
-      description: '批改指定习题的答卷，逐题对答案进行评分并生成批阅结果。',
-      createdAt: DateTime.now(),
-      lang: 'cn',
+      skillId: 's3', name: '获取作品集', category: '外部',
+      promptText: '请将以上对话内容，识别为作品记录，若有图片，请ocr识别文字，再整理。内容按如下结构整理：{"title": "作品标题", "contentPath": "内容目录路径", "isOriginal": "是否原创（true/false）", "aiReview": "AI评语/分析报告", "brief": "作品摘要/简介", "kid": "关联知识点ID（格式：K+数字）", "unitNumber": "单元号", "lessonNumber": "课号", "testRecs": "生成练习记录（逗号分隔的tid列表）", "content": "全文搜索内容"}。请只要回复json格式，不要其它内容',
+      description: '与AI对话时，新开一个主题，避免话题混淆，将作品内容或图片上传。然后将该提示语复制到AI对话软件，要求回复。检查结构无误后，复制粘贴链接或者转发回收件箱。注意aiReview字段需要AI给出内容的评析。',
+      createdAt: DateTime.now(), lang: 'cn',
     ));
 
-    // 内部技能4：知识点梳理
     await dao.insert(Skill(
-      skillId: 'S4',
-      name: '知识点梳理',
-      category: '内部',
-      prerequisite: null,
-      internalFunction: '知识点梳理',
-      parameters: 'knowledge_tag: 知识标签',
-      returnType: 'knowledge_outline',
-      description: '根据知识标签梳理相关知识点，生成知识大纲和知识图谱数据。',
-      createdAt: DateTime.now(),
-      lang: 'cn',
+      skillId: 's4', name: '获取知识点', category: '外部',
+      promptText: '请将以上对话内容，识别为知识点，若有图片，请ocr识别文字，再整理。内容按如下结构整理：{"kid": "知识点唯一标识（格式：K+数字）", "title": "知识点标题", "unitNumber": "单元号", "lessonNumber": "课号", "cid": "知识点大纲分类ID", "contentPath": "内容文件路径", "knowledgeTag": "知识标签", "testTimes": "测试次数", "errorTimes": "错误次数", "brief": "知识点摘要/简介", "content": "全文搜索内容"}。请只要回复json格式，不要其它内容',
+      description: '与AI对话时，新开一个主题，避免话题混淆，将知识内容或图片上传。然后将该提示语复制到AI对话软件，要求回复。检查结构无误后，复制粘贴链接或者转发回收件箱。',
+      createdAt: DateTime.now(), lang: 'cn',
     ));
 
-    // 内部技能5：练习题生成
+    // === 内部技能 s5-s8：收件箱分类器参数 ===
+
     await dao.insert(Skill(
-      skillId: 'S5',
-      name: '练习题生成',
-      category: '内部',
-      prerequisite: 'S3',
-      internalFunction: '练习题生成',
-      parameters: 'knowledge_tag: 知识标签, count: 题目数量',
-      returnType: 'exercise_list',
-      description: '根据知识点标签生成指定数量的练习题，自动创建习题集条目。',
-      createdAt: DateTime.now(),
-      lang: 'cn',
+      skillId: 's5', name: '收件箱区分练习类打分', category: '内部',
+      internalFunction: '_firstStageClassification',
+      parameters: r'题目|(第\d+题)|测试|test|TEST|Question|填空|选择|是非|简答|_[^_\s]*|\bA\b|\bB\b|\bC\b|\bD\b|\ba\b|\bb\b|\bc\b|\bd\b|错在哪|为何错|如何防|错误分析|批阅|正确答案是|得分|^错误|^\d[、.）]\s*',
+      returnType: '数值',
+      description: '收件箱第一次根据关键词和llm模型分类条目，将符合练习类与不符合练习类的作二分。用户修改参数内容，即可改变final keywords的取值。',
+      createdAt: DateTime.now(), lang: 'cn',
+    ));
+
+    await dao.insert(Skill(
+      skillId: 's6', name: '收件箱错题本分类', category: '内部',
+      internalFunction: '_classifyExerciseType',
+      parameters: '错误|得分|错在哪|为何错|如何防|批阅|正确答案|我的答案|批改|订正|错解|正误分析',
+      returnType: '文本',
+      description: '收件箱第二次分类，在被分为符合练习类的条目中继续判断，进一步分为"错题本"或者"习题集"。',
+      createdAt: DateTime.now(), lang: 'cn',
+    ));
+
+    await dao.insert(Skill(
+      skillId: 's7', name: '收件箱作品集分类', category: '内部',
+      internalFunction: '_classifyNonExerciseType',
+      parameters: '作者|作品欣赏|原创|小说|节选|散文|诗歌|杂文|读后感|作文|范文|文学作品',
+      returnType: '文本',
+      description: '收件箱第二次分类，在被分为非练习类的条目中继续判断，进一步分为"作品集"或者"知识点"。',
+      createdAt: DateTime.now(), lang: 'cn',
+    ));
+
+    await dao.insert(Skill(
+      skillId: 's8', name: '单元标签打标', category: '内部',
+      internalFunction: 'allocateUnitLesson',
+      parameters: '- unit: 1\n  title: 春天\n  lessons:\n    - lesson: 1\n      title: 燕子来了\n    - lesson: 2\n      title: 北国的春天\n- unit: 2\n  title: 夏天\n  lessons:\n    - lesson: 1\n      title: 荷塘月色\n    - lesson: 2\n      title: 夏日绝句\n- unit: 3\n  title: 秋天\n  lessons:\n    - lesson: 1\n      title: 秋天的怀念\n    - lesson: 2\n      title: 秋思',
+      returnType: '无',
+      description: '收件箱完成分类后，给各条目打上单元标签，广泛用于四大栏目条目的课内标签打标。',
+      createdAt: DateTime.now(), lang: 'cn',
     ));
   }
 

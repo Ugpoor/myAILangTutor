@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import 'models/inbox_item.dart';
+import 'models/move_record.dart';
 import 'models/schema.dart';
 
 class DatabaseHelper {
@@ -84,7 +85,8 @@ class DatabaseHelper {
         error_times INTEGER DEFAULT 0,
         test_recs TEXT,
         error_recs TEXT,
-        brief TEXT
+        brief TEXT,
+        content TEXT
       )
     ''');
   }
@@ -211,7 +213,8 @@ class DatabaseHelper {
         total_score INTEGER,
         duration INTEGER,
         status TEXT DEFAULT '未开始',
-        images TEXT
+        images TEXT,
+        content TEXT
       )
     ''');
   }
@@ -231,7 +234,8 @@ class DatabaseHelper {
         kid TEXT,
         unit_number TEXT,
         lesson_number TEXT,
-        test_recs TEXT
+        test_recs TEXT,
+        content TEXT
       )
     ''');
   }
@@ -351,6 +355,19 @@ class DatabaseHelper {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         lang TEXT DEFAULT 'cn'
+      )
+    ''');
+
+    // move_records 表：记录收件箱条目的分类移动历史
+    await db.execute('''
+      CREATE TABLE ${MoveRecordSchema.tableName} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        inbox_item_id TEXT NOT NULL,
+        from_category TEXT NOT NULL,
+        to_category TEXT NOT NULL,
+        from_path TEXT NOT NULL,
+        to_path TEXT NOT NULL,
+        moved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     ''');
   }
@@ -807,6 +824,44 @@ class DatabaseHelper {
       orderBy: 'createdAt DESC',
     );
     return List.generate(maps.length, (i) => InboxItem.fromMap(maps[i]));
+  }
+
+  Future<List<InboxItem>> getInboxItemsBySource(String source) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'inbox_items',
+      where: 'source = ?',
+      whereArgs: [source],
+      orderBy: 'createdAt DESC',
+    );
+    return List.generate(maps.length, (i) => InboxItem.fromMap(maps[i]));
+  }
+
+  Future<List<InboxItem>> searchInboxItems(String keyword) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'inbox_items',
+      where: 'title LIKE ? OR content LIKE ?',
+      whereArgs: ['%$keyword%', '%$keyword%'],
+      orderBy: 'createdAt DESC',
+    );
+    return List.generate(maps.length, (i) => InboxItem.fromMap(maps[i]));
+  }
+
+  Future<int> insertMoveRecord(MoveRecord record) async {
+    final db = await database;
+    return await db.insert('move_records', record.toMap());
+  }
+
+  Future<List<MoveRecord>> getMoveRecordsByItemId(String inboxItemId) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'move_records',
+      where: 'inbox_item_id = ?',
+      whereArgs: [inboxItemId],
+      orderBy: 'moved_at DESC',
+    );
+    return maps.map((map) => MoveRecord.fromMap(map)).toList();
   }
 
   Future<int> deleteAllProcessedItems() async {

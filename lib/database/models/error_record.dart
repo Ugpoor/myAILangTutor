@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:sqflite/sqflite.dart';
 
-/// 错误本数据模型
+/// 错题本数据模型
 ///
 /// 错误记录用于记录学生在学习过程中遇到的错题，支持错题订正和复习。
 /// 支持一个错误记录关联多个错类（多对多关系）。

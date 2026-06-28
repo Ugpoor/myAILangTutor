@@ -32,17 +32,40 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
   bool _isProcessing = false;
   String _selectedSource = '';
   String _selectedCategory = '';
+  // Local state tracking for mutable fields (widget.item is immutable)
+  String _currentStatus = '';
+  String _currentFilePath = '';
+  String _currentTitle = '';
   // Classification history for AIReplyBar display (user message + AI response)
   List<Map<String, String>> _classificationHistory = [];
 
   final List<String> _sourceOptions = [
-    '豆包', '文心一言', '通义千问', '讯飞星火', 'Kimi',
-    'ChatGPT', 'Claude', 'Gemini', 'Copilot', '智谱清言', '混元', '元宝',
-    'Perplexity', 'Mistral', 'Poe', '其他', '未知',
+    '豆包',
+    '文心一言',
+    '通义千问',
+    '讯飞星火',
+    'Kimi',
+    'ChatGPT',
+    'Claude',
+    'Gemini',
+    'Copilot',
+    '智谱清言',
+    '混元',
+    '元宝',
+    'Perplexity',
+    'Mistral',
+    'Poe',
+    '其他',
+    '未知',
   ];
 
   final List<String> _categoryOptions = [
-    '错题本', '知识点', '习题集', '作品集', '无法分类', '未知归类',
+    '错题本',
+    '知识点',
+    '习题集',
+    '作品集',
+    '无法分类',
+    '未知归类',
   ];
 
   @override
@@ -54,6 +77,9 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
     _selectedCategory = _categoryOptions.contains(widget.item.category)
         ? widget.item.category
         : '未知归类';
+    _currentStatus = widget.item.status;
+    _currentFilePath = widget.item.filePath;
+    _currentTitle = widget.item.title;
 
     // Load historical classification messages from database
     _loadChatHistory();
@@ -74,7 +100,8 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
 
       if (mounted) {
         setState(() {
-          _classificationHistory = history.reversed.toList(); // show newest first
+          _classificationHistory = history.reversed
+              .toList(); // show newest first
         });
       }
     } catch (e) {
@@ -84,14 +111,68 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
 
   Future<void> _updateSource(String value) async {
     setState(() => _selectedSource = value);
-    final updated = widget.item.copyWith(source: value);
+    final updated = widget.item.copyWith(
+      source: value,
+      filePath: _currentFilePath,
+      category: _selectedCategory,
+      status: _currentStatus,
+      title: _currentTitle,
+    );
     await _inboxService.updateInboxItem(updated);
   }
 
   Future<void> _updateCategory(String value) async {
+    final previousCategory = _selectedCategory;
     setState(() => _selectedCategory = value);
-    final updated = widget.item.copyWith(category: value);
-    await _inboxService.updateInboxItem(updated);
+
+    // 如果选择了有效分类且不是当前分类，触发手工分类整理
+    if (value != previousCategory &&
+        (value == '错题本' ||
+            value == '习题集' ||
+            value == '作品集' ||
+            value == '知识点')) {
+      // 先确认用户是否要进行手工分类整理
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(
+            widget.lang == 'cn' ? '确认手工分类' : 'Confirm Manual Classification',
+          ),
+          content: Text(
+            widget.lang == 'cn'
+                ? '确定要将该条目分类到 \"$value\" 吗？系统将对文档进行解析并在目标栏目创建记录。'
+                : 'Are you sure you want to classify this item as \"$value\"? The system will parse the document and create a record in the target section.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(widget.lang == 'cn' ? '取消' : 'Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(widget.lang == 'cn' ? '确定' : 'Confirm'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed == true) {
+        // 调用手工分类整理函数
+        await _manualOrganizeToCategory(value);
+      } else {
+        // 用户取消，恢复原来的分类
+        setState(() => _selectedCategory = previousCategory);
+      }
+    } else {
+      // 只是简单地更新分类，不进行整理
+      final updated = widget.item.copyWith(
+        category: value,
+        filePath: _currentFilePath,
+        status: _currentStatus,
+        title: _currentTitle,
+      );
+      await _inboxService.updateInboxItem(updated);
+    }
   }
 
   Future<void> _deleteItem() async {
@@ -99,9 +180,11 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(widget.lang == 'cn' ? '确认删除' : 'Confirm Delete'),
-        content: Text(widget.lang == 'cn'
-            ? '确定要删除这条记录吗？这个操作无法撤销。'
-            : 'Are you sure you want to delete this item? This action cannot be undone.'),
+        content: Text(
+          widget.lang == 'cn'
+              ? '确定要删除这条记录吗？这个操作无法撤销。'
+              : 'Are you sure you want to delete this item? This action cannot be undone.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -127,7 +210,11 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(widget.lang == 'cn' ? '删除失败: $e' : 'Delete failed: $e')),
+            SnackBar(
+              content: Text(
+                widget.lang == 'cn' ? '删除失败: $e' : 'Delete failed: $e',
+              ),
+            ),
           );
         }
       } finally {
@@ -137,6 +224,22 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
   }
 
   Future<void> _organizeItem() async {
+    // 检查是否已经是"已处理"状态（使用本地追踪的状态）
+    if (_currentStatus == '已处理') {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              widget.lang == 'cn'
+                  ? '该条目已整理，不可再整理'
+                  : 'This item has already been organized',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
     setState(() => _isProcessing = true);
 
     // Build user prompt text for history display
@@ -145,32 +248,33 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
         : widget.item.content;
 
     try {
-      // Use unified classification from InboxService
-      final result = await _inboxService.classifyItem(widget.item);
-      final category = result.category;
-      final newTitle = result.newTitle;
-
-      // Update the item with classified category and optional new title
-      final updatedItem = widget.item.copyWith(
-        title: newTitle ?? widget.item.title,
-        category: category,
-        status: '已处理',
+      // 使用完整流水线：分类 + 移动文件 + 写入模块表 + 更新DB
+      final tempItem = widget.item.copyWith(
+        filePath: _currentFilePath,
+        status: '处理中',
       );
+      final result = await _inboxService.processAndClassifyItem(tempItem);
+      final category = result['category'] ?? '未知归类';
+      final reasoning = result['reasoning'] ?? '';
 
-      // Save to database first
-      await _inboxService.updateInboxItem(updatedItem);
+      // 从 DB 重新读取最新状态，确保本地状态与 DB 一致
+      final freshItem = widget.item.id != null
+          ? await DatabaseHelper().getInboxItemById(widget.item.id!)
+          : null;
 
       if (mounted) {
-        // Refresh local UI state
         setState(() {
           _selectedCategory = category;
+          _currentStatus = freshItem?.status ?? '已处理';
+          _currentFilePath = freshItem?.filePath ?? _currentFilePath;
+          _currentTitle = freshItem?.title ?? _currentTitle;
         });
 
         // Re-fetch fresh data to ensure consistency
         widget.onUpdate();
 
         // Add classification conversation to history for AIReplyBar
-        final aiReplyText = '分类结果：$category\n依据：${result.reasoning}';
+        final aiReplyText = '分类结果：$category\n依据：$reasoning';
         setState(() {
           _classificationHistory.add({
             'user': userPromptText,
@@ -179,15 +283,36 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(widget.lang == 'cn'
-              ? '整理完成！（分类: $category）'
-              : 'Organized! (Category: $category)')),
+          SnackBar(
+            content: Text(
+              widget.lang == 'cn'
+                  ? '整理完成！（分类: $category）'
+                  : 'Organized! (Category: $category)',
+            ),
+          ),
         );
       }
     } catch (e) {
+      print('[InboxDetailPage] 整理失败: $e');
       if (mounted) {
+        // 从 DB 重新读取状态（可能部分更新成功）
+        final freshItem = widget.item.id != null
+            ? await DatabaseHelper().getInboxItemById(widget.item.id!)
+            : null;
+        if (freshItem != null) {
+          setState(() {
+            _currentStatus = freshItem.status;
+            _currentFilePath = freshItem.filePath;
+            _selectedCategory = freshItem.category;
+          });
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(widget.lang == 'cn' ? '整理失败: $e' : 'Organize failed: $e')),
+          SnackBar(
+            content: Text(
+              widget.lang == 'cn' ? '整理失败: $e' : 'Organize failed: $e',
+            ),
+          ),
         );
       }
     } finally {
@@ -195,7 +320,84 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
     }
   }
 
-  Future<void> _performClassification(String content, [String? newTitle]) async {
+  /// 手工分类并整理条目到指定栏目
+  Future<void> _manualOrganizeToCategory(String newCategory) async {
+    setState(() => _isProcessing = true);
+
+    try {
+      // 创建临时的 updated item，使用最新的 filePath
+      final tempItem = widget.item.copyWith(
+        category: newCategory,
+        status: '处理中',
+        filePath: _currentFilePath,
+      );
+
+      // 调用完整的处理流程（移动文件 + 解析内容 + 写入目标栏目数据库）
+      await _inboxService.processAndClassifyItem(
+        tempItem,
+        useManualCategory: true,
+      );
+
+      if (mounted) {
+        // 从 DB 重新读取最新状态
+        final freshItem = widget.item.id != null
+            ? await DatabaseHelper().getInboxItemById(widget.item.id!)
+            : null;
+
+        setState(() {
+          _selectedCategory = newCategory;
+          _currentStatus = freshItem?.status ?? '已处理';
+          _currentFilePath = freshItem?.filePath ?? _currentFilePath;
+          _currentTitle = freshItem?.title ?? _currentTitle;
+        });
+
+        // Re-fetch fresh data to ensure consistency
+        widget.onUpdate();
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              widget.lang == 'cn'
+                  ? '手工分类完成！（分类: $newCategory）'
+                  : 'Manual classification complete! (Category: $newCategory)',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      print('[InboxDetailPage] 手工分类失败: $e');
+      if (mounted) {
+        // 从 DB 重新读取状态（可能部分更新成功）
+        final freshItem = widget.item.id != null
+            ? await DatabaseHelper().getInboxItemById(widget.item.id!)
+            : null;
+        if (freshItem != null) {
+          setState(() {
+            _currentStatus = freshItem.status;
+            _currentFilePath = freshItem.filePath;
+            _selectedCategory = freshItem.category;
+          });
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              widget.lang == 'cn'
+                  ? '手工分类失败: $e'
+                  : 'Manual classification failed: $e',
+            ),
+          ),
+        );
+      }
+    } finally {
+      setState(() => _isProcessing = false);
+    }
+  }
+
+  Future<void> _performClassification(
+    String content, [
+    String? newTitle,
+  ]) async {
     // Deprecated: All classification goes through _organizeItem() -> _inboxService.classifyItem()
     await _organizeItem();
   }
@@ -205,12 +407,16 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
     // Current AI message shows either progress or last result
     String currentAiMessage;
     if (_isProcessing) {
-      currentAiMessage = widget.lang == 'cn' ? '正在整理文档...' : 'Organizing document...';
+      currentAiMessage = widget.lang == 'cn'
+          ? '正在整理文档...'
+          : 'Organizing document...';
     } else if (_classificationHistory.isNotEmpty) {
       final lastMsg = _classificationHistory.last;
       currentAiMessage = lastMsg['ai']!;
     } else {
-      currentAiMessage = widget.lang == 'cn' ? '正在查看文档' : 'Viewing the document';
+      currentAiMessage = widget.lang == 'cn'
+          ? '正在查看文档'
+          : 'Viewing the document';
     }
 
     return Scaffold(
@@ -220,14 +426,18 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
         child: Column(
           children: [
             AppTitleBar(
-              title: widget.lang == 'cn' ? '我的AI语言学习助理 - 查看文档' : 'My AI Language Assistant - View Document',
+              title: widget.lang == 'cn'
+                  ? '我的AI语言学习助理 - 查看文档'
+                  : 'My AI Language Assistant - View Document',
             ),
             AIReplyBar(
               lang: widget.lang,
               topic: 'inbox',
               lastAiMessage: currentAiMessage,
               onPullDown: () {},
-              historyMessages: _classificationHistory.isEmpty ? null : _classificationHistory,
+              historyMessages: _classificationHistory.isEmpty
+                  ? null
+                  : _classificationHistory,
             ),
             Expanded(
               child: _isProcessing
@@ -235,7 +445,10 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
                   : Column(
                       children: [
                         Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          margin: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(8),
@@ -247,8 +460,11 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  widget.item.title,
-                                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                  _currentTitle,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                                 const SizedBox(height: 8),
                                 Wrap(
@@ -271,7 +487,12 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
                                       _categoryOptions,
                                       _updateCategory,
                                     ),
-                                    _buildLabelValue('状态', widget.item.status, Colors.green, _getStatusColor(widget.item.status)),
+                                    _buildLabelValue(
+                                      '状态',
+                                      _currentStatus,
+                                      Colors.green,
+                                      _getStatusColor(_currentStatus),
+                                    ),
                                   ],
                                 ),
                               ],
@@ -281,14 +502,19 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
                         Expanded(
                           child: Container(
                             margin: const EdgeInsets.symmetric(horizontal: 16),
-                            child: HtmlPreview(filePath: widget.item.filePath, showAppBar: false),
+                            child: HtmlPreview(
+                              filePath: _currentFilePath,
+                              showAppBar: false,
+                            ),
                           ),
                         ),
                       ],
                     ),
             ),
             SubmenuTabs(
-              tabs: widget.lang == 'cn' ? ['返回', '整理', '删除'] : ['Back', 'Organize', 'Delete'],
+              tabs: widget.lang == 'cn'
+                  ? ['返回', '整理', '删除']
+                  : ['Back', 'Organize', 'Delete'],
               selectedTab: '',
               onTabSelected: (tab) async {
                 if (tab == (widget.lang == 'cn' ? '返回' : 'Back')) {
@@ -308,14 +534,27 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
     );
   }
 
-  Widget _buildEditableDropdown(String label, String value, Color labelColor, Color bgColor, List<String> options, ValueChanged<String> onChanged) {
+  Widget _buildEditableDropdown(
+    String label,
+    String value,
+    Color labelColor,
+    Color bgColor,
+    List<String> options,
+    ValueChanged<String> onChanged,
+  ) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(label, style: TextStyle(color: labelColor, fontWeight: FontWeight.bold)),
+        Text(
+          label,
+          style: TextStyle(color: labelColor, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(width: 4),
         Container(
-          decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(3)),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(3),
+          ),
           child: DropdownButton<String>(
             value: options.contains(value) ? value : null,
             underline: const SizedBox.shrink(),
@@ -326,27 +565,43 @@ class _InboxDetailPageState extends State<InboxDetailPage> {
               return DropdownMenuItem<String>(
                 value: opt,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   child: Text(opt, style: const TextStyle(fontSize: 12)),
                 ),
               );
             }).toList(),
-            onChanged: (v) { if (v != null) onChanged(v); },
+            onChanged: (v) {
+              if (v != null) onChanged(v);
+            },
           ),
         ),
       ],
     );
   }
 
-  Widget _buildLabelValue(String label, String value, Color labelColor, Color bgColor) {
+  Widget _buildLabelValue(
+    String label,
+    String value,
+    Color labelColor,
+    Color bgColor,
+  ) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(label, style: TextStyle(color: labelColor, fontWeight: FontWeight.bold)),
+        Text(
+          label,
+          style: TextStyle(color: labelColor, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(width: 4),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-          decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(3)),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(3),
+          ),
           child: Text(value, style: const TextStyle(fontSize: 12)),
         ),
       ],

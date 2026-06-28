@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../pages/entry_page.dart';
+import '../pages/main_screen.dart';
 
 class SubmenuTabs extends StatelessWidget {
   final List<String> tabs;
@@ -40,7 +40,7 @@ class SubmenuTabs extends StatelessWidget {
             onTap: () {
               if (useGlobalHome) {
                 Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => const EntryPage()),
+                  MaterialPageRoute(builder: (context) => const MainScreen()),
                   (route) => false,
                 );
               } else if (onHomeTap != null) {

@@ -161,7 +161,7 @@ $errorContent
           difficulty: 2,
           kid: selectedRecords.first.kid ?? '综合',
           progress: '未答题',
-          source: '错误本自动生成',
+          source: '错题本自动生成',
           exerciseId: 'T$nextNum',
           createdAt: DateTime.now(),
           lang: widget.lang,
@@ -226,7 +226,7 @@ $errorContent
         child: Column(
           children: [
             AppTitleBar(
-              title: widget.viewTitle ?? (widget.lang == 'cn' ? '错误本 - 层次视图' : 'Error Book - Hierarchical View'),
+              title: widget.viewTitle ?? (widget.lang == 'cn' ? '错题本 - 层次视图' : 'Error Book - Hierarchical View'),
             ),
             Expanded(
               child: Container(

@@ -35,6 +35,10 @@ class _SkillDetailPageState extends State<SkillDetailPage> {
   bool _isDirty = false;
 
   final List<String> _internalFunctions = [
+    '_firstStageClassification',
+    '_classifyExerciseType',
+    '_classifyNonExerciseType',
+    'allocateUnitLesson',
     '练习题批改',
     '知识点梳理',
     '练习题生成',
@@ -106,6 +110,9 @@ class _SkillDetailPageState extends State<SkillDetailPage> {
       await widget.skillDao.update(updated);
     }
 
+    // 重新加载技能配置，使修改立即生效
+    await SkillConfig.loadFromSkills();
+
     if (mounted) {
       Navigator.of(context).pop(true);
     }
@@ -137,6 +144,8 @@ class _SkillDetailPageState extends State<SkillDetailPage> {
 
     if (confirmed == true) {
       await widget.skillDao.delete(widget.skill!.id!);
+      // 重新加载技能配置
+      await SkillConfig.loadFromSkills();
       if (mounted) {
         Navigator.of(context).pop(true);
       }
@@ -151,8 +160,6 @@ class _SkillDetailPageState extends State<SkillDetailPage> {
       SnackBar(content: Text(widget.lang == 'cn' ? '提示语已复制到剪贴板' : 'Prompt copied to clipboard')),
     );
   }
-
-  
 
   @override
   Widget build(BuildContext context) {
@@ -271,9 +278,6 @@ class _SkillDetailPageState extends State<SkillDetailPage> {
                         },
                       ),
                       const SizedBox(height: 16),
-                      // 关联内容路径选择按钮
-                      
-                      const SizedBox(height: 16),
                       // 内部/外部区分内容
                       if (_category == '内部') ...[
                         // 内部函数选择
@@ -297,9 +301,14 @@ class _SkillDetailPageState extends State<SkillDetailPage> {
                         const SizedBox(height: 16),
                         TextField(
                           controller: _parametersController,
+                          maxLines: 5,
                           decoration: InputDecoration(
-                            labelText: widget.lang == 'cn' ? '参数' : 'Parameters',
+                            labelText: widget.lang == 'cn' ? '参数（正则表达式或配置内容）' : 'Parameters (regex or config)',
                             border: const OutlineInputBorder(),
+                            alignLabelWithHint: true,
+                            helperText: widget.lang == 'cn' 
+                                ? '提示：修改参数后，分类和打标程序会立即生效'
+                                : 'Tip: Changes will take effect immediately',
                           ),
                           onChanged: (_) => setState(() => _isDirty = true),
                         ),

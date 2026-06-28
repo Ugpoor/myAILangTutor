@@ -391,6 +391,13 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
                           '${test.tid} ',
                           style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF651FFF)),
                         ),
+                        Expanded(
+                          child: Text(
+                            test.title,
+                            style: const TextStyle(fontSize: 14),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 4),
@@ -401,7 +408,6 @@ class _ExercisesPageSimpleState extends State<ExercisesPageSimple> {
                           TagStyles.lessonUnitTag('${widget.lang == 'cn' ? '单元' : 'Unit'}: ${test.lessonUnitList.join(',')}'),
                         if (test.kids.isNotEmpty)
                           TagStyles.knowledgeTag('${widget.lang == 'cn' ? '知识' : 'Knowledge'}: ${test.kids.join(',')}'),
-                        TagStyles.exerciseTag(test.tid),
                         TagStyles.statusTag(test.status, test.status),
                       ],
                     ),

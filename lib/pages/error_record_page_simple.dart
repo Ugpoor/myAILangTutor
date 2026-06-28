@@ -264,17 +264,100 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
   }
 
   Future<void> _handleTabSelected(String tab) async {
-    if (tab == (widget.lang == 'cn' ? '筛选' : 'Filter')) {
+    final cnFilter = widget.lang == 'cn' ? '筛选' : 'Filter';
+    final cnView = widget.lang == 'cn' ? '视图' : 'View';
+    final cnPractice = widget.lang == 'cn' ? '练习' : 'Practice';
+    final cnErrorType = widget.lang == 'cn' ? '错类' : 'Error Type';
+    final cnDelete = widget.lang == 'cn' ? '删除' : 'Delete';
+    final cnSelectAll = widget.lang == 'cn' ? '全选' : 'Select All';
+    final cnDeselectAll = widget.lang == 'cn' ? '全不选' : 'Deselect All';
+
+    if (tab == cnFilter) {
       _showFilterDialog();
-    } else if (tab == (widget.lang == 'cn' ? '视图' : 'View')) {
+    } else if (tab == cnView) {
       _showViewDialog();
-    } else if (tab == (widget.lang == 'cn' ? '练习' : 'Practice')) {
+    } else if (tab == cnPractice) {
       await _generateExercisesForSelectedWithLLM();
-    } else if (tab == (widget.lang == 'cn' ? '错类' : 'Error Type')) {
+    } else if (tab == cnErrorType) {
       _showOutlineDialog();
+    } else if (tab == cnDelete) {
+      await _deleteSelectedRecords();
+    } else if (tab == cnSelectAll) {
+      setState(() {
+        _selectedIds.addAll(_displayRecords.map((r) => r.id!));
+      });
+    } else if (tab == cnDeselectAll) {
+      setState(() {
+        _selectedIds.clear();
+      });
     }
   }
-  /// 重置错误本：清空所有数据并重新插入6条语文学科示例数据
+
+  /// 批量删除选中的错误记录
+  Future<void> _deleteSelectedRecords() async {
+    if (_selectedIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(widget.lang == 'cn' ? '请先选择要删除的条目' : 'Please select items to delete')),
+      );
+      return;
+    }
+
+    final count = _selectedIds.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(widget.lang == 'cn' ? '确认删除' : 'Confirm Delete'),
+        content: Text(
+          widget.lang == 'cn'
+              ? '确定要删除选中的 $count 条错误记录吗？此操作不可恢复！'
+              : 'Are you sure you want to delete $count selected error records? This action cannot be undone!',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(widget.lang == 'cn' ? '取消' : 'Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(
+              widget.lang == 'cn' ? '确定删除' : 'Delete',
+              style: const TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        int deletedCount = 0;
+        for (final id in _selectedIds) {
+          final result = await _errorRecordDao.delete(id);
+          if (result > 0) deletedCount++;
+        }
+        await _loadRecords();
+        setState(() {
+          _selectedIds.clear();
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(
+              widget.lang == 'cn' ? '已删除 $deletedCount 条记录' : 'Deleted $deletedCount records',
+            )),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(
+              widget.lang == 'cn' ? '删除失败: $e' : 'Delete failed: $e',
+            )),
+          );
+        }
+      }
+    }
+  }
+  /// 重置错题本：清空所有数据并重新插入6条语文学科示例数据
   Future<void> navigateToDetail(ErrorRecord record) async {
     final result = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
@@ -327,7 +410,7 @@ class _ErrorRecordPageSimpleState extends State<ErrorRecordPageSimple> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          title: Text(widget.lang == 'cn' ? '错误本视图' : 'Error Record View'),
+          title: Text(widget.lang == 'cn' ? '错题本视图' : 'Error Record View'),
           content: SizedBox(
             width: double.maxFinite,
             child: SingleChildScrollView(
@@ -649,7 +732,7 @@ $errorContent
       await testDao.insert(
         Test(
           tid: tid,
-          title: widget.lang == 'cn' ? '错误本练习 - 第${nextNum}套' : 'Error Practice - Set $nextNum',
+          title: widget.lang == 'cn' ? '错题本练习 - 第${nextNum}套' : 'Error Practice - Set $nextNum',
           lessonUnitList: [],
           kids: [],
           images: [],
@@ -690,7 +773,7 @@ $errorContent
           explanation: exData['explanation'] as String?,
           category: category,
           progress: '未答题',
-          source: '错误本',
+          source: '错题本',
           createdAt: DateTime.now(),
           lang: widget.lang,
         );
@@ -889,7 +972,7 @@ $errorContent
           explanation: exData['explanation'] as String?,
           category: category,
           progress: '未答题',
-          source: '错误本',
+          source: '错题本',
           createdAt: DateTime.now(),
           lang: lang,
         );
@@ -1148,9 +1231,23 @@ $errorContent
       );
     }
 
-    final tabs = widget.lang == 'cn'
-        ? ['筛选', '视图', '练习', '错类']
-        : ['Filter', 'View', 'Practice', 'Error Type'];
+    final tabs = <String>[
+      widget.lang == 'cn' ? '筛选' : 'Filter',
+      widget.lang == 'cn' ? '视图' : 'View',
+      widget.lang == 'cn' ? '练习' : 'Practice',
+      widget.lang == 'cn' ? '错类' : 'Error Type',
+      widget.lang == 'cn' ? '删除' : 'Delete',
+    ];
+
+    // 动态添加全选/全不选
+    final hasUnselected = _displayRecords.any((r) => !_selectedIds.contains(r.id));
+    final allSelected = _displayRecords.isNotEmpty && _displayRecords.every((r) => _selectedIds.contains(r.id));
+    if (hasUnselected && _displayRecords.isNotEmpty) {
+      tabs.add(widget.lang == 'cn' ? '全选' : 'Select All');
+    }
+    if (allSelected && _displayRecords.isNotEmpty) {
+      tabs.add(widget.lang == 'cn' ? '全不选' : 'Deselect All');
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFFFE4E9),
@@ -1158,7 +1255,7 @@ $errorContent
         child: Column(
           children: [
             AppTitleBar(
-              title: widget.lang == 'cn' ? '我的AI语言学习助理-错误本' : 'My AI Language Tutor - Error Book',
+              title: widget.lang == 'cn' ? '我的AI语言学习助理-错题本' : 'My AI Language Tutor - Error Book',
             ),
             AIReplyBar(
               lang: widget.lang,

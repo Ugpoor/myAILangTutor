@@ -19,7 +19,7 @@ class MenuGrid extends StatelessWidget {
     final List<Map<String, dynamic>> menuItems = lang == 'cn'
         ? [
             {'title': '收件箱', 'icon': Icons.inbox, 'color': const Color(0xFF2196F3)},
-            {'title': '错误本', 'icon': Icons.error_outline, 'color': const Color(0xFFFF5252)},
+            {'title': '错题本', 'icon': Icons.error_outline, 'color': const Color(0xFFFF5252)},
             {'title': '知识点', 'icon': Icons.lightbulb_outline, 'color': const Color(0xFFFFC107)},
             {'title': '习题集', 'icon': Icons.book_outlined, 'color': const Color(0xFFFF7043)},
             {'title': '作品集', 'icon': Icons.folder_open, 'color': const Color(0xFF4CAF50)},
